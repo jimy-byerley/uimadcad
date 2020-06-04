@@ -1,7 +1,10 @@
 from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPlainTextEdit, QTextEdit, QScrollArea, QVBoxLayout, QPushButton, QLabel, QStyleFactory, QSplitter, QSizePolicy, QMainWindow, QDockWidget, QPlainTextDocumentLayout
 from PyQt5.QtGui import QFont, QIcon, QKeySequence, QTextOption, QTextDocument
+from madcad.mathutils import vec3
 from madcad.view import Scene
+from madcad import displayable, isconstraint, isprimitive
+from madcad.annotations import annotations
 import madcad.settings
 from editor import Interpreter, InterpreterError
 import tricks
@@ -76,6 +79,7 @@ class Main(QMainWindow):
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self), 'view')))
 		menu.addAction('freeze view content',
 			lambda: self.activeview.freeze())
+		menu.addAction('show/hide variables +')
 		menu.addSeparator()
 		menu.addAction('new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
@@ -85,15 +89,14 @@ class Main(QMainWindow):
 		menu.addAction('adapt to object +',
 			lambda: self.activeview.look(self.selection.box()))
 		menu.addSeparator()
-		menu.addAction('top')
-		menu.addAction('bottom')
-		menu.addAction('front')
-		menu.addAction('back')
-		menu.addAction('right')
-		menu.addAction('left')
+		menu.addAction('top +')
+		menu.addAction('bottom +')
+		menu.addAction('front +')
+		menu.addAction('back +')
+		menu.addAction('right +')
+		menu.addAction('left +')
 		menu.addSeparator()
-		menu.addAction('hide object')
-		menu.addAction('explode objects')
+		menu.addAction('explode objects +')
 		menu.addSeparator()
 		
 		action = QAction('display points', self, checkable=True, shortcut=QKeySequence('Alt+P'))
@@ -183,7 +186,6 @@ class Main(QMainWindow):
 		if self.exectrigger == 0:
 			reexecute = False
 		elif self.exectrigger == 1:
-			print('exectrigger', self.exectrigger, '\n' in newtext)
 			reexecute = '\n' in newtext
 		elif self.exectrigger == 2:
 			reexecute = True
@@ -196,7 +198,7 @@ class Main(QMainWindow):
 	
 	def execute(self):
 		self.execution_label('RUNNING')
-		print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text()))
+		#print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text()))
 		try:
 			res = self.interpreter.execute(self.exectarget)
 		except InterpreterError as report:
@@ -206,11 +208,30 @@ class Main(QMainWindow):
 		else:
 			self.execution_label('<p style="color:#55ff22">COMPUTED</p>')
 			returned, env, used = res
-			self.selection = []
-			print('got', returned, 'may have modified', used)
-			if hasattr(returned, 'display'):
-				self.scene['<RETURNED>'] = returned
-				self.syncviews([*used, '<RETURNED>'])
+			used = set(used)
+			# remove objects that doesn't belong to env
+			toremove = []
+			for name in self.scene:
+				if isinstance(name, str) and name.isidentifier() and name not in env:
+					toremove.append(name)
+			for name in toremove:	del self.scene[name]
+			# add some intermediate results
+			for key, intermediate in self.interpreter.results.items():
+				if (isinstance(intermediate, vec3) or isconstraint(intermediate) or isprimitive(intermediate)) and displayable(intermediate):
+					self.scene[key] = intermediate
+					used.add(key)
+			# add variables
+			for name,obj in env.items():
+				if displayable(obj) and (name in used or isinstance(intermediate, vec3) or isconstraint(intermediate) or isprimitive(intermediate)):
+					self.scene[name] = obj
+			#if displayable(returned):
+				#self.scene['<RETURNED>'] = returned
+				#used.add('<RETURNED>')
+			self.scene.pop('<ANNOTATIONS>', None)
+			self.scene['<ANNOTATIONS>'] = list(annotations(self.scene))
+			used.add('<ANNOTATIONS>')
+			nprint(self.scene)
+			self.syncviews(used)
 			self.executed.emit()
 	
 	def reexecute(self):
@@ -255,11 +276,9 @@ class Main(QMainWindow):
 		try:	end = self.interpreter.findexpressionend(line)
 		except:	return
 		text = self.interpreter.text((line,0), end)
-		print('search in', repr(text))
 		for trick in self.texttricks:
 			found = trick.format.search(text)
 			if found:
-				print('found', found)
 				t = trick(self, found)
 				t.cursor = QTextCursor(self.script.findBlockByNumber(line))
 				t.cursor.movePosition(QTextCursor.NextCharacter, n=found.start())
@@ -270,7 +289,7 @@ class Main(QMainWindow):
 			self.activetrick = None
 			if '<TRICK>' in self.scene:
 				del self.scene['<TRICK>']
-		self.syncviews('<TRICK>')
+		self.syncviews(('<TRICK>',))
 	
 	texttricks = [tricks.ControledAxis, tricks.ControledPoint]
 		
@@ -525,7 +544,6 @@ class LineNumbers(QWidget):
 		return QSize(self.width, 0)
 	def paintEvent(self, event):
 		# paint numbers from the first visible block to the last visible
-		print('paint')
 		zone = event.rect()
 		painter = QPainter(self)
 		view = self.parent()
@@ -535,7 +553,7 @@ class LineNumbers(QWidget):
 			if block.isVisible() and top >= zone.top():
 				height = view.blockBoundingRect(block).height()
 				painter.setFont(self.font)
-				painter.drawText(0, top, self.width, height, Qt.AlignRight, str(block.blockNumber()))
+				painter.drawText(0, top, self.width, height, Qt.AlignRight, str(block.blockNumber()+1))
 				top += height
 			block = block.next()
 

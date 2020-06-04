@@ -78,6 +78,7 @@ class Interpreter:
 	'''
 	def __init__(self, text='', env=None, title='custom-interpreter'):
 		self.persistent = ModuleType(title)
+		self.results = self.persistent.RESULTS = {}
 		if env is None:		env = {}
 		self.backups = [(0, env)]
 		self.lines = text.split('\n')
@@ -120,8 +121,25 @@ class Interpreter:
 			instr = bytecode[i]
 			if isinstance(instr, Instr) and instr.lineno > stop:	break
 			i += 1
+		# process the code   NOTE this can be very dependent to the python version, current is 3.7
 		code = Bytecode(bytecode[:i])
-		# if the is no code to execute
+		assigned = []
+		code.insert(0, Instr('LOAD_NAME', 'RESULTS'))
+		stacksize = 0
+		for i,instr in enumerate(code):
+			stacksize += instr.stack_effect()
+			# store temporary values into results
+			if instr.name.startswith('CALL_') or instr.name.startswith('BINARY_'):
+				if i+1 < len(code) and code[i+1].name.startswith('STORE_'):
+					varname = code[i+1].arg
+					assigned.append(varname)
+				else:
+					code[i+1:i+1] = [
+						Instr('DUP_TOP'),
+						Instr('LOAD_CONST', instr.lineno-1),
+						Instr('MAP_ADD', stacksize),
+						]
+		# if there is no code to execute
 		if len(code) <= 0:	
 			return (None, self.backups[0], ())
 		# make it return the last stack value if there is (remove the loading of None that is instead)
@@ -144,8 +162,11 @@ class Interpreter:
 		except Exception as err:
 			raise InterpreterError(err)
 		
+		for varname in assigned:
+			self.results[instr.lineno-1] = env[varname]
 		if backup:
 			self.backups.insert(backi+1, (stop, env))
+		print('intermediate results', self.results)
 		return result, env, code.co_names
 	
 	def lastbackup(self, line):
