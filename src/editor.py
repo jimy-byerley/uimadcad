@@ -91,7 +91,10 @@ class Interpreter:
 		if end is None:		end = (len(self.lines)-1, 0)
 		ls,cs = start
 		le,ce = end
-		return self.lines[ls][cs:] + ''.join(self.lines[ls+1:le]) + self.lines[le][:ce]
+		if ls != le:
+			return self.lines[ls][cs:] + ''.join(self.lines[ls+1:le]) + self.lines[le][:ce]
+		else:
+			return self.lines[ls][cs:ce]
 	
 	def execute(self, stop=None, backup=False):
 		''' execute the code from the last backup to the given stop line (the stop line is not executed).
@@ -123,22 +126,30 @@ class Interpreter:
 			i += 1
 		# process the code   NOTE this can be very dependent to the python version, current is 3.7
 		code = Bytecode(bytecode[:i])
-		assigned = []
 		code.insert(0, Instr('LOAD_NAME', 'RESULTS'))
+		reused = set()
+		temploaded = []
+		assigned = []
 		stacksize = 0
 		for i,instr in enumerate(code):
 			stacksize += instr.stack_effect()
 			# store temporary values into results
-			if instr.name.startswith('CALL_') or instr.name.startswith('BINARY_'):
+			if instr.name.startswith('CALL_') or instr.name.startswith('BINARY_') or instr.name.startswith('BUILD_'):
 				if i+1 < len(code) and code[i+1].name.startswith('STORE_'):
 					varname = code[i+1].arg
-					assigned.append(varname)
+					assigned.append((varname, instr.lineno))
+					reused.update(temploaded)
+					reused.discard(varname)
+					temploaded = []
 				else:
 					code[i+1:i+1] = [
 						Instr('DUP_TOP'),
 						Instr('LOAD_CONST', instr.lineno-1),
 						Instr('MAP_ADD', stacksize),
 						]
+			# mark loaded variables as reused at next assignment
+			if instr.name == 'LOAD_NAME':
+				temploaded.append(instr.arg)
 		# if there is no code to execute
 		if len(code) <= 0:	
 			return (None, self.backups[0], ())
@@ -162,12 +173,12 @@ class Interpreter:
 		except Exception as err:
 			raise InterpreterError(err)
 		
-		for varname in assigned:
-			self.results[instr.lineno-1] = env[varname]
+		#for varname,lineno in assigned:
+			#self.results[lineno-1] = env[varname]
 		if backup:
 			self.backups.insert(backi+1, (stop, env))
 		print('intermediate results', self.results)
-		return result, env, code.co_names
+		return result, env, code.co_names, reused
 	
 	def lastbackup(self, line):
 		''' get the index of the last env backup before line '''

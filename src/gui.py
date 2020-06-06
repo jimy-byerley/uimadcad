@@ -30,8 +30,10 @@ class Main(QMainWindow):
 		self.script.setDocumentLayout(QPlainTextDocumentLayout(self.script))
 		self.script.contentsChange.connect(self._contentsChange)
 		self.interpreter = Interpreter()
+		self.scenelist = SceneList(self)
 		
-		self.scene = {}
+		self.scene = {}	# objets a afficher sur les View
+		self.displaychoice = set()	# choix des variables a afficher
 		self.views = []
 		self.active_sceneview = None
 		self.active_scriptview = None
@@ -40,15 +42,16 @@ class Main(QMainWindow):
 		self.exectrigger = 1
 		self.exectarget = 0
 		
-		
-		self.init_menus()
-		self.init_toolbars()
-		
 		# insert components to docker
 		self.setDockNestingEnabled(True)
 		self.addDockWidget(Qt.LeftDockWidgetArea, dock(ScriptView(self), 'script view'))
 		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self), 'scene view'))
+		self.scenelistdock = dock(SceneList(self), 'variable selector')
+		self.addDockWidget(Qt.LeftDockWidgetArea, self.scenelistdock)
 		#self.addDockWidget(Qt.BottomDockWidgetArea, dock(self.console, 'console'))
+		
+		self.init_menus()
+		self.init_toolbars()
 		
 		cursor = QTextCursor(self.script)
 		cursor.insertText('from madcad import *\n\n')
@@ -79,7 +82,6 @@ class Main(QMainWindow):
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self), 'view')))
 		menu.addAction('freeze view content',
 			lambda: self.activeview.freeze())
-		menu.addAction('show/hide variables +')
 		menu.addSeparator()
 		menu.addAction('new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
@@ -97,6 +99,10 @@ class Main(QMainWindow):
 		menu.addAction('left +')
 		menu.addSeparator()
 		menu.addAction('explode objects +')
+		menu.addSeparator()
+		action = self.scenelistdock.toggleViewAction()
+		action.setShortcut(QKeySequence('Alt+H'))
+		menu.addAction(action)
 		menu.addSeparator()
 		
 		action = QAction('display points', self, checkable=True, shortcut=QKeySequence('Alt+P'))
@@ -207,32 +213,36 @@ class Main(QMainWindow):
 			self.execution_label('<p style="color:#ff5555">FAILED</p>')
 		else:
 			self.execution_label('<p style="color:#55ff22">COMPUTED</p>')
-			returned, env, used = res
+			returned, env, used, reused = res
 			used = set(used)
+			self.currentenv = env
+			
 			# remove objects that doesn't belong to env
 			toremove = []
 			for name in self.scene:
-				if isinstance(name, str) and name.isidentifier() and name not in env:
+				if isinstance(name, str) and name.isidentifier() and (name not in env or name in reused):
 					toremove.append(name)
 			for name in toremove:	del self.scene[name]
-			# add some intermediate results
-			for key, intermediate in self.interpreter.results.items():
-				if (isinstance(intermediate, vec3) or isconstraint(intermediate) or isprimitive(intermediate)) and displayable(intermediate):
-					self.scene[key] = intermediate
-					used.add(key)
-			# add variables
 			for name,obj in env.items():
-				if displayable(obj) and (name in used or isinstance(intermediate, vec3) or isconstraint(intermediate) or isprimitive(intermediate)):
+				if not displayable(obj):	continue
+				if name in self.displaychoice or (name in used and name not in reused):
 					self.scene[name] = obj
-			#if displayable(returned):
-				#self.scene['<RETURNED>'] = returned
-				#used.add('<RETURNED>')
+			self.cursorat(cursor_location(self.active_scriptview.editor.textCursor()))
+			
 			self.scene.pop('<ANNOTATIONS>', None)
 			self.scene['<ANNOTATIONS>'] = list(annotations(self.scene))
 			used.add('<ANNOTATIONS>')
 			nprint(self.scene)
 			self.syncviews(used)
 			self.executed.emit()
+	
+	''' display rules
+		- variables (therefore named values)
+			added to scene when selected in the SceneList
+			added to scene when never reused by the script (a final value)
+		- temporary intermediate values (anonymous, but associated with their line number)
+			added to scene when the cursor is on a line of their statement
+	'''
 	
 	def reexecute(self):
 		self.interpreter.change((0,0), 0, '')
@@ -271,11 +281,57 @@ class Main(QMainWindow):
 			if hasattr(view, 'sync'):
 				view.sync(updated)
 	
+	def cursorat(self, location):
+		self.showtemps(location)
+		self.trytrick(location)
+	
+	def updatescene(self, change=()):
+		# objects selection in env, and already present objs
+		newscene = []
+		for name,obj in self.scene.items():
+			if not isinstance(name, str) or not name.isidentifier():
+				newscene.append((name, obj))
+		for name,obj in env.items():
+			if name in self.forceddisplays or name in self.neverused:
+				newscene.append((name, obj))
+		# change the scene
+		update = ['<ANNOTATIONS>']
+		for name,obj in newscene:
+			if name not in self.scene or self.scene[name] is not obj:
+				self.scene[name] = obj
+				update.append(name)
+		self.scene['<ANNOTATIONS>'] = annotations(self.scene)	# TODO: ne pas recalculer toutes les annotations
+		self.syncviews(update)
+				
+		
+	
+	def showtemps(self, location):
+		print('cursorat')
+		try:	end = self.interpreter.findexpressionend(location[0], location[0]+1)
+		except:	return
+		print('  interval', location, end)
+		changed = []
+		toremove = []
+		for name,obj in self.scene.items():
+			if isinstance(name, int):
+				toremove.append(name)
+		for name in toremove:	del self.scene[name]
+		for line in range(location[0], end[0]):
+			temp = self.interpreter.results.get(line)
+			print('temp at', line, temp)
+			if displayable(temp):
+				self.scene[line] = temp
+				changed.append(line)
+		self.syncviews(changed)
+	
 	def trytrick(self, location):
 		line, column = location
-		try:	end = self.interpreter.findexpressionend(line)
+		try:	end = self.interpreter.findexpressionend(line, line+1)
 		except:	return
+		print('trytrick')
+		print('  interval', location, end)
 		text = self.interpreter.text((line,0), end)
+		print('  text', text)
 		for trick in self.texttricks:
 			found = trick.format.search(text)
 			if found:
@@ -303,6 +359,39 @@ def dock(widget, title, closable=True):
 					|	(QDockWidget.DockWidgetClosable if closable else 0)
 					)
 	return dock
+
+from PyQt5.QtWidgets import QListWidget, QListWidgetItem
+class SceneList(QListWidget):
+	def __init__(self, main):
+		super().__init__()
+		self.main = main
+		main.executed.connect(self._executed)
+		self.itemClicked.connect(self._changed)
+		
+	def _executed(self):
+		for i in reversed(range(self.count())):
+			item = self.item(i).text()
+			if item.isidentifier() and item not in self.main.currentenv:
+				self.takeItem(i)
+		for name,obj in self.main.currentenv.items():
+			if displayable(obj) and not self.findItems(name, Qt.MatchExactly):
+				self.newitem(name)
+	def _changed(self, item):
+		name = item.text()
+		if item.checkState() == Qt.Checked:
+			if name not in self.main.scene and name in self.main.currentenv: 
+				self.main.scene[name] = self.main.currentenv[name]
+			self.main.displaychoice.add(name)
+		else:
+			self.main.scene.pop(name, None)
+			self.main.displaychoice.discard(name)
+		self.main.syncviews(name)
+	
+	def newitem(self, name):
+		new = QListWidgetItem(name, self)
+		new.setFlags(Qt.ItemIsDragEnabled | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+		new.setCheckState(Qt.Checked if name in self.main.scene else Qt.Unchecked)
+		print('new item', name, name in self.main.scene)
 
 QEventGLContextChange = 215	# opengl context change event type, not yet defined in PyQt5
 
@@ -332,13 +421,13 @@ class SceneView(Scene):
 		if not self.frozen:
 			for key,grp in self.grpidents.items():
 				if self.grpidents[key] is not None and (key not in self.main.scene or key in updated):
-					print('remove', key, grp)
+					#print('remove', key, grp)
 					self.remove(grp)
 					self.grpidents[key] = None
 			for key,obj in self.main.scene.items():
 				if key not in self.grpidents or key in updated:
 					self.grpidents[key] = self.add(obj)
-					print('added', key, self.grpidents[key])
+					#print('added', key, self.grpidents[key])
 			self.update()
 	
 	def closeEvent(self, event):
@@ -500,7 +589,7 @@ class ScriptView(QWidget):
 		line, column = cursor_location(self.editor.textCursor())
 		self.label_location.setText('line {}, column {}'.format(line+1, column+1))
 		# try graphical editing
-		self.main.trytrick((line, column))
+		self.main.cursorat((line, column))
 	
 	def _blockCountChanged(self):
 		self.update_linenumbers()
