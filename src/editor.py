@@ -127,15 +127,18 @@ class Interpreter:
 		# process the code   NOTE this can be very dependent to the python version, current is 3.7
 		code = Bytecode(bytecode[:i])
 		code.insert(0, Instr('LOAD_NAME', 'RESULTS'))
+		nprint(code)
 		reused = set()
 		temploaded = []
 		assigned = []
 		stacksize = 0
 		for i,instr in enumerate(code):
+			if not isinstance(instr, Instr):	continue
+			
 			stacksize += instr.stack_effect()
 			# store temporary values into results
 			if instr.name.startswith('CALL_') or instr.name.startswith('BINARY_') or instr.name.startswith('BUILD_'):
-				if i+1 < len(code) and code[i+1].name.startswith('STORE_'):
+				if i+1 < len(code) and isinstance(code[i+1], Instr) and code[i+1].name.startswith('STORE_'):
 					varname = code[i+1].arg
 					assigned.append((varname, instr.lineno))
 					reused.update(temploaded)
@@ -154,7 +157,7 @@ class Interpreter:
 		if len(code) <= 0:	
 			return (None, self.backups[0], ())
 		# make it return the last stack value if there is (remove the loading of None that is instead)
-		if code[-1].name == 'POP_TOP':
+		if isinstance(code[-1], Instr) and code[-1].name == 'POP_TOP':
 			code[-1] = Instr('RETURN_VALUE')
 		else: 
 			code.append(Instr('LOAD_CONST', None))
@@ -166,6 +169,11 @@ class Interpreter:
 		for varname in code.co_names:
 			if varname in env:
 				env[varname] = deepcopy(env[varname])
+				
+		# remove old temporary values
+		for line in range(backline, stopline):
+			self.results.pop(line, None)
+		
 		# execute the code
 		try:
 			# SECURITY WARNING the executed user code access the whole process here
@@ -211,7 +219,7 @@ class Interpreter:
 					elif c == "'":	waiting = "'"
 					elif c == '"':	waiiing = '"'
 					elif c == '#':	waiting = '\n'
-					if level == 0 and line >= end:	return line, col+1
+					if level == 0 and not waiting and line >= end:	return line, col+1
 			line += 1
 		raise EOFError("the expression doesn't end in the current text")
 	
