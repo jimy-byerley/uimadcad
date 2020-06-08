@@ -1,5 +1,10 @@
 from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPlainTextEdit, QTextEdit, QScrollArea, QVBoxLayout, QPushButton, QLabel, QStyleFactory, QSplitter, QSizePolicy, QMainWindow, QDockWidget, QPlainTextDocumentLayout
+from PyQt5.QtWidgets import (
+		QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, 
+		QPlainTextEdit, QPlainTextDocumentLayout, QScrollArea, 
+		QPushButton, QLabel, 
+		QMainWindow, QDockWidget, QFileDialog, QMessageBox, QDialog
+		)
 from PyQt5.QtGui import QFont, QIcon, QKeySequence, QTextOption, QTextDocument
 from madcad.mathutils import vec3
 from madcad.view import Scene
@@ -9,7 +14,11 @@ import madcad.settings
 from editor import Interpreter, InterpreterError
 import tricks
 from nprint import nprint
+import traceback
+import os
 
+
+version = '0.1'
 
 
 class Main(QMainWindow):
@@ -22,7 +31,7 @@ class Main(QMainWindow):
 	def __init__(self, parent=None, filename=None):
 		super().__init__(parent)
 		# window setup
-		self.setWindowTitle('madcad')
+		self.setWindowTitle('madcad v'+version)
 		self.setMinimumSize(500,300)
 				
 		# main components
@@ -31,9 +40,10 @@ class Main(QMainWindow):
 		self.script.contentsChange.connect(self._contentsChange)
 		self.interpreter = Interpreter()
 		self.scenelist = SceneList(self)
+		self.forceddisplays = set()	# choix des variables a afficher
+		self.neverused = set()
 		
 		self.scene = {}	# objets a afficher sur les View
-		self.displaychoice = set()	# choix des variables a afficher
 		self.views = []
 		self.active_sceneview = None
 		self.active_scriptview = None
@@ -42,11 +52,14 @@ class Main(QMainWindow):
 		self.exectrigger = 1
 		self.exectarget = 0
 		
+		self.currentfile = None
+		self.currentexport = None
+		
 		# insert components to docker
 		self.setDockNestingEnabled(True)
 		self.addDockWidget(Qt.LeftDockWidgetArea, dock(ScriptView(self), 'script view'))
 		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self), 'scene view'))
-		self.scenelistdock = dock(SceneList(self), 'variable selector')
+		self.scenelistdock = dock(SceneList(self), 'forced variables display')
 		self.addDockWidget(Qt.LeftDockWidgetArea, self.scenelistdock)
 		#self.addDockWidget(Qt.BottomDockWidgetArea, dock(self.console, 'console'))
 		
@@ -58,11 +71,13 @@ class Main(QMainWindow):
 	
 	def init_menus(self):
 		menu = self.menuBar().addMenu('File')
-		menu.addAction('open +')
-		menu.addAction('save +')
-		menu.addAction('export +')
+		menu.addAction(QIcon.fromTheme('document-open'), 'open', self._open, QKeySequence('Ctrl+O'))
+		menu.addAction(QIcon.fromTheme('document-save'), 'save', self._save, QKeySequence('Ctrl+S'))
+		menu.addAction(QIcon.fromTheme('document-save-as'), 'save as', self._save_as, QKeySequence('Ctrl+Shift+S'))
+		menu.addAction(QIcon.fromTheme('emblem-shared'), 'export +', self._export, QKeySequence('Ctrl+E'))
+		menu.addAction(QIcon.fromTheme('insert-image'), 'screenshot +', self._screenshot, QKeySequence('Ctrl+I'))
 		menu.addSeparator()
-		menu.addAction('settings +')
+		menu.addAction(QIcon.fromTheme('emblem-system'), 'settings +')
 		
 		menu = self.menuBar().addMenu('Edit')
 		menu.addAction(QIcon.fromTheme('edit-undo'), 'undo', self.script.undo, QKeySequence('Ctrl+Z'))
@@ -101,23 +116,23 @@ class Main(QMainWindow):
 		menu.addAction('explode objects +')
 		menu.addSeparator()
 		action = self.scenelistdock.toggleViewAction()
-		action.setShortcut(QKeySequence('Alt+H'))
+		action.setShortcut(QKeySequence('Shift+H'))
 		menu.addAction(action)
 		menu.addSeparator()
 		
-		action = QAction('display points', self, checkable=True, shortcut=QKeySequence('Alt+P'))
+		action = QAction('display points', self, checkable=True, shortcut=QKeySequence('Shift+P'))
 		action.setChecked(madcad.settings.scene['display_points'])
 		action.toggled.connect(self._display_points)
 		menu.addAction(action)
-		action = QAction('display wire', self, checkable=True, shortcut=QKeySequence('Alt+W'))
+		action = QAction('display wire', self, checkable=True, shortcut=QKeySequence('Shift+W'))
 		action.setChecked(madcad.settings.scene['display_wire'])
 		action.toggled.connect(self._display_wire)
 		menu.addAction(action)
-		action = QAction('display groups', self, checkable=True)
+		action = QAction('display groups', self, checkable=True, shortcut=QKeySequence('Shift+G'))
 		action.setChecked(madcad.settings.scene['display_groups'])
 		action.toggled.connect(self._display_groups)
 		menu.addAction(action)
-		action = QAction('display faces', self, checkable=True, shortcut=QKeySequence('Alt+F'))
+		action = QAction('display faces', self, checkable=True, shortcut=QKeySequence('Shift+F'))
 		action.setChecked(madcad.settings.scene['display_faces'])
 		action.toggled.connect(self._display_faces)
 		menu.addAction(action)
@@ -166,6 +181,75 @@ class Main(QMainWindow):
 		tools.addAction(QIcon.fromTheme('madcad-cst-plane'), 'plane')
 		tools.addAction(QIcon.fromTheme('madcad-cst-track'), 'track')
 	
+	# --- file management system ---
+	
+	def _open(self):
+		''' callback for the button 'open'
+			ask the user for a new file and then call self._load(filename)
+		'''
+		filename = QFileDialog.getOpenFileName(self, 'open madcad file', 
+							os.curdir, 
+							'madcad files (*.py *.mc);;text files (*.txt)',
+							)[0]
+		if filename:
+			self._load(filename)
+	
+	def _load(self, filename):
+		''' clears the current workspace and load the specified file
+		'''
+		extension = filename[filename.find('.')+1:]
+		if extension not in ('py', 'txt'):
+			box = QMessageBox(
+				QMessageBox.Warning, 'bad file type', 
+				"The file extension '{}' is not a standard madcad file extension and may result in problems in openning the file from a browser\n\nOpen anyway ?".format(extension),
+				QMessageBox.Yes | QMessageBox.Discard,
+				)
+			if box.exec() == QMessageBox.Discard:	return False
+			else:	extension = 'py'
+		
+		self.currentfile = filename
+		if extension in ('py', 'txt'):
+			self.script.clear()
+			QTextCursor(self.script).insertText(open(filename, 'r').read())
+		return True
+				
+	
+	def _save(self):
+		''' callback for the button 'save'
+			save to the file specified in self.currentfile, using its extension
+		'''
+		if not self.currentfile:	self._save_as()
+		else:
+			extension = self.currentfile[self.currentfile.find('.')+1:]
+			if extension not in ('py', 'txt'):
+				box = QMessageBox(
+					QMessageBox.Warning, 'bad file type', 
+					"The file extension '{}' is not a standard madcad file extension and may result in problems to open the file from a browser\n\nSave anyway ?".format(extension),
+					QMessageBox.Yes | QMessageBox.Discard,
+					)
+				if box.exec() == QMessageBox.Discard:	return
+				else:
+					extension = 'py'
+			
+			if extension in ('py', 'txt'):
+				open(self.currentfile, 'w').write(self.script.toPlainText())
+			
+	def _save_as(self):
+		''' callback for button 'save as' 
+			ask the user for a new value for self.currentfile
+		'''
+		dialog = QFileDialog(self, 'save madcad file', self.currentfile or os.curdir)
+		dialog.setAcceptMode(QFileDialog.AcceptSave)
+		dialog.exec()
+		if dialog.result() == QDialog.Accepted:
+			self.currentfile = dialog.selectedFiles()[0]
+			self._save()
+	
+	def _export(self):	pass
+	def _screenshot(self):	pass
+	
+	# --- editing tools ----
+	
 	def select(self, obji, ident):
 		self.selection.append((obji, ident))
 		for view in self.views:
@@ -203,6 +287,9 @@ class Main(QMainWindow):
 			self.execution_label('MODIFIED  (Ctrl+Return to execute)')
 	
 	def execute(self):
+		''' execute the script until the line exectarget 
+			updating the scene and the execution label
+		'''
 		self.execution_label('RUNNING')
 		#print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text()))
 		try:
@@ -210,31 +297,27 @@ class Main(QMainWindow):
 		except InterpreterError as report:
 			err = report.args[0]
 			print(type(err).__name__, ':', err, err.__traceback__)
+			traceback.print_tb(err.__traceback__)
 			self.execution_label('<p style="color:#ff5555">FAILED</p>')
 		else:
 			self.execution_label('<p style="color:#55ff22">COMPUTED</p>')
 			returned, env, used, reused = res
-			used = set(used)
 			self.currentenv = env
-			
-			# remove objects that doesn't belong to env
-			toremove = []
-			for name in self.scene:
-				if isinstance(name, str) and name.isidentifier() and (name not in env or name in reused):
-					toremove.append(name)
-			for name in toremove:	del self.scene[name]
-			for name,obj in env.items():
-				if not displayable(obj):	continue
-				if name in self.displaychoice or (name in used and name not in reused):
-					self.scene[name] = obj
-			self.cursorat(cursor_location(self.active_scriptview.editor.textCursor()))
-			
-			self.scene.pop('<ANNOTATIONS>', None)
-			self.scene['<ANNOTATIONS>'] = list(annotations(self.scene))
-			used.add('<ANNOTATIONS>')
-			nprint(self.scene)
-			self.syncviews(used)
+			self.neverused |= set(used)
+			self.neverused -= set(reused)
+			self.updatescene()
 			self.executed.emit()
+	
+	def reexecute(self):
+		''' reexecute all the script '''
+		self.interpreter.change((0,0), 0, '')
+		self.execute()
+		
+	def _targettocursor(self):
+		self.exectarget = self.active_scriptview.editor.textCursor().blockNumber()+1
+		self.exectarget_changed.emit()
+		
+	# --- display system ---
 	
 	''' display rules
 		- variables (therefore named values)
@@ -243,15 +326,7 @@ class Main(QMainWindow):
 		- temporary intermediate values (anonymous, but associated with their line number)
 			added to scene when the cursor is on a line of their statement
 	'''
-	
-	def reexecute(self):
-		self.interpreter.change((0,0), 0, '')
-		self.execute()
-	
-	def _targettocursor(self):
-		self.exectarget = self.active_scriptview.editor.textCursor().blockNumber()+1
-		self.exectarget_changed.emit()
-	
+		
 	def _show_line_numbers(self, enable):
 		self.active_scriptview.linenumbers = enable
 		self.active_scriptview.update_linenumbers()
@@ -277,61 +352,65 @@ class Main(QMainWindow):
 				view.label_execution.setText(label)
 	
 	def syncviews(self, updated):
+		''' update all the scene views with the current self.scene '''
 		for view in self.views:
 			if hasattr(view, 'sync'):
 				view.sync(updated)
 	
 	def cursorat(self, location):
+		''' notice the main that the cursur is at the given (line,column) '''
 		self.showtemps(location)
 		self.trytrick(location)
 	
 	def updatescene(self, change=()):
+		''' update self.scene with the last execution results '''
 		# objects selection in env, and already present objs
 		newscene = []
 		for name,obj in self.scene.items():
-			if not isinstance(name, str) or not name.isidentifier():
+			if not (isinstance(name, str) and name.isidentifier()):
 				newscene.append((name, obj))
-		for name,obj in env.items():
-			if name in self.forceddisplays or name in self.neverused:
+		for name,obj in self.currentenv.items():
+			if displayable(obj) and (name in self.forceddisplays or name in self.neverused):
 				newscene.append((name, obj))
 		# change the scene
 		update = ['<ANNOTATIONS>']
 		for name,obj in newscene:
-			if name not in self.scene or self.scene[name] is not obj:
-				self.scene[name] = obj
+			if name not in self.scene or self.scene[name] != obj:
 				update.append(name)
-		self.scene['<ANNOTATIONS>'] = annotations(self.scene)	# TODO: ne pas recalculer toutes les annotations
+		self.scene = dict(newscene)
+		self.scene['<ANNOTATIONS>'] = list(annotations(self.scene))	# TODO: ne pas recalculer toutes les annotations
+		# update views
 		self.syncviews(update)
 				
 		
 	
 	def showtemps(self, location):
-		print('cursorat')
+		''' display temporary values for the given cursor location '''
+		# find current expression's end (based on the cursor location)
 		try:	end = self.interpreter.findexpressionend(location[0], location[0]+1)
 		except:	return
-		print('  interval', location, end)
+		# remove old displayed temps
 		changed = []
 		toremove = []
 		for name,obj in self.scene.items():
 			if isinstance(name, int):
 				toremove.append(name)
 		for name in toremove:	del self.scene[name]
+		# append temporary values of the expression
 		for line in range(location[0], end[0]):
 			temp = self.interpreter.results.get(line)
-			print('temp at', line, temp)
 			if displayable(temp):
 				self.scene[line] = temp
 				changed.append(line)
+		# update views
 		self.syncviews(changed)
 	
 	def trytrick(self, location):
+		''' search for a trick to enable in the current expression '''
 		line, column = location
 		try:	end = self.interpreter.findexpressionend(line, line+1)
 		except:	return
-		print('trytrick')
-		print('  interval', location, end)
 		text = self.interpreter.text((line,0), end)
-		print('  text', text)
 		for trick in self.texttricks:
 			found = trick.format.search(text)
 			if found:
@@ -347,6 +426,7 @@ class Main(QMainWindow):
 				del self.scene['<TRICK>']
 		self.syncviews(('<TRICK>',))
 	
+	# declaration of tricks available
 	texttricks = [tricks.ControledAxis, tricks.ControledPoint]
 		
 		
@@ -361,37 +441,27 @@ def dock(widget, title, closable=True):
 	return dock
 
 from PyQt5.QtWidgets import QListWidget, QListWidgetItem
-class SceneList(QListWidget):
+class SceneList(QPlainTextEdit):
 	def __init__(self, main):
 		super().__init__()
 		self.main = main
-		main.executed.connect(self._executed)
-		self.itemClicked.connect(self._changed)
-		
-	def _executed(self):
-		for i in reversed(range(self.count())):
-			item = self.item(i).text()
-			if item.isidentifier() and item not in self.main.currentenv:
-				self.takeItem(i)
-		for name,obj in self.main.currentenv.items():
-			if displayable(obj) and not self.findItems(name, Qt.MatchExactly):
-				self.newitem(name)
-	def _changed(self, item):
-		name = item.text()
-		if item.checkState() == Qt.Checked:
-			if name not in self.main.scene and name in self.main.currentenv: 
-				self.main.scene[name] = self.main.currentenv[name]
-			self.main.displaychoice.add(name)
-		else:
-			self.main.scene.pop(name, None)
-			self.main.displaychoice.discard(name)
-		self.main.syncviews(name)
+		self.document().contentsChange.connect(self._contentsChange)
+		margins = self.viewportMargins()
+		height = (
+			QFontMetrics(self.currentCharFormat().font()).height()
+			+ margins.top() + margins.bottom()
+			+ 2*self.contentOffset().y()
+			)
+		self.setMinimumHeight(height)
+		self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 	
-	def newitem(self, name):
-		new = QListWidgetItem(name, self)
-		new.setFlags(Qt.ItemIsDragEnabled | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-		new.setCheckState(Qt.Checked if name in self.main.scene else Qt.Unchecked)
-		print('new item', name, name in self.main.scene)
+	def sizeHint(self):
+		return self.document().size().toSize()
+	
+	def _contentsChange(self, item):
+		self.updateGeometry()
+		self.main.forceddisplays = set(self.toPlainText().split())
+		self.main.updatescene()
 
 QEventGLContextChange = 215	# opengl context change event type, not yet defined in PyQt5
 
@@ -494,7 +564,7 @@ import re
 from PyQt5.QtWidgets import QComboBox, QAction
 
 class TextEdit(QPlainTextEdit):
-	''' text editor widget for ScriptView, only here to change some QPlainTextEdit behaviors '''
+	''' text editor widget for ScriptView, only here to change some QPlainTextEdit behaviors '''		
 	def focusInEvent(self, event):
 		self.parent().focused()
 		super().focusInEvent(event)
@@ -567,6 +637,7 @@ class ScriptView(QWidget):
 		self.editor.cursorPositionChanged.connect(self._cursorPositionChanged)
 		self.editor.blockCountChanged.connect(self._blockCountChanged)
 		main.exectarget_changed.connect(self.targetcursor.update)
+		main.executed.connect(self._executed)
 		
 		main.views.append(self)
 		if not main.active_scriptview:	main.active_scriptview = self
@@ -590,6 +661,9 @@ class ScriptView(QWidget):
 		self.label_location.setText('line {}, column {}'.format(line+1, column+1))
 		# try graphical editing
 		self.main.cursorat((line, column))
+	
+	def _executed(self):
+		self.main.cursorat(cursor_location(self.editor.textCursor()))
 	
 	def _blockCountChanged(self):
 		self.update_linenumbers()
@@ -676,7 +750,6 @@ class TargetCursor(QWidget):
 		return self.box().size()
 	
 	def update(self):
-		print('update')
 		block = self.main.script.findBlockByNumber(self.main.exectarget-1)
 		if not block.isValid():	block = self.main.script.lastBlock()
 		cursor = QTextCursor(block)
@@ -695,9 +768,6 @@ class TargetCursor(QWidget):
 		self.update()
 			
 	def paintEvent(self, event):
-		#if self.box
-		print('render')
-		#if self.parent().viewport().contains(self.viewport()):
 		painter = QPainter(self)
 		painter.fillPath(self.shape, self.targetcolor)
 		painter.setPen(self.background)
