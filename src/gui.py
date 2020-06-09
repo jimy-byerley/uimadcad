@@ -1,24 +1,37 @@
-from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal
+from PyQt5.QtCore import (
+		Qt, QSize, QRect, QPoint, QPointF,
+		QEvent, pyqtSignal,
+		)
 from PyQt5.QtWidgets import (
-		QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, 
+		QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction,
 		QPlainTextEdit, QPlainTextDocumentLayout, QScrollArea, 
-		QPushButton, QLabel, 
+		QPushButton, QLabel, QComboBox,
 		QMainWindow, QDockWidget, QFileDialog, QMessageBox, QDialog
 		)
-from PyQt5.QtGui import QFont, QIcon, QKeySequence, QTextOption, QTextDocument
+from PyQt5.QtGui import (
+		QFont, QFontMetrics, 
+		QColor, QPalette,
+		QIcon, QKeySequence, 
+		QTextOption, QTextDocument, QTextCursor,
+		QPainter, QPainterPath,
+		)
+
 from madcad.mathutils import vec3
 from madcad.view import Scene
 from madcad import displayable, isconstraint, isprimitive
 from madcad.annotations import annotations
 import madcad.settings
+
 from editor import Interpreter, InterpreterError
 import tricks
+
+from copy import deepcopy, copy
 from nprint import nprint
 import traceback
 import os
 
 
-version = '0.1'
+version = '0.2'
 
 
 class Main(QMainWindow):
@@ -28,10 +41,13 @@ class Main(QMainWindow):
 	exectarget_changed = pyqtSignal()
 	executed = pyqtSignal()
 	
+	# BEGIN --- paneling and initialization ---
+	
 	def __init__(self, parent=None, filename=None):
 		super().__init__(parent)
 		# window setup
-		self.setWindowTitle('madcad v'+version)
+		self.setWindowRole('madcad')
+		self.setWindowIcon(QIcon.fromTheme('madcad-logo'))
 		self.setMinimumSize(500,300)
 				
 		# main components
@@ -62,9 +78,11 @@ class Main(QMainWindow):
 		self.scenelistdock = dock(SceneList(self), 'forced variables display')
 		self.addDockWidget(Qt.LeftDockWidgetArea, self.scenelistdock)
 		#self.addDockWidget(Qt.BottomDockWidgetArea, dock(self.console, 'console'))
+		self.resizeDocks([self.scenelistdock], [0], Qt.Horizontal)	# Qt 5.10 hack to avoid issue of docks reseting their size after user set it
 		
 		self.init_menus()
 		self.init_toolbars()
+		self.update_title()
 		
 		cursor = QTextCursor(self.script)
 		cursor.insertText('from madcad import *\n\n')
@@ -93,10 +111,9 @@ class Main(QMainWindow):
 		menu.addAction('rename object +')
 		
 		menu = self.menuBar().addMenu('View')
-		menu.addAction('new 3D view', 
-			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self), 'view')))
-		menu.addAction('freeze view content',
-			lambda: self.activeview.freeze())
+		menu.addAction('new 3D view', self.new_sceneview)
+		menu.addAction('freeze view content', 
+			lambda: self.active_sceneview.freeze())
 		menu.addSeparator()
 		menu.addAction('new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
@@ -181,7 +198,27 @@ class Main(QMainWindow):
 		tools.addAction(QIcon.fromTheme('madcad-cst-plane'), 'plane')
 		tools.addAction(QIcon.fromTheme('madcad-cst-track'), 'track')
 	
-	# --- file management system ---
+	def new_sceneview(self):
+		''' open a new sceneview floating at the center of the main window '''
+		new = SceneView(self)
+		if self.active_sceneview:
+			new.manipulator = deepcopy(self.active_sceneview.manipulator)
+		win = dock(new, 'view')
+		self.addDockWidget(Qt.RightDockWidgetArea, win)
+		win.setFloating(True)
+		zone = self.geometry().center()
+		size = QPoint(300,300)
+		win.setGeometry(QRect(zone-size/2, zone+size/2))
+	
+	def update_title(self):
+		if self.currentfile:
+			filename = self.currentfile[self.currentfile.rfind(os.sep)+1:]
+			self.setWindowTitle('{} - ̶-  madcad v{}'.format(filename, version))
+		else:
+			self.setWindowTitle('madcad v{}'.format(version))
+	
+	# END
+	# BEGIN --- file management system ---
 	
 	def _open(self):
 		''' callback for the button 'open'
@@ -211,6 +248,8 @@ class Main(QMainWindow):
 		if extension in ('py', 'txt'):
 			self.script.clear()
 			QTextCursor(self.script).insertText(open(filename, 'r').read())
+		
+		self.update_title()
 		return True
 				
 	
@@ -234,6 +273,8 @@ class Main(QMainWindow):
 			if extension in ('py', 'txt'):
 				open(self.currentfile, 'w').write(self.script.toPlainText())
 			
+			self.update_title()
+			
 	def _save_as(self):
 		''' callback for button 'save as' 
 			ask the user for a new value for self.currentfile
@@ -248,7 +289,8 @@ class Main(QMainWindow):
 	def _export(self):	pass
 	def _screenshot(self):	pass
 	
-	# --- editing tools ----
+	# END
+	# BEGIN --- editing tools ----
 	
 	def select(self, obji, ident):
 		self.selection.append((obji, ident))
@@ -317,7 +359,32 @@ class Main(QMainWindow):
 		self.exectarget = self.active_scriptview.editor.textCursor().blockNumber()+1
 		self.exectarget_changed.emit()
 		
-	# --- display system ---
+	def trytrick(self, location):
+		''' search for a trick to enable in the current expression '''
+		line, column = location
+		try:	end = self.interpreter.findexpressionend(line, line+1)
+		except:	return
+		text = self.interpreter.text((line,0), end)
+		for trick in self.texttricks:
+			found = trick.format.search(text)
+			if found:
+				t = trick(self, found)
+				t.cursor = QTextCursor(self.script.findBlockByNumber(line))
+				t.cursor.movePosition(QTextCursor.NextCharacter, n=found.start())
+				t.cursor.movePosition(QTextCursor.NextCharacter, QTextCursor.KeepAnchor, n=found.end()-found.start())
+				self.scene['<TRICK>'] = self.activetrick = t
+				break
+		else:
+			self.activetrick = None
+			if '<TRICK>' in self.scene:
+				del self.scene['<TRICK>']
+		self.syncviews(('<TRICK>',))
+	
+	# declaration of tricks available
+	texttricks = [tricks.ControledAxis, tricks.ControledPoint]
+		
+	# END
+	# BEGIN --- display system ---
 	
 	''' display rules
 		- variables (therefore named values)
@@ -381,8 +448,6 @@ class Main(QMainWindow):
 		self.scene['<ANNOTATIONS>'] = list(annotations(self.scene))	# TODO: ne pas recalculer toutes les annotations
 		# update views
 		self.syncviews(update)
-				
-		
 	
 	def showtemps(self, location):
 		''' display temporary values for the given cursor location '''
@@ -405,43 +470,24 @@ class Main(QMainWindow):
 		# update views
 		self.syncviews(changed)
 	
-	def trytrick(self, location):
-		''' search for a trick to enable in the current expression '''
-		line, column = location
-		try:	end = self.interpreter.findexpressionend(line, line+1)
-		except:	return
-		text = self.interpreter.text((line,0), end)
-		for trick in self.texttricks:
-			found = trick.format.search(text)
-			if found:
-				t = trick(self, found)
-				t.cursor = QTextCursor(self.script.findBlockByNumber(line))
-				t.cursor.movePosition(QTextCursor.NextCharacter, n=found.start())
-				t.cursor.movePosition(QTextCursor.NextCharacter, QTextCursor.KeepAnchor, n=found.end()-found.start())
-				self.scene['<TRICK>'] = self.activetrick = t
-				break
-		else:
-			self.activetrick = None
-			if '<TRICK>' in self.scene:
-				del self.scene['<TRICK>']
-		self.syncviews(('<TRICK>',))
+	# END
 	
-	# declaration of tricks available
-	texttricks = [tricks.ControledAxis, tricks.ControledPoint]
 		
 		
 
 def dock(widget, title, closable=True):
+	''' create a QDockWidget '''
 	dock = QDockWidget(title)
 	dock.setWidget(widget)
 	dock.setFeatures(	QDockWidget.DockWidgetMovable
 					|	QDockWidget.DockWidgetFloatable
 					|	(QDockWidget.DockWidgetClosable if closable else 0)
 					)
+	dock.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
 	return dock
 
-from PyQt5.QtWidgets import QListWidget, QListWidgetItem
 class SceneList(QPlainTextEdit):
+	''' text view to specify objects main.currentenv we want to append to main.scene '''
 	def __init__(self, main):
 		super().__init__()
 		self.main = main
@@ -466,6 +512,7 @@ class SceneList(QPlainTextEdit):
 QEventGLContextChange = 215	# opengl context change event type, not yet defined in PyQt5
 
 class SceneView(Scene):
+	''' dockable and reparentable scene view widget, bases on madcad.Scene '''
 	def __init__(self, main):
 		super().__init__()
 		self.main = main
@@ -559,19 +606,12 @@ class SceneView(Scene):
 			return super().event(event)
 
 
-from PyQt5.QtGui import QFontMetrics, QColor, QPalette, QTextCursor, QSyntaxHighlighter, QTextCharFormat, QTextCursor, QKeySequence
-import re
-from PyQt5.QtWidgets import QComboBox, QAction
 
 class TextEdit(QPlainTextEdit):
 	''' text editor widget for ScriptView, only here to change some QPlainTextEdit behaviors '''		
 	def focusInEvent(self, event):
 		self.parent().focused()
 		super().focusInEvent(event)
-	def wheelEvent(self, event):
-		if self.parent().linenumbers:
-			self.parent().wlinenumbers.update()
-		super().wheelEvent(event)
 
 class ScriptView(QWidget):
 	''' text editor part of the main frame '''
@@ -636,6 +676,7 @@ class ScriptView(QWidget):
 		# setup editor
 		self.editor.cursorPositionChanged.connect(self._cursorPositionChanged)
 		self.editor.blockCountChanged.connect(self._blockCountChanged)
+		self.editor.updateRequest.connect(self.update_linenumbers)
 		main.exectarget_changed.connect(self.targetcursor.update)
 		main.executed.connect(self._executed)
 		
@@ -654,6 +695,7 @@ class ScriptView(QWidget):
 			self.parent().setTitleBarWidget(self.statusbar)
 		else:
 			self.layout().addWidget(self.statusbar)
+		return super().changeEvent(event)
 	
 	def _cursorPositionChanged(self):
 		# update location label
@@ -666,6 +708,10 @@ class ScriptView(QWidget):
 		self.main.cursorat(cursor_location(self.editor.textCursor()))
 	
 	def _blockCountChanged(self):
+		self.update_linenumbers()
+	
+	def resizeEvent(self, event):
+		super().resizeEvent(event)
 		self.update_linenumbers()
 
 	def update_linenumbers(self):
@@ -680,7 +726,8 @@ class ScriptView(QWidget):
 			border = charwidth/2
 			width = (digits+1)*charwidth
 			self.editor.setViewportMargins(width, 0, 0, 0)
-			self.wlinenumbers.resize(width, self.editor.size().height())
+			cr = self.editor.contentsRect()
+			self.wlinenumbers.setGeometry(QRect(cr.left(), cr.top(), width, cr.height()))
 			self.wlinenumbers.width = width - border/2
 			self.wlinenumbers.border = border
 			self.wlinenumbers.setVisible(True)
@@ -696,10 +743,12 @@ class ScriptView(QWidget):
 			self.main.removeDockWidget(self.parent())
 		else:
 			super().close()
-			
+
+
 VIEWPORT_OFFSET = 2		# experimental offset between retrieved coordinates from a QPlainTextEdit and the matching text position
 
 class LineNumbers(QWidget):
+	''' line number display for the text view '''
 	def __init__(self, font, parent):
 		super().__init__(parent)
 		self.font = font
@@ -711,7 +760,7 @@ class LineNumbers(QWidget):
 		painter = QPainter(self)
 		view = self.parent()
 		block = view.firstVisibleBlock()
-		top = view.blockBoundingGeometry(block).translated(view.contentOffset()).top() +VIEWPORT_OFFSET
+		top = view.blockBoundingGeometry(block).translated(view.contentOffset()).top()
 		while block.isValid() and top <= zone.bottom():
 			if block.isVisible() and top >= zone.top():
 				height = view.blockBoundingRect(block).height()
@@ -720,9 +769,7 @@ class LineNumbers(QWidget):
 				top += height
 			block = block.next()
 
-from PyQt5.QtCore import QRect, QRectF, QPoint, QPointF
-from PyQt5.QtGui import QPainter, QPainterPath, QMouseEvent, QPaintEvent
-class TargetCursor(QWidget):
+class TargetCursor2(QWidget):
 	''' target cursor for text view
 		version with the label not fixed to text
 	'''
@@ -796,14 +843,14 @@ class TargetCursor(QWidget):
 		s.lineTo(h+w, h)
 		s.lineTo(0, h)
 		self.box = s.boundingRect().toRect()
-		self.textstart = QPointF(h, 0.65*h+VIEWPORT_OFFSET)
-		self.cursoroffset = QPointF(2*h, VIEWPORT_OFFSET)
+		self.textstart = QPointF(h, 0.8*h)
+		self.cursoroffset = QPointF(2*h, 0)
 	
 	def sizeHint(self):
 		return self.parent().size()
 	
 	def update(self):
-		self.resize(self.parent().size())
+		self.setGeometry(self.parent().contentsRect())
 		super().update()
 	
 	#def mouseMoveEvent(self, event):
@@ -838,9 +885,13 @@ def move_text_cursor(cursor, location, movemode=QTextCursor.MoveAnchor):
 	if cursor.blockNumber() < line:		cursor.movePosition(cursor.PreviousBlock, movemode, cursor.blockNumber()-line)
 	if cursor.columnNumber() < column:	cursor.movePosition(cursor.NextCharacter, movemode, column-cursor.columnNumber())
 	if cursor.columnNumber() > column:	cursor.movePosition(cursor.PreviousCharacter, movemode, cursor.columnNumber()-column)
-		
-from PyQt5.QtGui import QTextCharFormat, QColor
+
+
+
+from PyQt5.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor
+import re
 def charformat(background=None, foreground=None, italic=None, overline=None, weight=None, font=None):
+	''' create a QTextCharFormat '''
 	fmt = QTextCharFormat()
 	if background:	fmt.setBackground(background)
 	if foreground:	fmt.setForeground(foreground)
@@ -850,7 +901,8 @@ def charformat(background=None, foreground=None, italic=None, overline=None, wei
 	if font:	fmt.setFont(font)
 	return fmt
 
-class Highlighter(QSyntaxHighlighter):	
+class Highlighter(QSyntaxHighlighter):
+	''' python syntax highlighter for QTextDocument '''
 	def __init__(self, document, font):
 		super().__init__(document)
 		self.format = QTextCharFormat()

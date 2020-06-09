@@ -58,10 +58,11 @@ class Interval(object):
 
 import dis
 from types import ModuleType
-from copy import deepcopy
+from copy import copy, deepcopy
 from bytecode import Bytecode, Instr
 from madcad.mathutils import dichotomy_index
 from nprint import nprint
+from time import time
 
 class InterpreterError(Exception):	pass
 
@@ -76,6 +77,8 @@ class Interpreter:
 		
 		NOTE: the tabulation size used for location is always 1
 	'''
+	backupstep = 0.1
+	
 	def __init__(self, text='', env=None, title='custom-interpreter'):
 		self.persistent = ModuleType(title)
 		self.results = self.persistent.RESULTS = {}
@@ -116,64 +119,16 @@ class Interpreter:
 			code = compile(script, 'block', 'exec')
 		except SyntaxError or EOFError as err:
 			raise InterpreterError(err)
-		
-		# remove instructions that doesn't end before the stop line
-		bytecode = Bytecode.from_code(code)[:-2]
-		i = 0
-		while i < len(bytecode):
-			instr = bytecode[i]
-			if isinstance(instr, Instr) and instr.lineno > stop:	break
-			i += 1
-		# process the code   NOTE this can be very dependent to the python version, current is 3.7
-		code = Bytecode(bytecode[:i])
-		code.insert(0, Instr('LOAD_NAME', 'RESULTS'))
-		nprint(code)
-		reused = set()
-		temploaded = []
-		assigned = []
-		stacksize = 0
-		for i,instr in enumerate(code):
-			if not isinstance(instr, Instr):	continue
-			
-			stacksize += instr.stack_effect()
-			# store temporary values into results
-			if instr.name.startswith('CALL_') or instr.name.startswith('BINARY_') or instr.name.startswith('BUILD_'):
-				if i+1 < len(code) and isinstance(code[i+1], Instr) and code[i+1].name.startswith('STORE_'):
-					varname = code[i+1].arg
-					assigned.append((varname, instr.lineno))
-					reused.update(temploaded)
-					reused.discard(varname)
-					temploaded = []
-				else:
-					code[i+1:i+1] = [
-						Instr('DUP_TOP'),
-						Instr('LOAD_CONST', instr.lineno-1),
-						Instr('MAP_ADD', stacksize),
-						]
-			# mark loaded variables as reused at next assignment
-			if instr.name == 'LOAD_NAME':
-				temploaded.append(instr.arg)
-		# if there is no code to execute
-		if len(code) <= 0:	
-			return (None, self.backups[0], ())
-		# make it return the last stack value if there is (remove the loading of None that is instead)
-		if isinstance(code[-1], Instr) and code[-1].name == 'POP_TOP':
-			code[-1] = Instr('RETURN_VALUE')
-		else: 
-			code.append(Instr('LOAD_CONST', None))
-			code.append(Instr('RETURN_VALUE'))
-		code = code.to_code()
+		# get the code to execute until the stop line
+		code, reused = self.transformcode(code, stop, backline)
 		
 		# copy the environment variables used
-		env = dict(backvars)
-		for varname in code.co_names:
-			if varname in env:
-				env[varname] = deepcopy(env[varname])
-				
+		env = copyvars(backvars, code.co_names)				
 		# remove old temporary values
 		for line in range(backline, stopline):
 			self.results.pop(line, None)
 		
+		self.starttime = time()
 		# execute the code
 		try:
 			# SECURITY WARNING the executed user code access the whole process here
@@ -184,14 +139,18 @@ class Interpreter:
 		#for varname,lineno in assigned:
 			#self.results[lineno-1] = env[varname]
 		if backup:
+			backi = self.lastbackup(stop)
 			self.backups.insert(backi+1, (stop, env))
-		print('intermediate results', self.results)
+			
+		for i,(backline,backenv) in enumerate(self.backups):
+			print('backup', i, backline, backenv.keys() & {'part', 'vis', 'cone', 'place', 'part', 'big', 'pl', 'sel', 'loop', 'w', 'line'})
+		#print('intermediate results', self.results)
 		return result, env, code.co_names, reused
 	
 	def lastbackup(self, line):
-		''' get the index of the last env backup before line '''
+		''' get the index of the last env backup before line or for line '''
 		i = dichotomy_index(self.backups, line, key=lambda backup: backup[0])
-		if i == len(self.backups):	i -= 1
+		if i == len(self.backups) or self.backups[i][0] > line:	i -= 1
 		return i
 	
 	def findexpressionend(self, start, end=None):
@@ -247,6 +206,115 @@ class Interpreter:
 	
 	def execchange(self, location, oldsize, newcontent):
 		return self.execute(self.change(location, oldsize, newcontent)+1)
+	
+	def transformcode(self, code, stop, offset):
+		''' transform a code object to return the part to execute until the stop line 
+			offset is the line offset with the current code line numbers (and therefore the start line number)
+			stop is the line number the code stop juste before
+		'''
+		# remove instructions that doesn't end before the stop line
+		bytecode = Bytecode.from_code(code)[:-2]
+		i = 0
+		while i < len(bytecode):
+			instr = bytecode[i]
+			if isinstance(instr, Instr) and instr.lineno+offset > stop:	break
+			i += 1
+		# process the code   NOTE this can be very dependent to the python version, current is 3.7
+		code = Bytecode(bytecode[:i])
+		code.insert(0, Instr('LOAD_NAME', 'RESULTS'))
+		
+		reused = set()
+		temploaded = []
+		assigned = []
+		stacksize = 0
+		for i,instr in enumerate(code):
+			if not isinstance(instr, Instr):	continue
+			
+			stacksize += instr.stack_effect()
+			# store temporary values into results
+			if instr.name.startswith('CALL_') or instr.name.startswith('BINARY_') or instr.name.startswith('BUILD_'):
+				if i+1 < len(code) and isinstance(code[i+1], Instr) and code[i+1].name.startswith('STORE_'):
+					varname = code[i+1].arg
+					assigned.append((varname, instr.lineno))
+					reused.update(temploaded)
+					reused.discard(varname)
+					temploaded = []
+				else:
+					code[i+1:i+1] = [
+						Instr('DUP_TOP'),
+						Instr('LOAD_CONST', instr.lineno-1+offset),
+						Instr('MAP_ADD', stacksize),
+						]
+			# mark loaded variables as reused at next assignment
+			if instr.name == 'LOAD_NAME':
+				temploaded.append(instr.arg)
+		
+		# automatic backup between statements
+		lastline = 1
+		stacksize = 0
+		used = set()
+		i = 0
+		while i < len(code):
+			instr = code[i]
+			if not isinstance(instr, Instr) or instr.lineno is None:
+				i += 1
+				continue
+			# statement ends when the stack is empty and the line changes
+			if used and instr.lineno != lastline and stacksize <= 1:
+				block = [
+					Instr('LOAD_CONST', self._insbackup),
+					Instr('LOAD_CONST', instr.lineno-1+offset),
+					Instr('LOAD_CONST', set(used)),
+					Instr('LOAD_CONST', vars),
+					Instr('CALL_FUNCTION', 0),
+					Instr('CALL_FUNCTION', 3),
+					Instr('POP_TOP'),
+					]
+				code[i:i] = block
+				used = set()
+				i += len(block)
+			if instr.name == 'LOAD_NAME' or instr.name == 'STORE_NAME':		
+				used.add(instr.arg)
+			stacksize += instr.stack_effect()
+			lastline = instr.lineno
+			i += 1
+		
+		# make it return the last stack value if there is (remove the loading of None that is instead)
+		if len(code) and isinstance(code[-1], Instr) and code[-1].name == 'POP_TOP':
+			code[-1] = Instr('RETURN_VALUE')
+		else: 
+			code.append(Instr('LOAD_CONST', None))
+			code.append(Instr('RETURN_VALUE'))
+		
+		nprint(code)
+		return code.to_code(), reused
+
+	def _insbackup(self, stop, used, vars):
+		t = time()
+		if t - self.starttime > self.backupstep:
+			self.starttime = t
+			
+			# get the initial environment
+			backi = self.lastbackup(stop)
+			backline, backenv = self.backups[backi]
+			
+			# create a copy of the variables used
+			env = copyvars(vars, used)
+			# insert
+			if backline == stop:
+				self.backups[backi] = (stop, env)
+			else:
+				self.backups.insert(backi+1, (stop, env))
+
+def copyvars(vars, deep=(), memo=None):
+	''' copy a dinctionnary of variables, with only the variables present in deep that are deepcopied '''
+	if memo is None:	memo = {}
+	new = copy(vars)
+	for name in deep:
+		if name in vars:
+			new[name] = deepcopy(vars[name], memo)
+	return new
+
 
 def splitlines(text):
 	i = 0

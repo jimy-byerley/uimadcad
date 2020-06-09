@@ -74,12 +74,10 @@ class ControledPoint(Trick):
 class ControledAxis(Trick):
 	format = re.compile(format_axis)
 	def found(self, found):
-		print(found)
 		self.axis = (vec3(), vec3())
 		for j in range(2):
 			for i in range(3):
 				self.axis[j][i] = float(found.group(3*j+i+1))
-		print('got', self.axis)
 	def __str__(self):
 		return '(vec3({}, {}, {}), vec3({}, {}, {}))'.format(*self.axis[0], *self.axis[1])
 	def display(self, scene):
