@@ -117,6 +117,9 @@ class Main(QMainWindow):
 		menu.addSeparator()
 		menu.addAction('new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
+		menu.addSeparator()
+		menu.addAction('harvest toolbars on window side +')
+		menu.addAction('take floating toolbars to mouse +')
 		
 		menu = self.menuBar().addMenu('Scene')
 		menu.addAction('center on object +')
@@ -133,7 +136,7 @@ class Main(QMainWindow):
 		menu.addAction('explode objects +')
 		menu.addSeparator()
 		action = self.scenelistdock.toggleViewAction()
-		action.setShortcut(QKeySequence('Shift+H'))
+		action.setShortcut(QKeySequence('Shift+D'))
 		menu.addAction(action)
 		menu.addSeparator()
 		
@@ -559,35 +562,6 @@ class SceneView(Scene):
 			self.main.removeDockWidget(self.parent())
 		else:
 			super().close()
-	
-	def mousePressEvent(self, evt):
-		self.update()
-		if self.runtool(evt):		return
-	
-		x,y = evt.x(), evt.y()
-		b = evt.button()
-		# find the navigation current mode
-		if b == Qt.LeftButton:
-			self.mode = self.modes[self.speckeys]
-		elif b == Qt.MiddleButton:
-			self.mode = (self.manipulator.rotatestart, self.manipulator.rotating)
-		# navigate if a mode is on
-		if self.mode[0]:
-			self.mouse_clicked = (x,y)	# movement origin
-			self.mode[0]()
-		else:
-			# search for object interaction
-			h,w = self.ident_frame.viewport[2:]
-			clicked = self.objat((x,y), 10)
-			if clicked: 
-				grp,rdr = self.stack[clicked[0]]
-				# right-click is the selection button
-				if b == Qt.RightButton and hasattr(rdr, 'select'):
-					#rdr.select(clicked[1], not rdr.select(clicked[1]))
-					self.main.select(*clicked, not rdr.select(clicked[1]))
-				# other clicks are for custom controls
-				elif hasattr(rdr, 'control'):
-					self.tool = rdr.control(self, grp, clicked[1], (x, y))
 	
 	# exceptional override of this method to handle the opengl context change
 	def event(self, event):
