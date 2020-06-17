@@ -223,6 +223,14 @@ class Interpreter:
 		code = Bytecode(bytecode[:i])
 		code.insert(0, Instr('LOAD_NAME', 'RESULTS'))
 		
+		# make it return the last stack value if there is (remove the loading of None that is instead)
+		if len(code) and isinstance(code[-1], Instr) and code[-1].name == 'POP_TOP':
+			code[-1] = Instr('RETURN_VALUE')
+		else: 
+			code.append(Instr('LOAD_CONST', None))
+			code.append(Instr('RETURN_VALUE'))
+		
+		# store temporary values
 		reused = set()
 		temploaded = []
 		assigned = []
@@ -249,6 +257,12 @@ class Interpreter:
 			if instr.name == 'LOAD_NAME':
 				temploaded.append(instr.arg)
 		
+		stacksize = 0
+		for instr in code:
+			print(stacksize, instr)
+			if isinstance(instr, Instr):
+				stacksize += instr.stack_effect()
+								
 		# automatic backup between statements
 		lastline = 1
 		stacksize = 0
@@ -278,13 +292,6 @@ class Interpreter:
 			stacksize += instr.stack_effect()
 			lastline = instr.lineno
 			i += 1
-		
-		# make it return the last stack value if there is (remove the loading of None that is instead)
-		if len(code) and isinstance(code[-1], Instr) and code[-1].name == 'POP_TOP':
-			code[-1] = Instr('RETURN_VALUE')
-		else: 
-			code.append(Instr('LOAD_CONST', None))
-			code.append(Instr('RETURN_VALUE'))
 		
 		nprint(code)
 		return code.to_code(), reused
