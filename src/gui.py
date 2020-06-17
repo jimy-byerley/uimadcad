@@ -16,7 +16,7 @@ from PyQt5.QtGui import (
 		QPainter, QPainterPath,
 		)
 
-from madcad.mathutils import vec3
+from madcad.mathutils import vec3, fvec3, Box, boundingbox, inf, length
 from madcad.view import Scene
 from madcad import displayable, isconstraint, isprimitive
 from madcad.annotations import annotations
@@ -64,7 +64,7 @@ class Main(QMainWindow):
 		self.active_sceneview = None
 		self.active_scriptview = None
 		self.activetrick = None
-		self.selection = []
+		self.selection = set()
 		self.exectrigger = 1
 		self.exectarget = 0
 		
@@ -109,6 +109,8 @@ class Main(QMainWindow):
 		menu.addAction('disable line dependencies +')
 		menu.addSeparator()
 		menu.addAction('rename object +')
+		menu.addSeparator()
+		menu.addAction('deselect all', self._deselectall, QKeySequence('Ctrl+A'))
 		
 		menu = self.menuBar().addMenu('View')
 		menu.addAction('new 3D view', self.new_sceneview)
@@ -118,28 +120,14 @@ class Main(QMainWindow):
 		menu.addAction('new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
 		menu.addSeparator()
-		menu.addAction('harvest toolbars on window side +')
-		menu.addAction('take floating toolbars to mouse +')
-		
-		menu = self.menuBar().addMenu('Scene')
-		menu.addAction('center on object +')
-		menu.addAction('adapt to object +',
-			lambda: self.activeview.look(self.selection.box()))
-		menu.addSeparator()
-		menu.addAction('top +')
-		menu.addAction('bottom +')
-		menu.addAction('front +')
-		menu.addAction('back +')
-		menu.addAction('right +')
-		menu.addAction('left +')
-		menu.addSeparator()
-		menu.addAction('explode objects +')
-		menu.addSeparator()
 		action = self.scenelistdock.toggleViewAction()
 		action.setShortcut(QKeySequence('Shift+D'))
 		menu.addAction(action)
 		menu.addSeparator()
+		menu.addAction('harvest toolbars on window side +')
+		menu.addAction('take floating toolbars to mouse +')
 		
+		menu = self.menuBar().addMenu('Scene')
 		action = QAction('display points', self, checkable=True, shortcut=QKeySequence('Shift+P'))
 		action.setChecked(madcad.settings.scene['display_points'])
 		action.toggled.connect(self._display_points)
@@ -156,6 +144,19 @@ class Main(QMainWindow):
 		action.setChecked(madcad.settings.scene['display_faces'])
 		action.toggled.connect(self._display_faces)
 		menu.addAction(action)
+		menu.addSeparator()
+		menu.addAction('center on object', self._centerselection, shortcut=QKeySequence('Shift+C'))
+		menu.addAction('adapt to object', self._lookselection, shortcut=QKeySequence('Shift+A'))
+		menu.addSeparator()
+		menu.addAction('top +')
+		menu.addAction('bottom +')
+		menu.addAction('front +')
+		menu.addAction('back +')
+		menu.addAction('right +')
+		menu.addAction('left +')
+		menu.addSeparator()
+		menu.addAction('explode objects +')
+		
 		
 		menu = self.menuBar().addMenu('Script')
 		action = QAction('show line numbers', self, checkable=True, shortcut=QKeySequence('F11'))
@@ -206,7 +207,7 @@ class Main(QMainWindow):
 		new = SceneView(self)
 		if self.active_sceneview:
 			new.manipulator = deepcopy(self.active_sceneview.manipulator)
-		win = dock(new, 'view')
+		win = dock(new, 'scene view')
 		self.addDockWidget(Qt.RightDockWidgetArea, win)
 		win.setFloating(True)
 		zone = self.geometry().center()
@@ -294,12 +295,6 @@ class Main(QMainWindow):
 	
 	# END
 	# BEGIN --- editing tools ----
-	
-	def select(self, obji, ident):
-		self.selection.append((obji, ident))
-		for view in self.views:
-			for grp,rdr in view.stack:
-				rdr.select(ident)
 				
 	def _contentsChange(self, position, removed, added):
 		# get the added text
@@ -385,6 +380,57 @@ class Main(QMainWindow):
 	
 	# declaration of tricks available
 	texttricks = [tricks.ControledAxis, tricks.ControledPoint]
+	
+	def select(self, sel, state=None):
+		''' change the selection state of the given key (scene key, sub ident) 
+			register the change in self.selection, and update the scene views
+		'''
+		if state is None:	state = sel not in self.selection
+		if state:	self.selection.add(sel)
+		else:		self.selection.discard(sel)
+		print('selection', self.selection)
+		for view in self.views:
+			if isinstance(view, SceneView):
+				for grp,rdr in view.stack:
+					if grp == sel[0] and hasattr(rdr, 'select'):
+						rdr.select(sel[1], state)
+				print('updated', view)
+				view.update()
+	
+	def selectionbox(self):
+		''' return the bounding box of the selection '''
+		box = Box(vec3(inf), vec3(-inf))
+		for key,sub in self.selection:
+			obj = self.scene.get(key)
+			if hasattr(obj, 'group'):
+				obj = obj.group(sub)
+				obj.strippoints()
+			box.union(boundingbox(obj))
+		return box
+	
+	def _centerselection(self):
+		self.active_sceneview.look(self.selectionbox().center)
+		self.active_sceneview.update()
+	
+	def _lookselection(self):
+		self.active_sceneview.look(self.selectionbox())
+		self.active_sceneview.update()
+	
+	def _deselectall(self):
+		selected = {}
+		for grp,sub in self.selection:
+			if grp not in selected:	selected[grp] = []
+			selected[grp].append(sub)
+			
+		for g,subs in selected.items():
+			for view in self.views:
+				if isinstance(view, SceneView):
+					for grp,rdr in view.stack:
+						if grp == g and hasattr(rdr, 'select'):
+							for sub in subs:
+								rdr.select(sub, False)
+					view.update()
+		self.selection.clear()
 		
 	# END
 	# BEGIN --- display system ---
@@ -489,6 +535,12 @@ def dock(widget, title, closable=True):
 	dock.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
 	return dock
 
+class NoBackDock(QDockWidget):
+	def closeEvent(self, evt):
+		super().closeEvent(evt)
+		self.parent().removeDockWidget(self)
+		evt.accept()
+
 class SceneList(QPlainTextEdit):
 	''' text view to specify objects main.currentenv we want to append to main.scene '''
 	def __init__(self, main):
@@ -512,24 +564,29 @@ class SceneList(QPlainTextEdit):
 		self.main.forceddisplays = set(self.toPlainText().split())
 		self.main.updatescene()
 
+		
+
 QEventGLContextChange = 215	# opengl context change event type, not yet defined in PyQt5
 
 class SceneView(Scene):
 	''' dockable and reparentable scene view widget, bases on madcad.Scene '''
-	def __init__(self, main):
-		super().__init__()
+	def __init__(self, main, **kwargs):
 		self.main = main
 		self.frozen = False
-		self.grpidents = {}
 		self.initnum = 0
+		super().__init__(**kwargs)
 		
 		main.views.append(self)
 		if not main.active_sceneview:	main.active_sceneview = self
 		self.sync()
+	
+	def initializeGL(self):
+		self.initnum = 1
+		super().initializeGL()
 		
 	def focusInEvent(self, event):
-		super().focusInEvent(event)
 		self.main.active_sceneview = self
+		#event.accept()
 	
 	def freeze(self):
 		self.frozen = True
@@ -539,45 +596,44 @@ class SceneView(Scene):
 	
 	def sync(self, updated=()):
 		if not self.frozen:
-			for key,grp in self.grpidents.items():
-				if self.grpidents[key] is not None and (key not in self.main.scene or key in updated):
-					#print('remove', key, grp)
-					self.remove(grp)
-					self.grpidents[key] = None
+			for key in list(self.displayed):
+				if key not in self.main.scene or key in updated:
+					self.remove(key)
 			for key,obj in self.main.scene.items():
-				if key not in self.grpidents or key in updated:
-					self.grpidents[key] = self.add(obj)
-					#print('added', key, self.grpidents[key])
+				if key not in self.displayed or key in updated:
+					self.add(obj, key)
 			self.update()
 	
 	def closeEvent(self, event):
+		super().closeEvent(event)
+		# WARNING: due to some Qt bugs, a removed Scene can be closed multiple times, when the added scenes are never removed nor displayed
+		#self.main.views.remove(self)
 		for i,view in enumerate(self.main.views):
-			if view is self:	
+			if view is self:
 				self.main.views.pop(i)
-				return
-	
-	def close(self):
-		self.main.views.remove(self)
-		if isinstance(self.parent(), QDockWidget):
-			self.main.removeDockWidget(self.parent())
-		else:
-			super().close()
+		event.accept()
 	
 	# exceptional override of this method to handle the opengl context change
 	def event(self, event):
 		if event.type() == QEventGLContextChange:
-			#print('context change', self.initnum)
-			if self.initnum > 1:
+			if self.initnum >= 1:
 				# reinit completely the scene to rebuild opengl contextual objects
-				newview = SceneView(self.main)
-				newview.projection = self.projection
-				newview.manipulator = self.manipulator
-				self.parent().setWidget(newview)
-			else:
-				self.initnum += 1
+				dock = self.parent()
+				self.close()
+				dock.setWidget(SceneView(self.main, 
+									projection=self.projection, 
+									manipulator=self.manipulator))
 			return True
 		else:
 			return super().event(event)
+			
+	def objcontrol(self, rdri, subi, evt):
+		if evt.button() == Qt.LeftButton:
+			grp,rdr = self.stack[rdri]
+			if hasattr(rdr, 'select'):
+				self.main.select((grp,subi))
+		else:
+			super().objcontrol(rdri, subi, evt)
 
 
 
@@ -670,6 +726,9 @@ class ScriptView(QWidget):
 		else:
 			self.layout().addWidget(self.statusbar)
 		return super().changeEvent(event)
+	
+	def closeEvent(self, event):
+		self.main.views.remove(self)
 	
 	def _cursorPositionChanged(self):
 		# update location label
