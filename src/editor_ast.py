@@ -25,12 +25,17 @@ class Interpreter:
 	
 	def change(self, position, oldsize, newcontent):
 		''' change a part of the text, invalidating all backups and AST statements after position '''
-		oldloc = textloc(self.text, position)
 		self.text = self.text[:position] + newcontent + self.text[position+oldsize:]
 		i = astatpos(self.ast, position)
-		self.ast_end = textpos(self.text, astloc(self.ast.body[i]))
-		self.ast.body[i:] = []
-		self.backups[self.lastbackup(self.ast_end)+1:] = []
+		if i < len(self.ast.body):
+			self.ast_end = self.ast.body[i].position
+			self.ast.body[i:] = []
+			self.backups[self.lastbackup(self.ast_end)+1:] = []
+		elif self.ast.body:
+			self.ast_end = self.ast.body[-1].end_position
+		else:
+			self.ast_end = 0
+		print('insert', position, oldsize, len(newcontent), '-->', self.ast_end)
 		
 	def lastbackup(self, position):
 		''' get the index of the last env backup before position '''
@@ -46,21 +51,26 @@ class Interpreter:
 		# rebuild AST to target
 		if target > self.ast_end:
 			part = self.text[self.ast_end:target]
-			addition = ast.parse(part)
+			#print('---', self.ast_end, repr(part))
+			try:
+				addition = ast.parse(part)
+			except SyntaxError as err:
+				raise InterpreterError(err)
 			astannotate(addition, part)
 			endloc = textloc(self.text, self.ast_end)
 			astshift(addition, (endloc[0]-1, endloc[1]), self.ast_end)
 			self.ast.body.extend(addition.body)
-			self.ast_end = target
+			nprint('code\n', ast.dump(self.ast))
+			self.ast_end += len(part)
 		
 		# get the code to execute from the last backup
 		backpos, backenv = self.backups[self.lastbackup(target)]
+		#print('ast interval', backpos, target, astatpos(self.ast, backpos), astatpos(self.ast, target))
 		part = ast.Module(body=self.ast.body[
 						 astatpos(self.ast, backpos)
 						:astatpos(self.ast, target)
 						])
 		processed, locations = self.process(part, backenv.keys())
-		#nprint('code\n', ast.dump(processed))
 		code = compile(processed, self.persistent.__name__, 'exec')
 		env = copyvars(backenv, locations.keys())
 		
@@ -73,6 +83,7 @@ class Interpreter:
 		# publish results
 		self.current = env
 		self.locations = locations
+		return varusage(part)
 	
 	def process(self, tree, oldvars):
 		''' process an AST to retreive its temporary values 
@@ -100,9 +111,9 @@ class Interpreter:
 					knownvars[node.targets[0].id] = node
 					astpropagate(node, descend)
 				# capture expressions
-				elif isinstance(node, (ast.BoolOp, ast.BinOp, ast.Call)):
-					# propagate into it only if there is no controlflow structures
-					if isinstance(node, (ast.BinOp, ast.Call)):
+				elif isinstance(node, (ast.BoolOp, ast.BinOp, ast.Call, ast.Tuple, ast.List)):
+					# capture sub expressions only if there is no controlflow structure at our level
+					if isinstance(node, (ast.BinOp, ast.Call, ast.Tuple, ast.List)):
 						astpropagate(node, capture)
 					
 					name = tempname()
@@ -118,6 +129,7 @@ class Interpreter:
 							name, ast.Load(), 
 							lineno=node.lineno, col_offset=node.col_offset,
 							)
+				# capture sub expressions
 				elif isinstance(node, (ast.expr, ast.Expr)):
 					astpropagate(node, capture)
 				# other node types are not relevant for capture
@@ -142,6 +154,16 @@ def copyvars(vars, deep=(), memo=None):
 			new[name] = deepcopy(vars[name], memo)
 	return new
 
+def varusage(node):
+	used = set()
+	reused = set()
+	for child in ast.walk(node):
+		if isinstance(child, ast.Name): 
+			used.add(child.id)
+			if isinstance(child.ctx, ast.Load):
+				reused.add(child.id)
+	return used, reused
+
 def astpropagate(node, process):
 	''' apply process to node's children 
 		if process returns something not None, it's used to inplace replace the child in the node
@@ -163,7 +185,7 @@ def astannotate(tree, text):
 		currently
 			* position
 			* end_position
-	'''
+	'''	
 	# assigne a text position to each node
 	currentloc = (1,0)
 	currentpos = 0
@@ -193,6 +215,8 @@ def astannotate(tree, text):
 		
 		# generic retreival from the last child
 		else:
+			if not hasattr(node, 'end_position') and hasattr(node, 'position'):
+				node.end_position = node.position
 			children = ast.iter_child_nodes(node)
 			child = None
 			for child in children:	pass
@@ -201,10 +225,11 @@ def astannotate(tree, text):
 		
 		if isinstance(node, ast.Call):
 			node.end_position = text.find(')', node.end_position)+1
-		elif isinstance(node, ast.Subscript):
+			#print(node, node.position, node.end_position, text[node.position:node.end_position])
+		elif isinstance(node, (ast.Subscript, ast.List)):
 			node.end_position = text.find(']', node.end_position)+1
 		
-		#if isinstance(node, ast.expr):
+		#if isinstance(node, ast.expr) or isinstance(node, ast.stmt):
 			#nprint('annotated', ast.dump(node), repr(text[node.position:node.end_position]))
 	recursive(tree)
 				
@@ -246,7 +271,11 @@ def advancepos(text, loc, startpos=0, startloc=(1,0), tab=1):
 def astatpos(tree, pos):
 	''' get the AST node from a list of nodes, that contains the given text location '''
 	for i,statement in enumerate(tree.body):
-		if statement.end_position > pos:		return max(0, i)
+		if statement.position >= pos:		
+			return max(0, i)
+		if hasattr(statement, 'end_position') and statement.end_position > pos:		
+			return max(0, i)
+	return len(tree.body)
 		
 def astloc(node):
 	''' text location of an AST node '''

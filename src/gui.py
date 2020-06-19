@@ -22,7 +22,7 @@ from madcad import displayable, isconstraint, isprimitive
 from madcad.annotations import annotations
 import madcad.settings
 
-from editor import Interpreter, InterpreterError
+from editor_ast import Interpreter, InterpreterError, astinterval
 import tricks
 
 from copy import deepcopy, copy
@@ -57,6 +57,7 @@ class Main(QMainWindow):
 		self.interpreter = Interpreter()
 		self.scenelist = SceneList(self)
 		self.forceddisplays = set()	# choix des variables a afficher
+		self.displayzones = []
 		self.neverused = set()
 		
 		self.scene = {}	# objets a afficher sur les View
@@ -300,28 +301,15 @@ class Main(QMainWindow):
 		# get the added text
 		cursor = QTextCursor(self.script)
 		cursor.setPosition(position+added)
-		endline, _ = cursor_location(cursor)
 		cursor.setPosition(position, cursor.KeepAnchor)
 		# transform it to fit the common standards
 		newtext = cursor.selectedText().replace('\u2029', '\n')
 		# apply change to the interpeter
-		location = cursor_location(cursor)
-		self.interpreter.change(location, removed, newtext)
+		self.interpreter.change(position, removed, newtext)
 		
-		if self.exectrigger == 1:	self.exectarget = max(endline, self.exectarget)
-		elif self.exectrigger == 2:	self.exectarget = max(endline+1, self.exectarget)
-		if endline >= self.exectarget:	self.exectarget_changed.emit()
-		
-		# see if reexecution is needed
-		if self.exectrigger == 0:
-			reexecute = False
-		elif self.exectrigger == 1:
-			reexecute = '\n' in newtext
-		elif self.exectrigger == 2:
-			reexecute = True
-		
-		# reexecute
-		if reexecute:
+		if self.exectrigger == 2 or self.exectrigger == 1 and '\n' in newtext:	
+			self.exectarget = max(self.exectarget, position+added)
+			self.exectarget_changed.emit()
 			self.execute()
 		else:
 			self.execution_label('MODIFIED  (Ctrl+Return to execute)')
@@ -341,24 +329,33 @@ class Main(QMainWindow):
 			self.execution_label('<p style="color:#ff5555">FAILED</p>')
 		else:
 			self.execution_label('<p style="color:#55ff22">COMPUTED</p>')
-			returned, env, used, reused = res
-			self.currentenv = env
-			self.neverused |= set(used)
-			self.neverused -= set(reused)
-			self.updatescene()
+			used, reused = res
+			self.currentenv = self.interpreter.current
+			self.neverused |= used
+			self.neverused -= reused
+			print('neverused', self.neverused)
+			self.updatescene(used)
 			self.executed.emit()
+			
+			#for name in used:
+				#if name in self.interpreter.locations:
+					#node = self.interpreter.locations[name]
+					#print(name, self.interpreter.text[node.position:node.end_position])
 	
 	def reexecute(self):
 		''' reexecute all the script '''
-		self.interpreter.change((0,0), 0, '')
+		self.interpreter.change(0, 0, '')
 		self.execute()
 		
 	def _targettocursor(self):
-		self.exectarget = self.active_scriptview.editor.textCursor().blockNumber()+1
+		self.exectarget = self.active_scriptview.editor.textCursor().position()
 		self.exectarget_changed.emit()
 		
 	def trytrick(self, location):
 		''' search for a trick to enable in the current expression '''
+		
+		return
+		
 		line, column = location
 		try:	end = self.interpreter.findexpressionend(line, line+1)
 		except:	return
@@ -473,51 +470,56 @@ class Main(QMainWindow):
 			if hasattr(view, 'sync'):
 				view.sync(updated)
 	
-	def cursorat(self, location):
+	def cursorat(self, position):
 		''' notice the main that the cursur is at the given (line,column) '''
-		self.showtemps(location)
-		self.trytrick(location)
+		self.showtemps(position)
+		self.trytrick(position)
 	
 	def updatescene(self, change=()):
 		''' update self.scene with the last execution results '''
 		# objects selection in env, and already present objs
-		newscene = []
+		newscene = {}
 		for name,obj in self.scene.items():
 			if not (isinstance(name, str) and name.isidentifier()):
-				newscene.append((name, obj))
-		for name,obj in self.currentenv.items():
-			if displayable(obj) and (name in self.forceddisplays or name in self.neverused):
-				newscene.append((name, obj))
+				newscene[name] = obj
+		# display objects that are requested by the user, or that are never used (lastly generated)
+		for name,obj in self.interpreter.current.items():
+			if displayable(obj) and (	name in self.forceddisplays 
+									or	name in self.neverused):
+				newscene[name] = obj
+		# display objects in the display zones
+		for zs,ze in self.displayzones:
+			for name,node in self.interpreter.locations.items():
+				if name not in newscene:
+					ts,te = astinterval(node)
+					temp = self.interpreter.current[name]
+					if zs <= ts and te <= ze and displayable(temp):
+						newscene[name] = temp
+		
 		# change the scene
-		update = ['<ANNOTATIONS>']
-		for name,obj in newscene:
-			if name not in self.scene or self.scene[name] != obj:
-				update.append(name)
-		self.scene = dict(newscene)
+		update = {'<ANNOTATIONS>'}.union(change)
+		self.scene = newscene
 		self.scene['<ANNOTATIONS>'] = list(annotations(self.scene))	# TODO: ne pas recalculer toutes les annotations
 		# update views
 		self.syncviews(update)
 	
-	def showtemps(self, location):
+	def showtemps(self, position):
 		''' display temporary values for the given cursor location '''
-		# find current expression's end (based on the cursor location)
-		try:	end = self.interpreter.findexpressionend(location[0], location[0]+1)
-		except:	return
-		# remove old displayed temps
-		changed = []
-		toremove = []
-		for name,obj in self.scene.items():
-			if isinstance(name, int):
-				toremove.append(name)
-		for name in toremove:	del self.scene[name]
-		# append temporary values of the expression
-		for line in range(location[0], end[0]):
-			temp = self.interpreter.results.get(line)
-			if displayable(temp):
-				self.scene[line] = temp
-				changed.append(line)
-		# update views
-		self.syncviews(changed)
+		zones = self.interpreter.locations
+		mscore = inf
+		mname = None
+		for name,interval in zones.items():
+			start,end = astinterval(interval)
+			if start <= position and position <= end:
+				score = end-start
+				if score < mscore:
+					mscore = score
+					mname = name
+		if mname:
+			self.displayzones = [astinterval(zones[mname])]
+		else:
+			self.displayzones = []
+		self.updatescene()
 	
 	# END
 	
@@ -732,13 +734,14 @@ class ScriptView(QWidget):
 	
 	def _cursorPositionChanged(self):
 		# update location label
-		line, column = cursor_location(self.editor.textCursor())
+		cursor = self.editor.textCursor()
+		line, column = cursor_location(cursor)
 		self.label_location.setText('line {}, column {}'.format(line+1, column+1))
 		# try graphical editing
-		self.main.cursorat((line, column))
+		self.main.cursorat(cursor.position())
 	
 	def _executed(self):
-		self.main.cursorat(cursor_location(self.editor.textCursor()))
+		self.main.cursorat(self.editor.textCursor().position())
 	
 	def _blockCountChanged(self):
 		self.update_linenumbers()
@@ -830,10 +833,8 @@ class TargetCursor2(QWidget):
 		return self.box().size()
 	
 	def update(self):
-		block = self.main.script.findBlockByNumber(self.main.exectarget-1)
-		if not block.isValid():	block = self.main.script.lastBlock()
-		cursor = QTextCursor(block)
-		cursor.movePosition(cursor.EndOfLine)
+		cursor = QTextCursor(self.main.script)
+		cursor.setPosition(self.main.exectarget)
 		pos = (		self.parent().cursorRect(cursor).topRight() 
 				+	self.parent().contentOffset() 
 				+	QPointF(self.parent().viewportMargins().left(), 0) 
@@ -894,10 +895,8 @@ class TargetCursor(QWidget):
 		#event.ignore()
 	
 	def paintEvent(self, event):
-		block = self.main.script.findBlockByNumber(self.main.exectarget-1)
-		if not block.isValid():	block = self.main.script.lastBlock()
-		cursor = QTextCursor(block)
-		cursor.movePosition(cursor.EndOfLine)
+		cursor = QTextCursor(self.main.script)
+		cursor.setPosition(self.main.exectarget)
 		pos = (		self.parent().cursorRect(cursor).topRight()
 				+	QPointF(self.parent().viewportMargins().left(), 0) 
 				+	self.cursoroffset
