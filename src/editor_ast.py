@@ -109,7 +109,7 @@ class Interpreter:
 		
 		# publish results
 		self.current = env
-		self.locations = locations
+		self.locations.update(locations)
 		return varusage(part)
 	
 	def process(self, tree, oldvars):
