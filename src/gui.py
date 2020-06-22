@@ -4,7 +4,7 @@ from PyQt5.QtCore import (
 		)
 from PyQt5.QtWidgets import (
 		QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction,
-		QPlainTextEdit, QPlainTextDocumentLayout, QScrollArea, 
+		QTextEdit, QPlainTextEdit, QPlainTextDocumentLayout, QScrollArea, 
 		QPushButton, QLabel, QComboBox,
 		QMainWindow, QDockWidget, QFileDialog, QMessageBox, QDialog
 		)
@@ -166,6 +166,9 @@ class Main(QMainWindow):
 		action = QAction('enable line wrapping', self, checkable=True, shortcut=QKeySequence('F10'))
 		action.toggled.connect(self._enable_line_wrapping)
 		menu.addAction(action)
+		action = QAction('scroll on selected object +', self, checkable=True)
+		#action.toggled.connect(self._enable_center_on_select)	# TODO when settings will be added
+		menu.addAction(action)
 		menu.addAction('find +')
 		menu.addAction('replace +')
 		
@@ -298,6 +301,7 @@ class Main(QMainWindow):
 	# BEGIN --- editing tools ----
 				
 	def _contentsChange(self, position, removed, added):
+		print('changed', position, removed, added)
 		# get the added text
 		cursor = QTextCursor(self.script)
 		cursor.setPosition(position+added)
@@ -339,14 +343,8 @@ class Main(QMainWindow):
 			self.currentenv = self.interpreter.current
 			self.neverused |= used
 			self.neverused -= reused
-			print('neverused', self.neverused)
 			self.updatescene(used)
 			self.executed.emit()
-			
-			#for name in used:
-				#if name in self.interpreter.locations:
-					#node = self.interpreter.locations[name]
-					#print(name, self.interpreter.text[node.position:node.end_position])
 	
 	def reexecute(self):
 		''' reexecute all the script '''
@@ -389,17 +387,29 @@ class Main(QMainWindow):
 		''' change the selection state of the given key (scene key, sub ident) 
 			register the change in self.selection, and update the scene views
 		'''
+		# set the selection state
 		if state is None:	state = sel not in self.selection
 		if state:	self.selection.add(sel)
 		else:		self.selection.discard(sel)
-		print('selection', self.selection)
+		
+		# set the selection state for renderers
 		for view in self.views:
 			if isinstance(view, SceneView):
 				for grp,rdr in view.stack:
 					if grp == sel[0] and hasattr(rdr, 'select'):
 						rdr.select(sel[1], state)
-				print('updated', view)
 				view.update()
+		
+		# move the cursor position
+		oldcursor = self.active_scriptview.editor.textCursor()
+		cursor = QTextCursor(oldcursor)
+		cursor.setPosition(self.interpreter.locations[sel[0]].position)
+		self.active_scriptview.editor.setTextCursor(cursor)
+		self.active_scriptview.editor.ensureCursorVisible()
+		self.active_scriptview.editor.setTextCursor(oldcursor)
+		
+		# highlight zones
+		self.updatescript()
 	
 	def selectionbox(self):
 		''' return the bounding box of the selection '''
@@ -527,10 +537,41 @@ class Main(QMainWindow):
 		else:
 			self.displayzones = []
 		self.updatescene()
+		self.updatescript()
+	
+	def updatescript(self):
+		zonehighlight = QColor(40, 200, 240, 60)
+		selectionhighlight = QColor(100, 200, 40, 80)
+		background = QColor(0,0,0)
+	
+		cursor = QTextCursor(self.script)
+		extra = []
+		for zs,ze in self.displayzones:
+			cursor.setPosition(zs)
+			cursor.setPosition(ze, QTextCursor.KeepAnchor)
+			extra.append(extraselection(cursor, charformat(background=zonehighlight)))
+		
+		seen = set()
+		for selected,sub in self.selection:
+			if selected not in seen:
+				seen.add(selected)
+				zone = self.interpreter.locations[selected]
+				cursor.setPosition(zone.position)
+				cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
+				extra.append(extraselection(cursor, charformat(background=selectionhighlight)))
+		
+		for view in self.views:
+			if isinstance(view, ScriptView):
+				view.editor.setExtraSelections(extra)
 	
 	# END
 	
-		
+def extraselection(cursor, format):
+	''' create an ExtraSelection '''
+	o = QTextEdit.ExtraSelection()
+	o.cursor = cursor
+	o.format = format
+	return o
 		
 
 def dock(widget, title, closable=True):
