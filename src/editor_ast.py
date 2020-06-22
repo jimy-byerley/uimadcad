@@ -10,6 +10,7 @@ class InterpreterError(Exception):	pass
 
 class Interpreter:
 	''' script interpreter using caching '''
+	# TODO: make this class thread-safe
 	backupstep = 0.1
 
 	def __init__(self, text='', env=None, title='custom-interpreter'):
@@ -43,7 +44,7 @@ class Interpreter:
 		if i == len(self.backups) or self.backups[i][0] > position:	i -= 1
 		return i
 	
-	def execute(self, target=-1):
+	def execute(self, target=-1, autobackup=False):
 		''' execute the code from last backups to the target string position '''
 		if target < 0:	target += len(self.text)
 		self.target = target
@@ -71,14 +72,40 @@ class Interpreter:
 						:astatpos(self.ast, target)
 						])
 		processed, locations = self.process(part, backenv.keys())
-		code = compile(processed, self.persistent.__name__, 'exec')
-		env = copyvars(backenv, locations.keys())
 		
-		# execute the code
-		try:
-			exec(code, vars(self.persistent), env)
-		except Exception as err:
-			raise InterpreterError(err)
+		if autobackup:
+			env = copyvars(backenv, locations.keys())
+			starttime = time()
+			for stmt in processed.body:
+				code = compile(ast.Module(body=[stmt]), self.persistent.__name__, 'exec')
+				
+				# execute the code
+				try:
+					exec(code, vars(self.persistent), env)
+				except Exception as err:
+					raise InterpreterError(err)
+				
+				# autobackup
+				t = time()
+				if t - starttime > self.backupstep:
+					print('* backup time elasped, backing up', stmt.end_position)
+					self.backups[self.lastbackup(stmt.position)+1
+								:self.lastbackup(target)+1] = [(stmt.end_position, copyvars(env, locations.keys()))]
+					starttime = t
+			
+			print('backups ---')
+			for pos,backup in self.backups:
+				print(backup.keys())
+				
+		else:
+			code = compile(processed, self.persistent.__name__, 'exec')
+			env = copyvars(backenv, locations.keys())
+			
+			# execute the code
+			try:
+				exec(code, vars(self.persistent), env)
+			except Exception as err:
+				raise InterpreterError(err)
 		
 		# publish results
 		self.current = env
@@ -116,19 +143,14 @@ class Interpreter:
 					if isinstance(node, (ast.BinOp, ast.Call, ast.Tuple, ast.List)):
 						astpropagate(node, capture)
 					
+					psts = {'lineno':node.lineno, 'col_offset':node.col_offset, 'position':node.position, 'end_position':node.end_position}
 					name = tempname()
 					knownvars[name] = node
 					begin.append(ast.Assign(
-						[ast.Name(name, ast.Store(),
-									lineno=node.lineno, col_offset=node.col_offset)], 
+						[ast.Name(name, ast.Store(), **psts)], 
 						node, 
-						lineno=node.lineno, 
-						col_offset=node.col_offset,
-						))
-					return ast.Name(
-							name, ast.Load(), 
-							lineno=node.lineno, col_offset=node.col_offset,
-							)
+						**psts))
+					return ast.Name(name, ast.Load(), **psts)
 				# capture sub expressions
 				elif isinstance(node, (ast.expr, ast.Expr)):
 					astpropagate(node, capture)
@@ -137,8 +159,20 @@ class Interpreter:
 			# recursive replacement only for children
 			def descend(node):
 				astpropagate(node, capture)
-				
+			
 			capture(statement)
+			#tree.body.insert(i+1, ast.Expr(value=ast.Call(
+							#func=ast.Name(id='_autobackup', ctx=ast.Load(), **placement), 
+							#args=[	ast.Constant(value=statement.end_position, **placement), 
+									#ast.Constant(value=list(knownvars), **placement),
+									#ast.Call(
+										#func=ast.Name(id='vars', ctx=ast.Load(), **placement), 
+										#args=[], 
+										#keywords=[],
+										#**placement),
+									#],
+							#keywords=[],
+							#**placement), **placement))
 			tree.body[i:i] = begin
 			i += len(begin)+1
 		
@@ -214,14 +248,12 @@ def astannotate(tree, text):
 			node.end_position = i
 		
 		# generic retreival from the last child
-		else:
-			if not hasattr(node, 'end_position') and hasattr(node, 'position'):
+		elif hasattr(node, 'position'):
+			if not hasattr(node, 'end_position'):
 				node.end_position = node.position
-			children = ast.iter_child_nodes(node)
-			child = None
-			for child in children:	pass
-			if hasattr(child, 'end_position'):
-				node.end_position = child.end_position
+			for child in ast.iter_child_nodes(node):
+				if hasattr(child, 'end_position'):
+					node.end_position = max(node.end_position, child.end_position)
 		
 		if isinstance(node, ast.Call):
 			node.end_position = text.find(')', node.end_position)+1

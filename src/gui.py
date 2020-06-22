@@ -318,10 +318,16 @@ class Main(QMainWindow):
 		''' execute the script until the line exectarget 
 			updating the scene and the execution label
 		'''
+		# place the exec target at the end of line
+		cursor = QTextCursor(self.script)
+		cursor.setPosition(self.exectarget)
+		cursor.movePosition(QTextCursor.EndOfLine)
+		self.exectarget = cursor.position()
+		
 		self.execution_label('RUNNING')
-		#print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text()))
+		#print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text))
 		try:
-			res = self.interpreter.execute(self.exectarget)
+			res = self.interpreter.execute(self.exectarget, autobackup=True)
 		except InterpreterError as report:
 			err = report.args[0]
 			print(type(err).__name__, ':', err, err.__traceback__)
@@ -348,6 +354,7 @@ class Main(QMainWindow):
 		self.execute()
 		
 	def _targettocursor(self):
+		# place the exec target at the cursor location
 		self.exectarget = self.active_scriptview.editor.textCursor().position()
 		self.exectarget_changed.emit()
 		
