@@ -36,7 +36,7 @@ class Interpreter:
 			self.ast_end = self.ast.body[-1].end_position
 		else:
 			self.ast_end = 0
-		print('insert', position, oldsize, len(newcontent), '-->', self.ast_end)
+		#print('insert', position, oldsize, len(newcontent), '-->', self.ast_end)
 		
 	def lastbackup(self, position):
 		''' get the index of the last env backup before position '''
@@ -52,7 +52,6 @@ class Interpreter:
 		# rebuild AST to target
 		if target > self.ast_end:
 			part = self.text[self.ast_end:target]
-			#print('---', self.ast_end, repr(part))
 			try:
 				addition = ast.parse(part)
 			except SyntaxError as err:
@@ -61,7 +60,7 @@ class Interpreter:
 			endloc = textloc(self.text, self.ast_end)
 			astshift(addition, (endloc[0]-1, endloc[1]), self.ast_end)
 			self.ast.body.extend(addition.body)
-			nprint('code\n', ast.dump(self.ast))
+			#nprint('code\n', ast.dump(self.ast))
 			self.ast_end += len(part)
 		
 		# get the code to execute from the last backup
@@ -92,10 +91,6 @@ class Interpreter:
 					self.backups[self.lastbackup(stmt.position)+1
 								:self.lastbackup(target)+1] = [(stmt.end_position, copyvars(env, locations.keys()))]
 					starttime = t
-			
-			print('backups ---')
-			for pos,backup in self.backups:
-				print(backup.keys())
 				
 		else:
 			code = compile(processed, self.persistent.__name__, 'exec')
@@ -109,7 +104,11 @@ class Interpreter:
 		
 		# publish results
 		self.current = env
-		self.locations.update(locations)
+		for name,obj in self.locations.items():
+			if name not in locations and name in env:
+				locations[name] = obj
+		self.locations = locations
+		
 		return varusage(part)
 	
 	def process(self, tree, oldvars):
