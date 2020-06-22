@@ -16,8 +16,6 @@ from PyQt5.QtGui import (
 
 from madcad.mathutils import vec3, fvec3, Box, boundingbox, inf, length
 from madcad.view import Scene
-from madcad import displayable, isconstraint, isprimitive
-from madcad.annotations import annotations
 import madcad.settings
 
 from editor_ast import Interpreter, InterpreterError, astinterval

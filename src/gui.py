@@ -4,7 +4,7 @@ from PyQt5.QtCore import (
 		)
 from PyQt5.QtWidgets import (
 		QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction,
-		QTextEdit, QPlainTextEdit, QPlainTextDocumentLayout, QScrollArea, 
+		
 		QPushButton, QLabel, QComboBox,
 		QMainWindow, QDockWidget, QFileDialog, QMessageBox, QDialog
 		)
@@ -12,8 +12,7 @@ from PyQt5.QtGui import (
 		QFont, QFontMetrics, 
 		QColor, QPalette,
 		QIcon, QKeySequence, 
-		QTextOption, QTextDocument, QTextCursor,
-		QPainter, QPainterPath,
+		QTextOption, QTextDocument, QPlainTextDocumentLayout, QTextCursor,
 		)
 
 from madcad.mathutils import vec3, fvec3, Box, boundingbox, inf, length
