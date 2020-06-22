@@ -1,0 +1,56 @@
+''' collection of helpers to deal with Qt
+'''
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QTextCharFormat, QTextCursor
+from PyQt5.QtWidgets import QDockWidget, QTextEdit
+
+
+def charformat(background=None, foreground=None, italic=None, overline=None, weight=None, font=None):
+	''' create a QTextCharFormat '''
+	fmt = QTextCharFormat()
+	if background:	fmt.setBackground(background)
+	if foreground:	fmt.setForeground(foreground)
+	if italic is not None:		fmt.setFontItalic(italic)
+	if overline is not None:	fmt.setFontOverline(overline)
+	if weight:					fmt.setFontWeight(weight)
+	if font:	fmt.setFont(font)
+	return fmt
+
+
+def cursor_location(cursor):
+	return cursor.blockNumber(), cursor.positionInBlock()
+
+def move_text_cursor(cursor, location, movemode=QTextCursor.MoveAnchor):
+	line, column = location
+	if cursor.blockNumber() < line:		cursor.movePosition(cursor.NextBlock, movemode, line-cursor.blockNumber())
+	if cursor.blockNumber() < line:		cursor.movePosition(cursor.PreviousBlock, movemode, cursor.blockNumber()-line)
+	if cursor.columnNumber() < column:	cursor.movePosition(cursor.NextCharacter, movemode, column-cursor.columnNumber())
+	if cursor.columnNumber() > column:	cursor.movePosition(cursor.PreviousCharacter, movemode, cursor.columnNumber()-column)
+
+
+
+def extraselection(cursor, format):
+	''' create an ExtraSelection '''
+	o = QTextEdit.ExtraSelection()
+	o.cursor = cursor
+	o.format = format
+	return o
+		
+
+def dock(widget, title, closable=True):
+	''' create a QDockWidget '''
+	dock = QDockWidget(title)
+	dock.setWidget(widget)
+	dock.setFeatures(	QDockWidget.DockWidgetMovable
+					|	QDockWidget.DockWidgetFloatable
+					|	(QDockWidget.DockWidgetClosable if closable else 0)
+					)
+	dock.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
+	return dock
+
+	
+class NoBackDock(QDockWidget):
+	def closeEvent(self, evt):
+		super().closeEvent(evt)
+		self.parent().removeDockWidget(self)
+		evt.accept()
