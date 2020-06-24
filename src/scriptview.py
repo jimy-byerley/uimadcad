@@ -117,7 +117,7 @@ class ScriptView(QWidget):
 		cursor = self.editor.textCursor()
 		line, column = cursor_location(cursor)
 		self.label_location.setText('line {}, column {}'.format(line+1, column+1))
-		# try graphical editing
+		# interaction with the results
 		self.main.cursorat(cursor.position())
 	
 	def _executed(self):
@@ -142,7 +142,7 @@ class ScriptView(QWidget):
 			border = charwidth/2
 			width = (digits+1)*charwidth
 			self.editor.setViewportMargins(width, 0, 0, 0)
-			cr = self.editor.contentsRect()
+			cr = self.editor.contentsRect()	# only this rect has the correct area, with the good margins with the real widget geometry
 			self.wlinenumbers.setGeometry(QRect(cr.left(), cr.top(), width, cr.height()))
 			self.wlinenumbers.width = width - border/2
 			self.wlinenumbers.border = border

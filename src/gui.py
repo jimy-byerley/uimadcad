@@ -24,7 +24,7 @@ from common import *
 from interpreter import Interpreter, InterpreterError, astinterval
 from scriptview import ScriptView
 from sceneview import SceneView, SceneList
-import tricks
+from tricks import PointEditor, EditionError
 
 from copy import deepcopy, copy
 from nprint import nprint
@@ -364,34 +364,7 @@ class Main(QMainWindow):
 		self.exectarget = self.active_scriptview.editor.textCursor().position()
 		self.exectarget_changed.emit()
 		
-	def trytrick(self, position):
-		''' search for a trick to enable in the current expression '''
-		name = self.objattext(position)
-		if not name:	return False
-		
-		node = self.interpreter.locations[name]
-		if isinstance(node, ast.Assign):	node = node.value
-		
-		for trick in self.texttricks:
-			found = trick.match(self, node)
-			if found:
-				if name in self.scene:
-					del self.scene[name]
-				self.scene['<TRICK>'] = self.activetrick = found
-				self.updatescene(['<TRICK>'])
-				return True
-		
-		self.activetrick = None
-		if '<TRICK>' in self.scene:
-			del self.scene['<TRICK>']
-		self.syncviews(('<TRICK>',))
-		return False
-	
-	# declaration of tricks available
-	texttricks = [tricks.ControledPoint]
-	
 	def edit(self, name):
-		from tricks import PointEditor, EditionError
 		obj = self.scene[name]
 		if isinstance(obj, vec3):	editor = PointEditor
 		elif isinstance(obj, Mesh):	editor = MeshEditor
