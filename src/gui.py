@@ -372,6 +372,7 @@ class Main(QMainWindow):
 		try:	
 			self.editors[name] = e = editor(self, name)
 			self.updatescene([name])
+			self.updatescript()
 		except EditionError as err:
 			print('unable to edit variable', name, ':', err)
 		else:
@@ -382,6 +383,7 @@ class Main(QMainWindow):
 			self.editors[name].finish()
 			del self.editors[name]
 			self.updatescene([name])
+			self.updatescript()
 		
 	
 	def select(self, sel, state=None):
@@ -552,6 +554,7 @@ class Main(QMainWindow):
 	def updatescript(self):
 		zonehighlight = QColor(40, 200, 240, 60)
 		selectionhighlight = QColor(100, 200, 40, 80)
+		editionhighlight = QColor(255, 200, 50, 60)
 		background = QColor(0,0,0)
 	
 		cursor = QTextCursor(self.script)
@@ -569,6 +572,11 @@ class Main(QMainWindow):
 				cursor.setPosition(zone.position)
 				cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
 				extra.append(extraselection(cursor, charformat(background=selectionhighlight)))
+		for edited in self.editors:
+			zone = self.interpreter.locations[edited]
+			cursor.setPosition(zone.position)
+			cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
+			extra.append(extraselection(cursor, charformat(background=editionhighlight)))
 		
 		for view in self.views:
 			if isinstance(view, ScriptView):

@@ -18,7 +18,7 @@ from madcad.mathutils import vec3, fvec3, Box, boundingbox, inf, length
 from madcad.view import Scene
 import madcad.settings
 
-from editor_ast import Interpreter, InterpreterError, astinterval
+from interpreter import Interpreter, InterpreterError, astinterval
 import tricks
 
 from copy import deepcopy, copy
@@ -90,7 +90,7 @@ class SceneView(Scene):
 		''' overload the Scene method, to implement the edition behaviors '''
 		grp,rdr = self.stack[rdri]
 		
-		## an editor exists for this object
+		# an editor exists for this object
 		if grp in self.main.editors:
 			if evt.button() == Qt.LeftButton and evt.type() == QEvent.MouseButtonDblClick:
 				self.main.finishedit(grp)
@@ -102,6 +102,7 @@ class SceneView(Scene):
 			if evt.type() == QEvent.MouseButtonPress and hasattr(rdr, 'select'):
 				self.main.select((grp,subi))
 			elif evt.type() == QEvent.MouseButtonDblClick:
+				self.main.select((grp,subi))
 				self.main.edit(grp)
 			else:
 				super().objcontrol(rdri, subi, evt)
