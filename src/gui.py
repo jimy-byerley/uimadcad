@@ -28,6 +28,7 @@ import tricks
 
 from copy import deepcopy, copy
 from nprint import nprint
+import ast
 import traceback
 import os
 
@@ -58,6 +59,7 @@ class Main(QMainWindow):
 		self.interpreter = Interpreter()
 		self.scenelist = SceneList(self)
 		self.forceddisplays = set()	# choix des variables a afficher
+		self.hiddens = set()
 		self.displayzones = []
 		self.neverused = set()
 		
@@ -69,6 +71,7 @@ class Main(QMainWindow):
 		self.selection = set()
 		self.exectrigger = 1
 		self.exectarget = 0
+		self.editors = {}
 		
 		self.currentfile = None
 		self.currentexport = None
@@ -312,8 +315,12 @@ class Main(QMainWindow):
 		# apply change to the interpeter
 		self.interpreter.change(position, removed, newtext)
 		
-		if self.exectrigger == 2 or self.exectrigger == 1 and '\n' in newtext:	
-			self.exectarget = max(self.exectarget, position+added)
+		if self.exectarget > position:
+			self.exectarget += added - removed
+		else:
+			self.exectarget = position + added
+		
+		if self.exectrigger == 2 or self.exectrigger == 1 and '\n' in newtext:
 			self.exectarget_changed.emit()
 			self.execute()
 		else:
@@ -357,32 +364,52 @@ class Main(QMainWindow):
 		self.exectarget = self.active_scriptview.editor.textCursor().position()
 		self.exectarget_changed.emit()
 		
-	def trytrick(self, location):
+	def trytrick(self, position):
 		''' search for a trick to enable in the current expression '''
+		name = self.objattext(position)
+		if not name:	return False
 		
-		return
+		node = self.interpreter.locations[name]
+		if isinstance(node, ast.Assign):	node = node.value
 		
-		line, column = location
-		try:	end = self.interpreter.findexpressionend(line, line+1)
-		except:	return
-		text = self.interpreter.text((line,0), end)
 		for trick in self.texttricks:
-			found = trick.format.search(text)
+			found = trick.match(self, node)
 			if found:
-				t = trick(self, found)
-				t.cursor = QTextCursor(self.script.findBlockByNumber(line))
-				t.cursor.movePosition(QTextCursor.NextCharacter, n=found.start())
-				t.cursor.movePosition(QTextCursor.NextCharacter, QTextCursor.KeepAnchor, n=found.end()-found.start())
-				self.scene['<TRICK>'] = self.activetrick = t
-				break
-		else:
-			self.activetrick = None
-			if '<TRICK>' in self.scene:
-				del self.scene['<TRICK>']
+				if name in self.scene:
+					del self.scene[name]
+				self.scene['<TRICK>'] = self.activetrick = found
+				self.updatescene(['<TRICK>'])
+				return True
+		
+		self.activetrick = None
+		if '<TRICK>' in self.scene:
+			del self.scene['<TRICK>']
 		self.syncviews(('<TRICK>',))
+		return False
 	
 	# declaration of tricks available
-	texttricks = [tricks.ControledAxis, tricks.ControledPoint]
+	texttricks = [tricks.ControledPoint]
+	
+	def edit(self, name):
+		from tricks import PointEditor, EditionError
+		obj = self.scene[name]
+		if isinstance(obj, vec3):	editor = PointEditor
+		elif isinstance(obj, Mesh):	editor = MeshEditor
+		else:	return
+		try:	
+			self.editors[name] = e = editor(self, name)
+			self.updatescene([name])
+		except EditionError as err:
+			print('unable to edit variable', name, ':', err)
+		else:
+			return e
+	
+	def finishedit(self, name):
+		if name in self.editors:
+			self.editors[name].finish()
+			del self.editors[name]
+			self.updatescene([name])
+		
 	
 	def select(self, sel, state=None):
 		''' change the selection state of the given key (scene key, sub ident) 
@@ -402,12 +429,12 @@ class Main(QMainWindow):
 				view.update()
 		
 		# move the cursor position
-		oldcursor = self.active_scriptview.editor.textCursor()
-		cursor = QTextCursor(oldcursor)
-		cursor.setPosition(self.interpreter.locations[sel[0]].position)
-		self.active_scriptview.editor.setTextCursor(cursor)
-		self.active_scriptview.editor.ensureCursorVisible()
-		self.active_scriptview.editor.setTextCursor(oldcursor)
+		#oldcursor = self.active_scriptview.editor.textCursor()
+		#cursor = QTextCursor(oldcursor)
+		#cursor.setPosition(self.interpreter.locations[sel[0]].position)
+		#self.active_scriptview.editor.setTextCursor(cursor)
+		#self.active_scriptview.editor.ensureCursorVisible()
+		#self.active_scriptview.editor.setTextCursor(oldcursor)
 		
 		# highlight zones
 		self.updatescript()
@@ -446,6 +473,7 @@ class Main(QMainWindow):
 								rdr.select(sub, False)
 					view.update()
 		self.selection.clear()
+		self.updatescript()
 		
 	# END
 	# BEGIN --- display system ---
@@ -490,8 +518,8 @@ class Main(QMainWindow):
 	
 	def cursorat(self, position):
 		''' notice the main that the cursur is at the given (line,column) '''
+		#if not self.trytrick(position):
 		self.showtemps(position)
-		self.trytrick(position)
 	
 	def updatescene(self, change=()):
 		''' update self.scene with the last execution results '''
@@ -513,6 +541,10 @@ class Main(QMainWindow):
 					temp = self.interpreter.current[name]
 					if zs <= ts and te <= ze and displayable(temp):
 						newscene[name] = temp
+		for hidden in self.hiddens:
+			if hidden in newscene:	del newscene[hidden]
+		
+		newscene.update(self.editors)
 		
 		# change the scene
 		update = {'<ANNOTATIONS>'}.union(change)
@@ -521,20 +553,24 @@ class Main(QMainWindow):
 		# update views
 		self.syncviews(update)
 	
-	def showtemps(self, position):
-		''' display temporary values for the given cursor location '''
-		zones = self.interpreter.locations
+	def objattext(self, position):
 		mscore = inf
 		mname = None
-		for name,interval in zones.items():
+		for name,interval in self.interpreter.locations.items():
 			start,end = astinterval(interval)
 			if start <= position and position <= end:
 				score = end-start
 				if score < mscore:
 					mscore = score
 					mname = name
-		if mname:
-			self.displayzones = [astinterval(zones[mname])]
+		if mname:	
+			return mname
+	
+	def showtemps(self, position):
+		''' display temporary values for the given cursor location '''
+		name = self.objattext(position)
+		if name:
+			self.displayzones = [astinterval(self.interpreter.locations[name])]
 		else:
 			self.displayzones = []
 		self.updatescene()

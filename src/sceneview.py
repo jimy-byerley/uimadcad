@@ -87,10 +87,25 @@ class SceneView(Scene):
 			return super().event(event)
 			
 	def objcontrol(self, rdri, subi, evt):
-		if evt.button() == Qt.LeftButton:
-			grp,rdr = self.stack[rdri]
-			if hasattr(rdr, 'select'):
+		''' overload the Scene method, to implement the edition behaviors '''
+		grp,rdr = self.stack[rdri]
+		
+		## an editor exists for this object
+		if grp in self.main.editors:
+			if evt.button() == Qt.LeftButton and evt.type() == QEvent.MouseButtonDblClick:
+				self.main.finishedit(grp)
+			else:
+				self.tool = rdr.control(self, grp, subi, evt)
+		
+		# the left button is the master key: used for selection on simple click and to start edition on other usage
+		elif evt.button() == Qt.LeftButton:
+			if evt.type() == QEvent.MouseButtonPress and hasattr(rdr, 'select'):
 				self.main.select((grp,subi))
+			elif evt.type() == QEvent.MouseButtonDblClick:
+				self.main.edit(grp)
+			else:
+				super().objcontrol(rdri, subi, evt)
+		# right button is used for the normal display purposes
 		else:
 			super().objcontrol(rdri, subi, evt)
 
