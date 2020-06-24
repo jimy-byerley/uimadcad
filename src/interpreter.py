@@ -134,8 +134,8 @@ class Interpreter:
 			def capture(node):
 				# capture the whole assignment (name included)
 				if isinstance(node, ast.Assign):
-					knownvars[node.targets[0].id] = node
 					astpropagate(node, descend)
+					knownvars[node.targets[0].id] = node
 				# capture expressions
 				elif isinstance(node, (ast.BoolOp, ast.BinOp, ast.Call, ast.Tuple, ast.List)):
 					# capture sub expressions only if there is no controlflow structure at our level
@@ -239,11 +239,11 @@ def astannotate(tree, text):
 			node.end_position = node.position + len(node.id)
 		elif isinstance(node, ast.Num):
 			i = node.position
-			while text[i].isalnum():	i+=1
+			while i < len(text) and text[i].isalnum():	i+=1
 			node.end_position = i
 		elif isinstance(node, ast.Attribute):
 			i = node.position+1
-			while text[i].isalnum():	i+=1
+			while i < len(text) and text[i].isalnum():	i+=1
 			node.end_position = i
 		
 		# generic retreival from the last child
