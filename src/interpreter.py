@@ -220,6 +220,7 @@ def astannotate(tree, text):
 			* end_position
 	'''	
 	# assigne a text position to each node
+	print(text)
 	currentloc = (1,0)
 	currentpos = 0
 	for node in ast.walk(tree):
@@ -228,6 +229,8 @@ def astannotate(tree, text):
 			node.position = advancepos(text, target, currentpos, currentloc)
 			currentloc = target
 			currentpos = node.position
+			
+			nprint(node.position, ast.dump(node))
 	
 	# find the end of each node
 	def recursive(node):
@@ -253,6 +256,8 @@ def astannotate(tree, text):
 			for child in ast.iter_child_nodes(node):
 				if hasattr(child, 'end_position'):
 					node.end_position = max(node.end_position, child.end_position)
+			
+			nprint(node.position, node.end_position, ast.dump(node))
 		
 		if isinstance(node, ast.Call):
 			node.end_position = text.find(')', node.end_position)+1
@@ -282,19 +287,14 @@ def advancepos(text, loc, startpos=0, startloc=(1,0), tab=1):
 	''' much like textpos but starts from a point (with startpos and startloc) and can advance forward or backward '''
 	i = startpos
 	l,c = startloc
-	if l != loc[0]:	
-		c = 0
 	while l < loc[0]:	
 		i = text.find('\n', i)+1
 		l += 1
 	while l > loc[0]:
-		i = max(0, text.rfind('\n', 0, i))
-		i = text.rfind('\n', 0, i)+1
+		i = text.rfind('\n', 0, i)
 		l -= 1
-	while c < loc[1]:
-		if text[i] == '\t':	c += tab
-		else:				c += 1
-		i += 1
+	i = text.rfind('\n', 0, i)+1
+	i += loc[1]
 	return i
 		
 	
