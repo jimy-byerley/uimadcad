@@ -1,7 +1,7 @@
 import os.path
 
 from PyQt5.QtCore import Qt, QEvent
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, 
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QShortcut,
 							QLabel, QPushButton, QAction, 
 							QDockWidget, QFileDialog,
 							)
@@ -148,11 +148,19 @@ class ToolAssist(QWidget):
 		self.visible = False
 		self._tool = QLabel()
 		self._info = QLabel()
+		
+		# configure labels
 		f = self._tool.font()
 		f.setPointSize(int(f.pointSize()*1.2))
 		self._tool.setFont(f)
-		cancel = QPushButton('cancel', shortcut=QKeySequence('Esc'))
+		# cancel shortcut
+		self.shortcut = QShortcut(QKeySequence('Escape'), main)
+		self.shortcut.activated.connect(self.cancel)
+		# cancel button
+		cancel = QPushButton('cancel')
 		cancel.clicked.connect(self.cancel)
+		
+		# ui layout
 		layout = QVBoxLayout()
 		layout.addWidget(self._tool)
 		layout.addWidget(self._info)
@@ -161,6 +169,7 @@ class ToolAssist(QWidget):
 		self.tool(None)
 		
 	def cancel(self):
+		''' cancel the current tool procedure '''
 		tool = self.main.active_sceneview.tool
 		if hasattr(tool, 'throw'):	tool.throw(ToolError('action canceled'))
 		self.main.active_sceneview.tool = None
@@ -168,6 +177,7 @@ class ToolAssist(QWidget):
 		self.info('no active tool')
 		
 	def tool(self, name):
+		''' set the current tool name, if set to None or an empty name, the assistant will be hidden '''
 		if name:	
 			self._tool.setText('<b>{}</b>'.format(name))
 			self.visible = True
@@ -176,10 +186,12 @@ class ToolAssist(QWidget):
 			self.visible = False
 		self.update_visibility()
 	def info(self, text):
+		''' set the info text about the current state of the tool procedure '''
 		if text:	text = '• '+text
 		self._info.setText(text)
 	
 	def update_visibility(self):
+		''' update the widget visibility (or its dock's if it's docked) '''
 		if self.visible:
 			if isinstance(self.parent(), QDockWidget):
 				self.parent().setVisible(True)
