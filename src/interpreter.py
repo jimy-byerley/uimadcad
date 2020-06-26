@@ -27,7 +27,8 @@ class Interpreter:
 	def change(self, position, oldsize, newcontent):
 		''' change a part of the text, invalidating all backups and AST statements after position '''
 		self.text = self.text[:position] + newcontent + self.text[position+oldsize:]
-		i = astatpos(self.ast, position)
+		# get the position in the AST (the position of the line beginning, because change occuring on an existing line can change its semantic)
+		i = astatpos(self.ast, self.text.rfind('\n', 0, position)+1)
 		if i < len(self.ast.body):
 			self.ast_end = self.ast.body[i].position
 			self.ast.body[i:] = []
