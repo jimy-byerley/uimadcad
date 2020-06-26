@@ -16,6 +16,7 @@ from PyQt5.QtGui import (
 		)
 
 from madcad.mathutils import vec3, fvec3, Box, boundingbox, inf, length
+from madcad.mesh import Mesh, Wire
 from madcad import displayable, isconstraint, isprimitive
 from madcad.annotations import annotations
 import madcad.settings
@@ -24,7 +25,9 @@ from common import *
 from interpreter import Interpreter, InterpreterError, astinterval
 from scriptview import ScriptView
 from sceneview import SceneView, SceneList
+from errorview import ErrorView
 from tricks import PointEditor, EditionError
+import tooling
 
 from copy import deepcopy, copy
 from nprint import nprint
@@ -33,7 +36,7 @@ import traceback
 import os
 
 
-version = '0.2'
+version = '0.3'
 
 
 class Main(QMainWindow):
@@ -58,6 +61,7 @@ class Main(QMainWindow):
 		self.script.contentsChange.connect(self._contentsChange)
 		self.interpreter = Interpreter()
 		self.scenelist = SceneList(self)
+		self.assist = tooling.ToolAssist(self)
 		self.forceddisplays = set()	# choix des variables a afficher
 		self.hiddens = set()
 		self.displayzones = []
@@ -67,7 +71,7 @@ class Main(QMainWindow):
 		self.views = []
 		self.active_sceneview = None
 		self.active_scriptview = None
-		self.activetrick = None
+		self.active_errorview = None
 		self.selection = set()
 		self.exectrigger = 1
 		self.exectarget = 0
@@ -82,6 +86,7 @@ class Main(QMainWindow):
 		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self), 'scene view'))
 		self.scenelistdock = dock(SceneList(self), 'forced variables display')
 		self.addDockWidget(Qt.LeftDockWidgetArea, self.scenelistdock)
+		self.addDockWidget(Qt.LeftDockWidgetArea, dock(self.assist, 'tool assist'))
 		#self.addDockWidget(Qt.BottomDockWidgetArea, dock(self.console, 'console'))
 		self.resizeDocks([self.scenelistdock], [0], Qt.Horizontal)	# Qt 5.10 hack to avoid issue of docks reseting their size after user set it
 		
@@ -175,16 +180,16 @@ class Main(QMainWindow):
 		menu.addAction(action)
 		menu.addAction('find +')
 		menu.addAction('replace +')
-		
-	def init_toolbars(self):
+	
+	def init_toolbars_(self):
 		tools = self.addToolBar('creation')
-		tools.addAction(QIcon.fromTheme('madcad-import'), 'import')
+		tools.addAction(QIcon.fromTheme('madcad-import'), 'import', 	lambda: tooling.tool_import(self))
 		tools.addAction('select')
 		tools.addAction(QIcon.fromTheme('madcad-solid'), 'solid')
 		tools.addAction(QIcon.fromTheme('madcad-meshing'), 'manual meshing')
-		tools.addAction(QIcon.fromTheme('madcad-point'), 'point')
-		tools.addAction(QIcon.fromTheme('madcad-segment'), 'segment')
-		tools.addAction(QIcon.fromTheme('madcad-arc'), 'arc')
+		tools.addAction(QIcon.fromTheme('madcad-point'), 'point', 		lambda: tooling.tool_point(self))
+		tools.addAction(QIcon.fromTheme('madcad-segment'), 'segment', 	lambda: tooling.tool_segment(self))
+		tools.addAction(QIcon.fromTheme('madcad-arc'), 'arc', 			lambda: tooling.tool_arcthrough(self))
 		tools.addAction(QIcon.fromTheme('madcad-spline'), 'spline')
 		
 		tools = self.addToolBar('mesh')
@@ -209,6 +214,9 @@ class Main(QMainWindow):
 		tools.addAction(QIcon.fromTheme('madcad-cst-pivot'), 'pivot')
 		tools.addAction(QIcon.fromTheme('madcad-cst-plane'), 'plane')
 		tools.addAction(QIcon.fromTheme('madcad-cst-track'), 'track')
+	
+	def init_toolbars(self):
+		tooling.init_toolbars(self)
 	
 	def new_sceneview(self):
 		''' open a new sceneview floating at the center of the main window '''
@@ -261,6 +269,7 @@ class Main(QMainWindow):
 			self.script.clear()
 			QTextCursor(self.script).insertText(open(filename, 'r').read())
 		
+		os.chdir(os.path.split(os.path.abspath(filename))[0])
 		self.update_title()
 		return True
 				
@@ -305,7 +314,6 @@ class Main(QMainWindow):
 	# BEGIN --- editing tools ----
 				
 	def _contentsChange(self, position, removed, added):
-		print('changed', position, removed, added)
 		# get the added text
 		cursor = QTextCursor(self.script)
 		cursor.setPosition(position+added)
@@ -342,8 +350,9 @@ class Main(QMainWindow):
 			res = self.interpreter.execute(self.exectarget, autobackup=True)
 		except InterpreterError as report:
 			err = report.args[0]
-			print(type(err).__name__, ':', err, err.__traceback__)
-			traceback.print_tb(err.__traceback__)
+			#print(type(err).__name__, ':', err, err.__traceback__)
+			#traceback.print_tb(err.__traceback__)
+			self.showerror(err)
 			self.execution_label('<p style="color:#ff5555">FAILED</p>')
 		else:
 			self.execution_label('<p style="color:#55ff22">COMPUTED</p>')
@@ -363,6 +372,16 @@ class Main(QMainWindow):
 		# place the exec target at the cursor location
 		self.exectarget = self.active_scriptview.editor.textCursor().position()
 		self.exectarget_changed.emit()
+	
+	def showerror(self, err):
+		view = self.active_errorview
+		if view and not view.keep:
+			view.set(err)
+		else:
+			self.active_errorview = ErrorView(self, err)
+			self.active_errorview.show()
+			self.views.append(self.active_errorview)
+		self.activateWindow()
 		
 	def edit(self, name):
 		obj = self.scene[name]
@@ -449,6 +468,26 @@ class Main(QMainWindow):
 					view.update()
 		self.selection.clear()
 		self.updatescript()
+	
+	def insertexpr(self, text):
+		cursor = self.active_scriptview.editor.textCursor()
+		cursor.setPosition(self.exectarget)
+		cursor.movePosition(QTextCursor.NextWord)
+		cursor.setKeepPositionOnInsert(False)
+		cursor.insertText(text)
+		self.exectarget = cursor.position()
+		if self.exectrigger:
+			self.execute()
+	def insertstmt(self, text):
+		cursor = self.active_scriptview.editor.textCursor()
+		cursor.setPosition(self.exectarget)
+		cursor.atBlockEnd()
+		cursor.setKeepPositionOnInsert(False)
+		cursor.insertText(text+'\n')
+		self.exectarget = cursor.position()
+		if self.exectrigger:
+			self.execute()
+		
 		
 	# END
 	# BEGIN --- display system ---
@@ -503,7 +542,7 @@ class Main(QMainWindow):
 		for name,obj in self.scene.items():
 			if not (isinstance(name, str) and name.isidentifier()):
 				newscene[name] = obj
-		# display objects that are requested by the user, or that are never used (lastly generated)
+		# display objects that are requested by the user, or that are never been used (lastly generated)
 		for name,obj in self.interpreter.current.items():
 			if displayable(obj) and (	name in self.forceddisplays 
 									or	name in self.neverused):
@@ -550,6 +589,19 @@ class Main(QMainWindow):
 			self.displayzones = []
 		self.updatescene()
 		self.updatescript()
+	
+	def addtemp(self, obj):	
+		''' add a variable to the scene, that will be removed at next execution
+			a new unused temp name is used and returned
+		'''
+		i = 0
+		while True:
+			name = 'temp{}'.format(i)
+			if name not in self.scene:	break
+			i += 1
+		self.interpreter.current[name] = obj
+		print('added')
+		return name
 	
 	def updatescript(self):
 		zonehighlight = QColor(40, 200, 240, 60)
