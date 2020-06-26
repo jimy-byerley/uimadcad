@@ -54,7 +54,7 @@ class Interpreter:
 		if target > self.ast_end:
 			part = self.text[self.ast_end:target]
 			try:
-				addition = ast.parse(part)
+				addition = ast.parse(part, self.persistent.__name__)
 			except SyntaxError as err:
 				raise InterpreterError(err)
 			astannotate(addition, part)
