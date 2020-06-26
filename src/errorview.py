@@ -1,6 +1,8 @@
 from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy, QCheckBox, QLabel, QPlainTextEdit
-from PyQt5.QtGui import QFont, QColor, QFontMetrics, QTextOption
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy, 
+							QCheckBox, QLabel, QPlainTextEdit,
+							)
+from PyQt5.QtGui import QColor, QPalette, QFont, QFontMetrics, QTextOption, QIcon
 import traceback
 from common import *
 
@@ -28,8 +30,9 @@ class ErrorView(QWidget):
 		
 		# configure the window (if this widget is)
 		self.setWindowFlags(Qt.WindowStaysOnTopHint)
-		self.setWindowOpacity(0.6)
+		self.setWindowOpacity(0.8)
 		self.resize(QSize(480,150) * self.font.pointSize()/7)
+		self.setWindowIcon(QIcon.fromTheme('dialog-warning'))
 		# configure the text options
 		self._text.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
 		self._text.setTextInteractionFlags(Qt.TextBrowserInteraction)
@@ -44,12 +47,28 @@ class ErrorView(QWidget):
 	
 	def set(self, error):
 		''' set the exception to display '''
-		# set texts
+		# set labels
 		self.setWindowTitle(type(error).__name__)
-		self._text.setPlainText(
-			''.join(traceback.TracebackException.from_exception(error).format())
-			)
-		self._label.setText('<b style="color:#ff5555">{}:</b> {}'.format(type(error).__name__, str(error)))
+		self._label.setText('<b style="color:#ff5555">{}:</b> {}'.format(
+								type(error).__name__, str(error)))
+		# set text
+		doc = self._text.document()
+		doc.clear()
+		cursor = QTextCursor(doc)
+		palette = self._text.palette()
+		fmt_traceback = charformat(font=self.font, foreground=palette.color(QPalette.Text))
+		fmt_code = charformat(font=self.font, foreground=mixcolors(
+						palette.color(QPalette.Text), 
+						palette.color(QPalette.Background),
+						0.5))
+		for line in traceback.TracebackException.from_exception(error).format():
+			if line.startswith('    '):
+				cursor.insertText(line, fmt_code)
+			else:
+				endline = line.find('\n')
+				cursor.insertText(line[:endline], fmt_traceback)
+				cursor.insertText(line[endline:], fmt_code)
+			
 		# scroll on the end of the error message (most of the time the most interesting part)
 		cursor = self._text.textCursor()
 		cursor.movePosition(QTextCursor.End)

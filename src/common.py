@@ -1,7 +1,7 @@
 ''' collection of helpers to deal with Qt
 '''
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QTextCharFormat, QTextCursor
+from PyQt5.QtGui import QTextCharFormat, QTextCursor, QColor
 from PyQt5.QtWidgets import QDockWidget, QTextEdit
 
 
@@ -15,6 +15,16 @@ def charformat(background=None, foreground=None, italic=None, overline=None, wei
 	if weight:					fmt.setFontWeight(weight)
 	if font:	fmt.setFont(font)
 	return fmt
+
+def mixcolors(a, b, x):
+	a = a.toRgb()
+	b = b.toRgb()
+	y = 1-x
+	return QColor(
+		a.red()*x + b.red()*y,
+		a.green()*x + b.green()*y,
+		a.blue()*x + b.blue()*y,
+		)
 
 
 def cursor_location(cursor):
