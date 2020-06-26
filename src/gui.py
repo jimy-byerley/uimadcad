@@ -97,6 +97,12 @@ class Main(QMainWindow):
 		cursor = QTextCursor(self.script)
 		cursor.insertText('from madcad import *\n\n')
 	
+	def closeEvent(self, evt):
+		# close all the subwindows
+		for view in self.views:
+			view.close()
+		evt.accept()
+	
 	def init_menus(self):
 		menu = self.menuBar().addMenu('File')
 		menu.addAction(QIcon.fromTheme('document-open'), 'open', self._open, QKeySequence('Ctrl+O'))
