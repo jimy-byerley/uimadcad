@@ -220,7 +220,6 @@ def astannotate(tree, text):
 			* end_position
 	'''	
 	# assigne a text position to each node
-	print(text)
 	currentloc = (1,0)
 	currentpos = 0
 	for node in ast.walk(tree):
@@ -229,8 +228,6 @@ def astannotate(tree, text):
 			node.position = advancepos(text, target, currentpos, currentloc)
 			currentloc = target
 			currentpos = node.position
-			
-			nprint(node.position, ast.dump(node))
 	
 	# find the end of each node
 	def recursive(node):
@@ -256,8 +253,6 @@ def astannotate(tree, text):
 			for child in ast.iter_child_nodes(node):
 				if hasattr(child, 'end_position'):
 					node.end_position = max(node.end_position, child.end_position)
-			
-			nprint(node.position, node.end_position, ast.dump(node))
 		
 		if isinstance(node, ast.Call):
 			node.end_position = text.find(')', node.end_position)+1
