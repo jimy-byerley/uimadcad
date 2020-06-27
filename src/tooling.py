@@ -1,7 +1,7 @@
 import os.path
 
 from PyQt5.QtCore import Qt, QEvent
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QShortcut,
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QSizePolicy, QShortcut,
 							QLabel, QPushButton, QAction, 
 							QDockWidget, QFileDialog,
 							)
@@ -9,63 +9,10 @@ from PyQt5.QtGui import QIcon, QKeySequence
 
 from madcad.mathutils import vec3
 
-"""
-def tool_point(self):
-	def placepoint(scene, evt):
-		c = (evt.x(), evt.y())
-		p = scene.ptat(c) or scene.ptfrom(c, scene.manipulator.center)
-		self.insertexpr(repr(p))
-		self.activeview.tool = None
-	self.activeview.tool = placepoint
 
-def tool_arcthrough(self, cursor):
-	def create(*args):
-		self.insertexpr('ArchThrough({}, {}, {})'.format(*args))
-		self.activeview.tool = None
-	args = self.toolrequest([
-				(vec3, 'start point'), 
-				(vec3, 'pass point'), 
-				(vec3, 'end point'),
-			], create)
-
-def toolrequest(self, args, usage):
-	match = [None] * len(args)
-	missing = []
-	for i,(req,comment) in enumerate(args):
-		for grp,sub in self.selection:
-			obj = self.scene[grp]
-			if isinstance(req, type) and isinstance(obj, req) or callable(req) and req(obj):
-				match[i] = grp
-				break
-		else:
-			missing.append((i, req, comment))
-	def complete():
-		for i,(req,comment) in missing:
-			if req == vec3:		build = tool_point
-			elif req == isaxis:	build = tool_axis
-			build()
-
-class ChainedTool:
-	__slots__ = 'index', 'chain'
-	def __init__(self, chain, finish=None):
-		''' chain is a list of successive callables to put in scene.tool '''
-		self.index = 0
-		self.chain = chain
-		if finish:	self.finish = finish
-	def __call__(self, scene, evt):
-		''' method put in scene.tool '''
-		self.chain[self.index](scene, evt)
-		if not scene.tool:
-			self.index += 1
-			if self.index > len(self.chain):
-				self.finish()
-			else:
-				scene.tool = self
-	def finish(self):
-		''' called after all the chain tools have been executed '''
-		pass
-"""
-
+class ToolError(Exception):
+	''' exception used to indicate an error in the usage of a Scene tool '''
+	pass
 
 def toolrequest(main, args):
 	match = [None] * len(args)	# matched objects
@@ -78,11 +25,19 @@ def toolrequest(main, args):
 			if grp in used:	continue
 			used.add(grp)
 			obj = main.scene[grp]
-			if isinstance(req, type) and isinstance(obj, req) or callable(req) and req(obj):
+			if isinstance(req, type):	ok = isinstance(obj, req)
+			elif callable(req):			ok = req(obj)
+			else:						ok = False
+			if ok:
 				match[i] = grp
 				break
 		else:
 			missing.append((i, req, comment))
+	
+	# check that the used objects dont rely on an object that is in the modified area of the script
+	for grp in match:
+		if grp and not islive(main, grp):
+			raise ToolError('cannot use variable {} moved in the script'.format(repr(grp)))
 	
 	# create successive missing objects (if they are sufficiently simple objects)
 	for i,req,comment in missing:
@@ -94,15 +49,21 @@ def toolrequest(main, args):
 			p = yield from createpoint(main)
 			match[i] = (o, normalize(p-o))
 		else:
-			raise ToolError('no routine to satisfy request for '+repr(req))
+			raise ToolError('missing {} ({})'.format(repr(req), comment))
 	
 	main.selection.clear()
 	return match
 
-class ToolError(Exception):
-	''' exception used to indicate an error in the usage of a Scene tool '''
-	pass
-		
+def islive(main, name):
+	''' return True if the variable using this name is in a text area that 
+		has never been modified since the last execution.
+		The AST informations and positions are then correct
+	'''
+	if name in main.interpreter.locations:
+		node = main.interpreter.locations[name]
+		return main.interpreter.ast_end >= node.end_position
+	return False
+
 
 def toolcapsule(main, name, procedure):
 	main.assist.tool(name)
@@ -110,7 +71,7 @@ def toolcapsule(main, name, procedure):
 	try:
 		yield from procedure(main)
 	except ToolError as err:
-		main.assist.info(str(err))
+		main.assist.info('<b style="color:#ff5555">{}</b>'.format(err))
 	else:
 		main.assist.tool('')
 		main.assist.info('')
@@ -150,6 +111,8 @@ class ToolAssist(QWidget):
 		self._info = QLabel()
 		
 		# configure labels
+		self._info.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Minimum))
+		self._tool.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed))
 		f = self._tool.font()
 		f.setPointSize(int(f.pointSize()*1.2))
 		self._tool.setFont(f)
@@ -281,8 +244,8 @@ def createpoint(main):
 	c = (evt.x(), evt.y())
 	scene = main.active_sceneview
 	p = scene.ptat(c) or scene.ptfrom(c, scene.manipulator.center)
-	main.addtemp(p)
-	return 'vec3({:.5g}, {:.5g}, {:.5g})'.format(*p)
+	main.syncviews([main.addtemp(p)])
+	return 'vec3({:.4g}, {:.4g}, {:.4g})'.format(*p)
 
 
 
@@ -298,3 +261,61 @@ toolButton->setMenu(menu);
 toolButton->setPopupMode(QToolButton::MenuButtonPopup);
 toolBar->addWidget(toolButton);
 '''
+
+
+"""
+def tool_point(self):
+	def placepoint(scene, evt):
+		c = (evt.x(), evt.y())
+		p = scene.ptat(c) or scene.ptfrom(c, scene.manipulator.center)
+		self.insertexpr(repr(p))
+		self.activeview.tool = None
+	self.activeview.tool = placepoint
+
+def tool_arcthrough(self, cursor):
+	def create(*args):
+		self.insertexpr('ArchThrough({}, {}, {})'.format(*args))
+		self.activeview.tool = None
+	args = self.toolrequest([
+				(vec3, 'start point'), 
+				(vec3, 'pass point'), 
+				(vec3, 'end point'),
+			], create)
+
+def toolrequest(self, args, usage):
+	match = [None] * len(args)
+	missing = []
+	for i,(req,comment) in enumerate(args):
+		for grp,sub in self.selection:
+			obj = self.scene[grp]
+			if isinstance(req, type) and isinstance(obj, req) or callable(req) and req(obj):
+				match[i] = grp
+				break
+		else:
+			missing.append((i, req, comment))
+	def complete():
+		for i,(req,comment) in missing:
+			if req == vec3:		build = tool_point
+			elif req == isaxis:	build = tool_axis
+			build()
+
+class ChainedTool:
+	__slots__ = 'index', 'chain'
+	def __init__(self, chain, finish=None):
+		''' chain is a list of successive callables to put in scene.tool '''
+		self.index = 0
+		self.chain = chain
+		if finish:	self.finish = finish
+	def __call__(self, scene, evt):
+		''' method put in scene.tool '''
+		self.chain[self.index](scene, evt)
+		if not scene.tool:
+			self.index += 1
+			if self.index > len(self.chain):
+				self.finish()
+			else:
+				scene.tool = self
+	def finish(self):
+		''' called after all the chain tools have been executed '''
+		pass
+"""
