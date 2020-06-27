@@ -356,8 +356,8 @@ class Main(QMainWindow):
 			res = self.interpreter.execute(self.exectarget, autobackup=True)
 		except InterpreterError as report:
 			err = report.args[0]
-			#print(type(err).__name__, ':', err, err.__traceback__)
 			#traceback.print_tb(err.__traceback__)
+			#print(type(err).__name__, ':', err, err.__traceback__)
 			self.showerror(err)
 			self.execution_label('<p style="color:#ff5555">FAILED</p>')
 		else:
@@ -475,9 +475,13 @@ class Main(QMainWindow):
 		self.selection.clear()
 		self.updatescript()
 	
-	def insertexpr(self, text):
+	def targetcursor(self):
 		cursor = self.active_scriptview.editor.textCursor()
 		cursor.setPosition(self.exectarget)
+		return cursor
+		
+	def insertexpr(self, text):
+		cursor = self.targetcursor()
 		cursor.movePosition(QTextCursor.NextWord)
 		cursor.setKeepPositionOnInsert(False)
 		cursor.insertText(text)
@@ -485,8 +489,7 @@ class Main(QMainWindow):
 		if self.exectrigger:
 			self.execute()
 	def insertstmt(self, text):
-		cursor = self.active_scriptview.editor.textCursor()
-		cursor.setPosition(self.exectarget)
+		cursor = self.targetcursor()
 		cursor.atBlockEnd()
 		cursor.setKeepPositionOnInsert(False)
 		cursor.insertText(text+'\n')
@@ -605,8 +608,7 @@ class Main(QMainWindow):
 			name = 'temp{}'.format(i)
 			if name not in self.scene:	break
 			i += 1
-		self.interpreter.current[name] = obj
-		print('added')
+		self.interpreter.current[name] = self.scene[name] = obj
 		return name
 	
 	def updatescript(self):
