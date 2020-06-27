@@ -56,7 +56,7 @@ class PointEditor(EditorNode):
 			raise EditionError("the current expression format can't be edited")
 	
 	def dump(self):
-		return 'vec3({:.5g}, {:.5g}, {:.5g})'.format(*self.point)
+		return 'vec3({:.4g}, {:.4g}, {:.4g})'.format(*self.point)
 	
 	def display(self, scene):
 		return self.Display(scene, self),
@@ -77,6 +77,7 @@ class PointEditor(EditorNode):
 				self.editor.apply()
 				scene.tool = None
 				if self.editor.main.exectrigger:
+					print('execute')
 					self.editor.main.execute()
 			return True
 
