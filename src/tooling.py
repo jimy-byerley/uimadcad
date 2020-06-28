@@ -1,13 +1,17 @@
-import os.path
-
 from PyQt5.QtCore import Qt, QEvent
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QSizePolicy, QShortcut,
 							QLabel, QPushButton, QAction, 
-							QDockWidget, QFileDialog,
+							QDockWidget, QFileDialog, QInputDialog
 							)
-from PyQt5.QtGui import QIcon, QKeySequence
+from PyQt5.QtGui import QIcon, QKeySequence, QTextCursor
+
+import os.path
+import ast
 
 from madcad.mathutils import vec3
+from madcad.primitives import isprimitive, Segment, Axis
+from madcad.mesh import Mesh, Wire, Web
+from interpreter import astatpos
 
 
 class ToolError(Exception):
@@ -34,10 +38,17 @@ def toolrequest(main, args):
 		else:
 			missing.append((i, req, comment))
 	
-	# check that the used objects dont rely on an object that is in the modified area of the script
-	for grp in match:
-		if grp and not islive(main, grp):
-			raise ToolError('cannot use variable {} moved in the script'.format(repr(grp)))
+	
+	for i,grp in enumerate(match):
+		if grp:
+			# check that the used objects dont rely on an object that is in the modified area of the script
+			if not islive(main, grp):
+				raise ToolError('cannot use variable {} moved in the script'.format(repr(grp)))
+			# create proper variables for temp objects reused
+			if istemp(main, grp):
+				newname = autoname(main, grp)
+				rename(main, grp, newname)
+				match[i] = newname
 	
 	# create successive missing objects (if they are sufficiently simple objects)
 	for i,req,comment in missing:
@@ -64,6 +75,79 @@ def islive(main, name):
 		return main.interpreter.ast_end >= node.end_position
 	return False
 
+def istemp(main, name):
+	node = main.interpreter.locations[name]
+	return not isinstance(node, ast.Assign)
+
+def rename(main, oldname, newname=None):
+	''' rename the object
+		if the object is a temporary value, its expression is moved into a new assignation statement
+		if the object is an existing variable, simply change the name the value is assigned to
+	'''
+	if not islive(main, oldname):
+		raise ToolError('cannot rename variable {} in a modified area'.format(repr(oldname)))
+	if not newname:
+		newname = QInputDialog.getText(main, 'choose variable name', 'new name:')[0]
+	if not newname:
+		raise ToolError('no new name entered')
+	
+	# change the name in selection
+	newsel = set()
+	for grp,sub in main.selection:
+		newsel.add((newname,sub) if grp == oldname else (grp,sub))
+	main.selection = newsel
+	# the names in the interpreter and in the scene will remain the old name until the script is reexecuted
+	
+	node = main.interpreter.locations[oldname]
+	if isinstance(node, ast.Assign):
+		cursor = QTextCursor(main.script)
+		zone = node.targets[0]
+		cursor.setPosition(zone.position)
+		cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
+		cursor.insertText(newname)
+	else:
+		stmt = main.interpreter.ast.body[astatpos(main.interpreter.ast, node.position)]
+		cursor = QTextCursor(main.script)
+		cursor.beginEditBlock()
+		if isinstance(stmt, ast.Expr) and stmt.position == node.position and stmt.end_position == node.end_position:
+			# just insert the assignation
+			cursor.setPosition(node.position)
+			cursor.insertText('{} = '.format(newname))
+		else:
+			# get and remove the expression
+			cursor.setPosition(node.position)
+			cursor.setPosition(node.end_position, QTextCursor.KeepAnchor)
+			expr = cursor.selectedText()	
+			cursor.insertText(newname)
+			# insert expression with assignation
+			cursor.setPosition(stmt.position)
+			cursor.insertText('{} = {}\n'.format(newname, expr))
+		cursor.endEditBlock()
+	
+def createpoint(main):
+	evt = yield
+	while evt.type() != QEvent.MouseButtonPress or evt.button() != Qt.LeftButton:
+		evt = yield None
+	c = (evt.x(), evt.y())
+	scene = main.active_sceneview
+	p = scene.ptat(c) or scene.ptfrom(c, scene.manipulator.center)
+	main.syncviews([main.addtemp(p)])
+	return 'vec3({:.4g}, {:.4g}, {:.4g})'.format(*p)
+	
+def autoname(main, oldname):
+	obj = main.interpreter.current[oldname]
+	if isinstance(obj, vec3):	basename = 'P'
+	elif isprimitive(obj):		basename = 'L'
+	elif isinstance(obj, Mesh):	basename = 'S'
+	elif isinstance(obj, Web):	basename = 'W'
+	elif isinstance(obj, Wire):	basename = 'C'
+	else:	basename = 'O'
+	i = 0
+	while True:
+		name = basename+str(i)
+		if name not in main.interpreter.current:	return name
+		i += 1
+	
 
 def toolcapsule(main, name, procedure):
 	main.assist.tool(name)
@@ -76,29 +160,6 @@ def toolcapsule(main, name, procedure):
 		main.assist.tool('')
 		main.assist.info('')
 	main.updatescene()
-
-def createtool(main, icon, name, procedure):
-	''' create a QAction for the main class, with the given generator procedure '''
-	def callback():
-		gen = toolcapsule(main, name, procedure)
-		try:	next(gen)
-		except StopIteration:	pass
-		else:
-			def tool(scene, evt):
-				try:	gen.send(evt)
-				except StopIteration:	
-					scene.tool = None
-					main.updatescene()
-			main.active_sceneview.tool = tool
-	action = QAction(QIcon.fromTheme(icon), name, main)
-	action.triggered.connect(callback)
-	return action
-
-def createaction(main, icon, name, procedure):
-	''' create a QAction for the main class, with a one-shot procedure '''
-	action = QAction(QIcon.fromTheme(icon), name, main)
-	action.triggered.connect(lambda: procedure(main))
-	return action
 
 
 class ToolAssist(QWidget):
@@ -173,21 +234,21 @@ class ToolAssist(QWidget):
 
 def init_toolbars(self):
 	tools = self.addToolBar('creation')
-	tools.addAction(createaction(self, 'madcad-import', 'import', tool_import))
+	tools.addAction(self.createaction('import', tool_import, 	'madcad-import'))
 	tools.addAction('select')
 	tools.addAction(QIcon.fromTheme('madcad-solid'), 'solid')
 	tools.addAction(QIcon.fromTheme('madcad-meshing'), 'manual meshing')
-	tools.addAction(createtool(self, 'madcad-point', 'point', 		tool_point))
-	tools.addAction(createtool(self, 'madcad-segment', 'segment', 	tool_segment))
-	tools.addAction(createtool(self, 'madcad-arc', 'arc', 			tool_arcthrough))
+	tools.addAction(self.createtool('point', tool_point,		'madcad-point'))
+	tools.addAction(self.createtool('segment', tool_segment,	'madcad-segment'))
+	tools.addAction(self.createtool('arc', tool_arcthrough,		'madcad-arc'))
 	tools.addAction(QIcon.fromTheme('madcad-spline'), 'spline')
 	
 	tools = self.addToolBar('mesh')
-	tools.addAction(QIcon.fromTheme('madcad-boolean'), 'boolean')
+	tools.addAction(self.createtool('boolean', tool_boolean, 'madcad-boolean'))
 	tools.addAction(QIcon.fromTheme('madcad-chamfer'), 'chamfer')
 	
 	tools = self.addToolBar('web')
-	tools.addAction(QIcon.fromTheme('madcad-extrusion'), 'extrusion')
+	tools.addAction(self.createtool('extrusion', tool_extrusion, 'madcad-extrusion'))
 	tools.addAction(QIcon.fromTheme('madcad-revolution'), 'revolution')
 	tools.addAction(QIcon.fromTheme('madcad-extrans'), 'screw')
 	tools.addAction(QIcon.fromTheme('madcad-junction'), 'join')
@@ -198,23 +259,29 @@ def init_toolbars(self):
 	tools.addAction('strip buffers')
 	
 	tools = self.addToolBar('constraints')
-	tools.addAction(QIcon.fromTheme('madcad-cst-distance'), 'distance')
-	tools.addAction(QIcon.fromTheme('madcad-cst-radius'), 'radius')
-	tools.addAction(QIcon.fromTheme('madcad-cst-angle'), 'angle')
+	tools.addAction(self.createtool('distance', tool_distance, 'madcad-cst-distance'))
+	tools.addAction(self.createtool('radius', tool_radius, 'madcad-cst-radius'))
+	tools.addAction(self.createtool('angle', tool_angle, 'madcad-cst-angle'))
 	tools.addAction(QIcon.fromTheme('madcad-cst-pivot'), 'pivot')
 	tools.addAction(QIcon.fromTheme('madcad-cst-plane'), 'plane')
 	tools.addAction(QIcon.fromTheme('madcad-cst-track'), 'track')
 
+def tool_rename(main):
+	if not main.selection:
+		raise ToolError('no object selected')
+	name,_ = next(iter(main.selection))
+	rename(main, name)
 
 def tool_import(self):
 	filename = QFileDialog.getOpenFileName(self, 'import file', 
 						os.curdir, 
 						'ply files (*.ply);;stl files (*.stl);;obj files (*.obj)',
 						)[0]
-	if filename:
-		objname = os.path.splitext(os.path.basename(filename))[0]
-		if not objname.isidentifier():	objname = 'imported'
-		self.insertstmt('{} = read({})'.format(objname, repr(filename)))
+	if not filename:
+		raise ToolError('no file selected')
+	objname = os.path.splitext(os.path.basename(filename))[0]
+	if not objname.isidentifier():	objname = 'imported'
+	self.insertstmt('{} = read({})'.format(objname, repr(filename)))
 
 def tool_point(main):
 	main.assist.tool('point')
@@ -237,15 +304,74 @@ def tool_arcthrough(main):
 			])
 	main.insertexpr('ArcThrough({}, {}, {})'.format(*args))
 
-def createpoint(main):
-	evt = yield
-	while evt.type() != QEvent.MouseButtonPress or evt.button() != Qt.LeftButton:
-		evt = yield None
-	c = (evt.x(), evt.y())
-	scene = main.active_sceneview
-	p = scene.ptat(c) or scene.ptfrom(c, scene.manipulator.center)
-	main.syncviews([main.addtemp(p)])
-	return 'vec3({:.4g}, {:.4g}, {:.4g})'.format(*p)
+def tool_boolean(main):
+	args = yield from toolrequest(main, [
+				(Mesh, 'first volume'),
+				(Mesh, 'second volume'),
+				])
+	main.insertexpr('difference({}, {})'.format(*args))
+	#main.assist.ui(BooleanChoice(args))
+"""
+class BooleanChoice(QWidget):
+	''' menu to select options for tool execution '''
+	def __init__(self, meshes):
+		self.meshes = meshes
+		choice = QComboBox(self)
+		choice.addItem('union')
+		choice.addItem('difference')
+		choice.addItem('intersection')
+		choice.addItem('exclusion')
+		choice.currentIndexChanged.connect(self.set)
+		finishbt = QPushButton('finish')
+		finishbt.activated.connect(self.finish)
+		layout = QHBoxLayout()
+		layout.addWidget(choice)
+		layout.addWidget(finishbt)
+		self.setLayout(layout)
+	def set(self, mode):
+		indev
+	def finish(self):
+		indev
+"""
+
+def tool_extrusion(main):
+	obj = yield from toolrequest(main, [
+				(lambda o: isinstance(o, (Web,Mesh)), 'first volume'),
+				])
+	displt = QInputDialog.getText(main, 'extrusion displacement', 'vector expression:')[0]
+	if not displt:
+		raise ToolError('no displacement entered')
+	main.insertexpr('extrusion({}, {})'.format(dplt, obj))
+
+def tool_distance(main):
+	args = yield from toolrequest(main, [
+				(vec3, 'start point'),
+				(vec3, 'end point'),
+				])
+	target = QInputDialog.getText(main, 'distance constraint', 'target distance:')[0]
+	if not target:
+		raise ToolError('no distance entered or invalid radius')
+	main.insertexpr('Distance({}, {}, {})'.format(*args, target))
+
+def tool_radius(main):
+	arc, = yield from toolrequest(main, [
+				(lambda o: isinstance(o, (ArcThrough, ArcCentered)), 'arc'),
+				])
+	target = QInputDialog.getText(main, 'radius constraint', 'target radius:')[0]
+	if not target:
+		raise ToolError('no radius entered')
+	main.insertexpr('Radius({}, {})'.format(arc, target))
+
+def tool_angle(main):
+	args = yield from toolrequest(main, [
+				(Segment, 'start segment (angle is oriented)'),
+				(Segment, 'second segment (angle is oriented)'),
+				])
+	target = QInputDialog.getText(main, 'angle constraint', 'target oriented angle:')[0]
+	if not target:
+		raise ToolError('no angle entered')
+	main.insertexpr('Angle({}, {}, {})'.format(*args, target))
+
 
 
 

@@ -124,14 +124,13 @@ class Main(QMainWindow):
 		menu.addAction('enable line +')
 		menu.addAction('disable line dependencies +')
 		menu.addSeparator()
-		menu.addAction('rename object +')
+		menu.addAction(self.createaction('rename object', tooling.tool_rename, shortcut=QKeySequence('F2')))
 		menu.addSeparator()
-		menu.addAction('deselect all', self._deselectall, QKeySequence('Ctrl+A'))
+		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', self._deselectall, QKeySequence('Ctrl+A'))
 		
 		menu = self.menuBar().addMenu('View')
 		menu.addAction('new 3D view', self.new_sceneview)
-		menu.addAction('freeze view content', 
-			lambda: self.active_sceneview.freeze())
+		menu.addAction('freeze view content', lambda: self.active_sceneview.freeze())
 		menu.addSeparator()
 		menu.addAction('new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
@@ -223,6 +222,39 @@ class Main(QMainWindow):
 	
 	def init_toolbars(self):
 		tooling.init_toolbars(self)
+		
+	def createtool(self, name, procedure, icon=None, shortcut=None):
+		''' create a QAction for the main class, with the given generator procedure '''
+		action = QAction(name, self)
+		if shortcut:	action.setShortcut(shortcut)
+		if icon:		action.setIcon(QIcon.fromTheme(icon))
+		def callback():
+			gen = tooling.toolcapsule(self, name, procedure)
+			try:	next(gen)
+			except StopIteration:	pass
+			else:
+				def tool(scene, evt):
+					try:	gen.send(evt)
+					except StopIteration:	
+						scene.tool = None
+						self.updatescene()
+				self.active_sceneview.tool = tool
+		action.triggered.connect(callback)
+		return action
+
+	def createaction(self, name, procedure, icon=None, shortcut=None):
+		''' create a QAction for the main class, with a one-shot procedure '''
+		action = QAction(name, self)
+		if shortcut:	action.setShortcut(shortcut)
+		if icon:		action.setIcon(QIcon.fromTheme(icon))
+		def callback():
+			try:				procedure(self)
+			except tooling.ToolError as err:	
+				self.assist.tool(name)
+				self.assist.info('<b style="color:#ff5555">{}</b>'.format(err))
+		action.triggered.connect(callback)
+		
+		return action
 	
 	def new_sceneview(self):
 		''' open a new sceneview floating at the center of the main window '''
@@ -367,6 +399,7 @@ class Main(QMainWindow):
 			self.neverused |= used
 			self.neverused -= reused
 			self.updatescene(used)
+			self.updatescript()
 			self.executed.emit()
 	
 	def reexecute(self):
@@ -626,7 +659,7 @@ class Main(QMainWindow):
 		
 		seen = set()
 		for selected,sub in self.selection:
-			if selected not in seen:
+			if selected not in seen and selected in self.interpreter.locations:
 				seen.add(selected)
 				zone = self.interpreter.locations[selected]
 				cursor.setPosition(zone.position)
