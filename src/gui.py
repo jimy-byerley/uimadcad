@@ -34,6 +34,7 @@ from nprint import nprint
 import ast
 import traceback
 import os
+import re
 
 
 version = '0.3'
@@ -238,6 +239,7 @@ class Main(QMainWindow):
 					except StopIteration:	
 						scene.tool = None
 						self.updatescene()
+					return True
 				self.active_sceneview.tool = tool
 		action.triggered.connect(callback)
 		return action
@@ -516,11 +518,19 @@ class Main(QMainWindow):
 	def insertexpr(self, text):
 		cursor = self.targetcursor()
 		cursor.movePosition(QTextCursor.NextWord)
+		cursor.movePosition(QTextCursor.PreviousWord, QTextCursor.KeepAnchor)
+		prev = cursor.selectedText()
+		
+		cursor.movePosition(QTextCursor.NextWord)
 		cursor.setKeepPositionOnInsert(False)
+
+		if not re.match(r'.*[,\n+\-\*/\=]\s*$', prev):
+			cursor.insertText('\n')
 		cursor.insertText(text)
 		self.exectarget = cursor.position()
 		if self.exectrigger:
 			self.execute()
+	
 	def insertstmt(self, text):
 		cursor = self.targetcursor()
 		cursor.atBlockEnd()
