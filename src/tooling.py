@@ -9,14 +9,31 @@ import os.path
 import ast
 
 from madcad.mathutils import vec3
-from madcad.primitives import isprimitive, Segment, Axis
+from madcad.primitives import *
 from madcad.mesh import Mesh, Wire, Web
 from interpreter import astatpos
 
 
+def race(*args):
+	if len(args) == 1 and hasattr(args[0], '__iter__'):
+		args = args[0]
+	while True:
+		obj = yield
+		for it in args:
+			try:
+				res = it.send(obj)
+			except StopIteration as err:
+				return err.value
+
 class ToolError(Exception):
 	''' exception used to indicate an error in the usage of a Scene tool '''
 	pass
+
+def satisfy(obj, req):
+	''' return True if obj satisfy the requirement req (type or funcion) '''
+	if isinstance(req, type):	return isinstance(obj, req)
+	elif callable(req):			return req(obj)
+	else:						return False
 
 def toolrequest(main, args):
 	match = [None] * len(args)	# matched objects
@@ -28,11 +45,7 @@ def toolrequest(main, args):
 		for grp,sub in main.selection:
 			if grp in used:	continue
 			used.add(grp)
-			obj = main.scene[grp]
-			if isinstance(req, type):	ok = isinstance(obj, req)
-			elif callable(req):			ok = req(obj)
-			else:						ok = False
-			if ok:
+			if satisfy(main.interpreter.current[grp], req):
 				match[i] = grp
 				break
 		else:
@@ -54,13 +67,39 @@ def toolrequest(main, args):
 	for i,req,comment in missing:
 		main.assist.info(comment)
 		if req == vec3:
-			match[i] = yield from createpoint(main)
-		elif req == isaxis:
-			o = yield from createpoint(main)
-			p = yield from createpoint(main)
-			match[i] = (o, normalize(p-o))
+			create = createpoint(main)
+		#elif req == isaxis:
+			#o = yield from createpoint(main)
+			#p = yield from createpoint(main)
+			#match[i] = (o, normalize(p-o))
 		else:
-			raise ToolError('missing {} ({})'.format(repr(req), comment))
+			raise ToolError('missing {}'.format(comment))
+	
+		# run a selection in concurrence with the creation
+		def select(main):
+			while True:
+				evt = yield
+				if not (evt.type() == QEvent.MouseButtonPress and evt.button() == Qt.LeftButton):
+					continue
+				pos = main.active_sceneview.objnear((evt.x(), evt.y()), 10)
+				if not pos:	
+					continue
+				grp,rdr,sub = main.active_sceneview.grpat(pos)
+				main.select((grp,sub), True)
+				if not satisfy(main.scene[grp], req):
+					continue
+				# create proper variables for temp objects reused
+				if istemp(main, grp):
+					newname = autoname(main, grp)
+					rename(main, grp, newname)
+					return newname
+				else:
+					return grp
+	
+		# get the first returned value from the selector or the creation
+		iterator = race(select(main), create)
+		next(iterator)
+		match[i] = yield from iterator
 	
 	main.selection.clear()
 	return match
@@ -76,6 +115,7 @@ def islive(main, name):
 	return False
 
 def istemp(main, name):
+	''' return whether a variable name belongs to a temporary object (an expression) or has been assigned '''
 	node = main.interpreter.locations[name]
 	return not isinstance(node, ast.Assign)
 
@@ -83,6 +123,11 @@ def rename(main, oldname, newname=None):
 	''' rename the object
 		if the object is a temporary value, its expression is moved into a new assignation statement
 		if the object is an existing variable, simply change the name the value is assigned to
+		
+		NOTE: 
+			the name in the interpreter and in the scene will remain the old name until the script is reexecuted
+			the script may be reexecuted during this function call, as the renaming can insert newlines
+			the name is changed in main.selection to get things right at the next execution
 	'''
 	if not islive(main, oldname):
 		raise ToolError('cannot rename variable {} in a modified area'.format(repr(oldname)))
@@ -96,23 +141,28 @@ def rename(main, oldname, newname=None):
 	for grp,sub in main.selection:
 		newsel.add((newname,sub) if grp == oldname else (grp,sub))
 	main.selection = newsel
-	# the names in the interpreter and in the scene will remain the old name until the script is reexecuted
 	
 	node = main.interpreter.locations[oldname]
+	# the renamed object already has a variable name
 	if isinstance(node, ast.Assign):
 		cursor = QTextCursor(main.script)
 		zone = node.targets[0]
 		cursor.setPosition(zone.position)
 		cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
 		cursor.insertText(newname)
+	
+	# the renamed object is a temporary variable
 	else:
 		stmt = main.interpreter.ast.body[astatpos(main.interpreter.ast, node.position)]
 		cursor = QTextCursor(main.script)
 		cursor.beginEditBlock()
+		
+		# the expression result is not used, just assign it
 		if isinstance(stmt, ast.Expr) and stmt.position == node.position and stmt.end_position == node.end_position:
 			# just insert the assignation
 			cursor.setPosition(node.position)
 			cursor.insertText('{} = '.format(newname))
+		# the expression result is used, move it and assign it
 		else:
 			# get and remove the expression
 			cursor.setPosition(node.position)
@@ -122,15 +172,16 @@ def rename(main, oldname, newname=None):
 			# insert expression with assignation
 			cursor.setPosition(stmt.position)
 			cursor.insertText('{} = {}\n'.format(newname, expr))
+		
 		cursor.endEditBlock()
 	
 def createpoint(main):
 	evt = yield
 	while evt.type() != QEvent.MouseButtonPress or evt.button() != Qt.LeftButton:
-		evt = yield None
+		evt = yield
 	c = (evt.x(), evt.y())
 	scene = main.active_sceneview
-	p = scene.ptat(c) or scene.ptfrom(c, scene.manipulator.center)
+	p = scene.ptfrom(c, scene.manipulator.center)
 	main.syncviews([main.addtemp(p)])
 	return 'vec3({:.4g}, {:.4g}, {:.4g})'.format(*p)
 	
@@ -355,7 +406,7 @@ def tool_distance(main):
 
 def tool_radius(main):
 	arc, = yield from toolrequest(main, [
-				(lambda o: isinstance(o, (ArcThrough, ArcCentered)), 'arc'),
+				(lambda o: isinstance(o, (ArcThrough, ArcCentered, Circle)), 'arc'),
 				])
 	target = QInputDialog.getText(main, 'radius constraint', 'target radius:')[0]
 	if not target:
