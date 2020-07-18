@@ -110,27 +110,22 @@ class SceneView(Scene):
 				if evt.button() == Qt.LeftButton and evt.type() == QEvent.MouseButtonDblClick:
 					self.main.finishedit(grp)
 					evt.accept()
-				
-		else:
-			print('not editor', evt.isAccepted())
-			# the events is submitted to the custom controls first
-			if hasattr(rdr, 'control'):
-				self.tool = rdr.control(self, rdri, subi, evt)
-			print('no control', evt.isAccepted())
-			if not evt.isAccepted():
-				if evt.button() == Qt.LeftButton:
-					print('left button')
-					if evt.type() == QEvent.MouseButtonRelease and hasattr(rdr, 'select'):
-						self.main.select((grp,subi))
-						evt.accept()
-						print('select')
-					elif evt.type() == QEvent.MouseButtonDblClick:
-						self.main.select((grp,subi))
-						self.main.edit(grp)
-						evt.accept()
-						print('edit')
-					else:
-						print('evt', evt.type(), hasattr(rdr, 'select'))
+					return
+		
+		# the events is submitted to the custom controls first
+		if hasattr(rdr, 'control'):
+			self.tool = rdr.control(self, rdri, subi, evt)
+			if evt.isAccepted():	
+				return
+		
+		if evt.button() == Qt.LeftButton:
+			if evt.type() == QEvent.MouseButtonRelease and hasattr(rdr, 'select'):
+				self.main.select((grp,subi))
+				evt.accept()
+			elif evt.type() == QEvent.MouseButtonDblClick:
+				self.main.select((grp,subi))
+				self.main.edit(grp)
+				evt.accept()
 
 
 class SceneList(QPlainTextEdit):

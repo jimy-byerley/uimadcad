@@ -763,11 +763,13 @@ from madcad.mathutils import inverse, quat, fmat4
 from madcad import SolveError
 from interpreter import astpropagate
 class SolidBox:
-	def __init__(self, solid, main):
+	def __init__(self, solid, main, **kwargs):
 		self.main = main
 		self.solid = solid
+		self.dispargs = kwargs
+	
 	def display(self, scene):
-		rdr = displays.BoxDisplay(scene, boundingbox(self.solid.visuals))
+		rdr = displays.BoxDisplay(scene, boundingbox(self.solid.visuals), **self.dispargs)
 		rdr.control = self.control
 		return rdr,
 	def control(self, scene, grp, subi, evt):
