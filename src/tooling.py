@@ -293,6 +293,8 @@ def init_toolbars(self):
 	tools.addAction(self.createtool('segment', tool_segment,	'madcad-segment'))
 	tools.addAction(self.createtool('arc', tool_arcthrough,		'madcad-arc'))
 	tools.addAction(QIcon.fromTheme('madcad-spline'), 'spline')
+	tools.addAction('text')
+	tools.addAction('image')
 	
 	tools = self.addToolBar('mesh')
 	tools.addAction(self.createtool('boolean', tool_boolean, 'madcad-boolean'))
