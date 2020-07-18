@@ -14,7 +14,7 @@ from PyQt5.QtGui import (
 		QPainter, QPainterPath,
 		)
 
-from madcad.mathutils import vec3, fvec3, Box, boundingbox, inf, length
+from madcad.mathutils import vec3, fvec3, fmat4, Box, boundingbox, inf, length
 from madcad.view import Scene
 import madcad.settings
 
@@ -63,6 +63,19 @@ class SceneView(Scene):
 					self.add(obj, key)
 			self.update()
 	
+	def applyposes(self):
+		for name,rdr in self.stack:
+			if hasattr(rdr, 'transform'):
+				solid = self.main.poses.get(name, self.main.active_solid)
+				if solid is not None:
+					rdr.transform = fmat4(solid.pose())
+	
+	def dequeue(self):
+		dequeued = bool(self.queue)
+		super().dequeue()
+		if dequeued:
+			self.applyposes()
+	
 	def closeEvent(self, event):
 		super().closeEvent(event)
 		# WARNING: due to some Qt bugs, a removed Scene can be closed multiple times, and the added scenes are never closed nor displayed
@@ -92,23 +105,32 @@ class SceneView(Scene):
 		
 		# an editor exists for this object
 		if grp in self.main.editors:
-			if evt.button() == Qt.LeftButton and evt.type() == QEvent.MouseButtonDblClick:
-				self.main.finishedit(grp)
-			else:
-				self.tool = rdr.control(self, grp, subi, evt)
-		
-		# the left button is the master key: used for selection on simple click and to start edition on other usage
-		elif evt.button() == Qt.LeftButton:
-			if evt.type() == QEvent.MouseButtonPress and hasattr(rdr, 'select'):
-				self.main.select((grp,subi))
-			elif evt.type() == QEvent.MouseButtonDblClick:
-				self.main.select((grp,subi))
-				self.main.edit(grp)
-			else:
-				super().objcontrol(rdri, subi, evt)
-		# right button is used for the normal display purposes
+			self.tool = rdr.control(self, grp, subi, evt)
+			if not evt.accepted():
+				if evt.button() == Qt.LeftButton and evt.type() == QEvent.MouseButtonDblClick:
+					self.main.finishedit(grp)
+					evt.accept()
+				
 		else:
-			super().objcontrol(rdri, subi, evt)
+			print('not editor', evt.isAccepted())
+			# the events is submitted to the custom controls first
+			if hasattr(rdr, 'control'):
+				self.tool = rdr.control(self, rdri, subi, evt)
+			print('no control', evt.isAccepted())
+			if not evt.isAccepted():
+				if evt.button() == Qt.LeftButton:
+					print('left button')
+					if evt.type() == QEvent.MouseButtonRelease and hasattr(rdr, 'select'):
+						self.main.select((grp,subi))
+						evt.accept()
+						print('select')
+					elif evt.type() == QEvent.MouseButtonDblClick:
+						self.main.select((grp,subi))
+						self.main.edit(grp)
+						evt.accept()
+						print('edit')
+					else:
+						print('evt', evt.type(), hasattr(rdr, 'select'))
 
 
 class SceneList(QPlainTextEdit):

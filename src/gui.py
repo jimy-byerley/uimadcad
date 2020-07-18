@@ -16,9 +16,9 @@ from PyQt5.QtGui import (
 		)
 
 from madcad.mathutils import vec3, fvec3, Box, boundingbox, inf, length
-from madcad.mesh import Mesh, Wire
-from madcad import displayable, isconstraint, isprimitive
+from madcad import Mesh, Wire, Solid, Kinematic, displayable, isconstraint, isprimitive
 from madcad.annotations import annotations
+from madcad import displays
 import madcad.settings
 
 from common import *
@@ -73,6 +73,8 @@ class Main(QMainWindow):
 		self.active_sceneview = None
 		self.active_scriptview = None
 		self.active_errorview = None
+		self.active_solid = None
+		self.poses = {}	# pose for each variable name
 		self.selection = set()
 		self.exectrigger = 1
 		self.exectarget = 0
@@ -105,7 +107,7 @@ class Main(QMainWindow):
 		evt.accept()
 	
 	def init_menus(self):
-		menu = self.menuBar().addMenu('File')
+		menu = self.menuBar().addMenu('&File')
 		menu.addAction(QIcon.fromTheme('document-open'), 'open', self._open, QKeySequence('Ctrl+O'))
 		menu.addAction(QIcon.fromTheme('document-save'), 'save', self._save, QKeySequence('Ctrl+S'))
 		menu.addAction(QIcon.fromTheme('document-save-as'), 'save as', self._save_as, QKeySequence('Ctrl+Shift+S'))
@@ -114,7 +116,7 @@ class Main(QMainWindow):
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('emblem-system'), 'settings +')
 		
-		menu = self.menuBar().addMenu('Edit')
+		menu = self.menuBar().addMenu('&Edit')
 		menu.addAction(QIcon.fromTheme('edit-undo'), 'undo', self.script.undo, QKeySequence('Ctrl+Z'))
 		menu.addAction(QIcon.fromTheme('edit-redo'), 'redo', self.script.redo, QKeySequence('Ctrl+Shift+Z'))
 		menu.addAction(QIcon.fromTheme('media-playback-start'), 'execute', self.execute, QKeySequence('Ctrl+Return'))
@@ -129,7 +131,7 @@ class Main(QMainWindow):
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', self._deselectall, QKeySequence('Ctrl+A'))
 		
-		menu = self.menuBar().addMenu('View')
+		menu = self.menuBar().addMenu('&View')
 		menu.addAction('new 3D view', self.new_sceneview)
 		menu.addAction('freeze view content', lambda: self.active_sceneview.freeze())
 		menu.addSeparator()
@@ -138,12 +140,15 @@ class Main(QMainWindow):
 		menu.addSeparator()
 		action = self.scenelistdock.toggleViewAction()
 		action.setShortcut(QKeySequence('Shift+D'))
+		menu.addAction('reset solids poses +')
 		menu.addAction(action)
 		menu.addSeparator()
+		menu.addAction('theme preset + >')
+		menu.addAction('layout preset + >')
 		menu.addAction('harvest toolbars on window side +')
 		menu.addAction('take floating toolbars to mouse +')
 		
-		menu = self.menuBar().addMenu('Scene')
+		menu = self.menuBar().addMenu('&Scene')
 		action = QAction('display points', self, checkable=True, shortcut=QKeySequence('Shift+P'))
 		action.setChecked(madcad.settings.scene['display_points'])
 		action.toggled.connect(self._display_points)
@@ -160,6 +165,8 @@ class Main(QMainWindow):
 		action.setChecked(madcad.settings.scene['display_faces'])
 		action.toggled.connect(self._display_faces)
 		menu.addAction(action)
+		action = QAction('display annotations +', self, checkable=True, shortcut=QKeySequence('Shift+T'))
+		menu.addAction(action)
 		menu.addSeparator()
 		menu.addAction('center on object', self._centerselection, shortcut=QKeySequence('Shift+C'))
 		menu.addAction('adapt to object', self._lookselection, shortcut=QKeySequence('Shift+A'))
@@ -174,7 +181,7 @@ class Main(QMainWindow):
 		menu.addAction('explode objects +')
 		
 		
-		menu = self.menuBar().addMenu('Script')
+		menu = self.menuBar().addMenu('Scrip&t')
 		action = QAction('show line numbers', self, checkable=True, shortcut=QKeySequence('F11'))
 		action.toggled.connect(self._show_line_numbers)
 		menu.addAction(action)
@@ -304,12 +311,12 @@ class Main(QMainWindow):
 			if box.exec() == QMessageBox.Discard:	return False
 			else:	extension = 'py'
 		
+		os.chdir(os.path.split(os.path.abspath(filename))[0])
 		self.currentfile = filename
 		if extension in ('py', 'txt'):
 			self.script.clear()
 			QTextCursor(self.script).insertText(open(filename, 'r').read())
 		
-		os.chdir(os.path.split(os.path.abspath(filename))[0])
 		self.update_title()
 		return True
 				
@@ -450,6 +457,13 @@ class Main(QMainWindow):
 		''' change the selection state of the given key (scene key, sub ident) 
 			register the change in self.selection, and update the scene views
 		'''
+		# set as active solid
+		obj = self.scene[sel[0]]
+		if isinstance(obj, SolidBox):
+			self.active_solid = obj.solid
+		if isinstance(obj, Solid):
+			self.active_solid = obj
+					
 		# set the selection state
 		if state is None:	state = sel not in self.selection
 		if state:	self.selection.add(sel)
@@ -591,9 +605,7 @@ class Main(QMainWindow):
 		''' update self.scene with the last execution results '''
 		# objects selection in env, and already present objs
 		newscene = {}
-		for name,obj in self.scene.items():
-			if not (isinstance(name, str) and name.isidentifier()):
-				newscene[name] = obj
+		
 		# display objects that are requested by the user, or that are never been used (lastly generated)
 		for name,obj in self.interpreter.current.items():
 			if displayable(obj) and (	name in self.forceddisplays 
@@ -607,9 +619,15 @@ class Main(QMainWindow):
 					temp = self.interpreter.current[name]
 					if zs <= ts and te <= ze and displayable(temp):
 						newscene[name] = temp
-		for hidden in self.hiddens:
-			if hidden in newscene:	del newscene[hidden]
+		# remove kinematics and change solids representants
+		for name,obj in newscene.items():
+			if isinstance(obj, Solid):
+				newscene[name] = SolidBox(obj, self)
+			elif isinstance(obj, Kinematic):
+				self.active_kinematic = obj
+				newscene[name] = None
 		
+		# add the editor displays
 		newscene.update(self.editors)
 		
 		# change the scene
@@ -617,6 +635,7 @@ class Main(QMainWindow):
 		self.scene = newscene
 		self.scene['<ANNOTATIONS>'] = list(annotations(self.scene))	# TODO: ne pas recalculer toutes les annotations
 		# update views
+		self.updateposes()
 		self.syncviews(update)
 	
 	def objattext(self, position):
@@ -685,10 +704,143 @@ class Main(QMainWindow):
 			if isinstance(view, ScriptView):
 				view.editor.setExtraSelections(extra)
 	
+	def applyposes(self):
+		for view in self.views:
+			if hasattr(view, 'applyposes'):
+				view.applyposes()
+	
+	def updateposes(self):
+		poses = {}	# {name: solid name}
+		
+		# get the objects directly attached to the solids
+		attached = {} # {id(var): solid name}
+		used = set()
+		for name,obj in self.interpreter.current.items():
+			if isinstance(obj, Solid):
+				for visu in obj.visuals:
+					attached[id(visu)] = name
+				poses[name] = name
+				# restore the former positions if there is
+				if name in self.poses:
+					obj.position = self.poses[name].position
+					obj.orientation = self.poses[name].orientation
+		# get the visuals present in the scope
+		for name,obj in self.interpreter.current.items():
+			if id(obj) in attached:
+				poses[name] = attached[id(obj)]
+				used.add(id(obj))
+		# display the visuals not present in the scope
+		visunames = []
+		for name,obj in self.interpreter.current.items():
+			if isinstance(obj, Solid):
+				remains = [visu   for visu in obj.visuals if id(visu) not in used]
+				visualsname = name+'.visuals'
+				visunames.append(visualsname)
+				self.scene[visualsname] = remains
+				poses[visualsname] = name
+		
+		# get the objects implicated by those directly attached
+		stack = list(poses.items())
+		while stack:
+			name, parent = stack.pop()
+			poses[name] = poses[parent]
+			def search(node):
+				if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+					stack.append((node.id, name))
+				else:
+					astpropagate(node, search)
+			if name in self.interpreter.locations:
+				search(self.interpreter.locations[name])
+		
+		# update poses
+		for name,solid in poses.items():
+			self.poses[name] = self.interpreter.current[solid]
+	
 	# END
 	
 
-		
+from madcad.mathutils import inverse, quat, fmat4
+from madcad import SolveError
+from interpreter import astpropagate
+class SolidBox:
+	def __init__(self, solid, main):
+		self.main = main
+		self.solid = solid
+	def display(self, scene):
+		rdr = displays.BoxDisplay(scene, boundingbox(self.solid.visuals))
+		rdr.control = self.control
+		return rdr,
+	def control(self, scene, grp, subi, evt):
+		gen = self.controler(scene)
+		next(gen)
+		def tool(scene, evt):
+			try:	gen.send(evt)
+			except StopIteration:	scene.tool = None
+		tool(scene, evt)
+		return tool
+	def controler(self, scene):		
+		# tool event loop
+		kin = self.main.active_kinematic
+		while True:
+			evt = yield True
+			if evt.type() in (QEvent.MouseButtonPress, QEvent.MouseButtonDblClick):
+				evt.accept()
+				
+				# get the solid and the click position
+				pos = scene.objnear((evt.x(), evt.y()))
+				if not pos:		break
+				key = scene.grpat(pos)[0]
+				if not key in self.main.poses:	continue
+				solid = self.main.poses[key]
+				
+				# setup the solid movement
+				startpt = scene.ptat(pos)
+				ptoffset = inverse(quat(solid.orientation)) * (solid.position - startpt)
+				moved = False
+				while True:
+					evt = yield True
+					
+					if evt.type() == QEvent.MouseMove and id(solid) not in kin.fixed:
+						evt.accept()
+						
+						# move solid
+						moved = True
+						pt = scene.ptfrom((evt.x(), evt.y()), startpt)
+						solid.position = pt + quat(solid.orientation)*ptoffset
+						try:	kin.solve(precision=1e-2, maxiter=50)
+						except SolveError:	pass
+						startpt = solid.position - quat(solid.orientation)*ptoffset
+						main.applyposes()
+					
+					#elif evt.type() == QEvent.MouseButtonRelease:
+					else:
+						if not moved:
+							boxname = 'fixed-{}'.format(id(solid))
+							# lock solid
+							if id(solid) in kin.fixed:		
+								kin.fixed.remove(id(solid))
+								self.main.scene[boxname] = None
+							else:
+								kin.fixed.add(id(solid))
+								box = boundingbox(solid.visuals)
+								m = min(box.width)
+								box.min -= 0.22*m
+								box.max += 0.22*m
+								self.main.poses[boxname] = solid
+								self.main.scene[boxname] = displays.Displayable(displays.BoxDisplay, box, color=fvec3(1, 1, 0))
+								# fvec3(0.6,0.6,0.6)
+							scene.sync(boxname)
+						
+						# finish movement on a better precision
+						try:	kin.solve(precision=1e-4, maxiter=1000)
+						except SolveError as err:	print(err)
+						main.applyposes()
+						scene.update()
+						break
+
+def store(dst, src):
+	for i in range(len(dst)):
+		dst[i] = src[i]
 
 
 		
