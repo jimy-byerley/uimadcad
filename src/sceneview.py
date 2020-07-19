@@ -16,8 +16,11 @@ from PyQt5.QtGui import (
 
 from madcad.mathutils import vec3, fvec3, fmat4, Box, boundingbox, inf, length
 from madcad.view import Scene
+from madcad.displays import SolidDisplay, WebDisplay
+from madcad.mesh import Mesh, Web, Wire
 import madcad.settings
 
+from detailview import DetailView
 from interpreter import Interpreter, InterpreterError, astinterval
 import tricks
 
@@ -126,6 +129,29 @@ class SceneView(Scene):
 				self.main.select((grp,subi))
 				self.main.edit(grp)
 				evt.accept()
+		
+		elif evt.button() == Qt.RightButton and evt.type() == QEvent.MouseButtonRelease:
+			obj = self.main.scene[grp]
+			if isinstance(obj, (Mesh,Web,Wire)) and isinstance(rdr, (SolidDisplay,WebDisplay)):
+				ident = (grp,subi)
+				self.main.select(ident, True)
+				self.showdetail(ident, evt.pos())
+		
+	
+	def showdetail(self, ident, position=None):
+		''' display a detail window for the ident given (grp,sub) '''
+		if ident in self.main.details:
+			detail = self.main.details[ident]
+		else:
+			detail = DetailView(self.main, ident)
+		
+		if position:
+			if position.x() < self.width()//2:	offsetx = -350
+			else:								offsetx = 50
+			detail.move(self.mapToGlobal(position) + QPoint(offsetx,0))
+		
+		detail.show()
+		detail.activateWindow()
 
 
 class SceneList(QPlainTextEdit):

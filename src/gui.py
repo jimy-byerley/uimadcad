@@ -26,6 +26,7 @@ from interpreter import Interpreter, InterpreterError, astinterval
 from scriptview import ScriptView
 from sceneview import SceneView, SceneList
 from errorview import ErrorView
+from detailview import DetailView
 from tricks import PointEditor, EditionError
 import tooling
 
@@ -37,7 +38,7 @@ import os
 import re
 
 
-version = '0.3'
+version = '0.4'
 
 
 class Main(QMainWindow):
@@ -69,16 +70,18 @@ class Main(QMainWindow):
 		self.neverused = set()
 		
 		self.scene = {}	# objets a afficher sur les View
+		self.poses = {}	# pose for each variable name
 		self.views = []
 		self.active_sceneview = None
 		self.active_scriptview = None
 		self.active_errorview = None
 		self.active_solid = None
-		self.poses = {}	# pose for each variable name
+		
 		self.selection = set()
 		self.exectrigger = 1
 		self.exectarget = 0
 		self.editors = {}
+		self.details = {}
 		
 		self.currentfile = None
 		self.currentexport = None
@@ -92,6 +95,10 @@ class Main(QMainWindow):
 		self.addDockWidget(Qt.LeftDockWidgetArea, dock(self.assist, 'tool assist'))
 		#self.addDockWidget(Qt.BottomDockWidgetArea, dock(self.console, 'console'))
 		self.resizeDocks([self.scenelistdock], [0], Qt.Horizontal)	# Qt 5.10 hack to avoid issue of docks reseting their size after user set it
+		
+		#self.details = DictView(self, 3, {'type': 'flat', 'precision':5.232311e-3, 'color':fvec3(0.1,0.2,0.3), 'comment':'this is a raw surface, TODO'})
+		#self.details.show()
+		#self.views.append(self.details)
 		
 		self.init_menus()
 		self.init_toolbars()
@@ -519,6 +526,10 @@ class Main(QMainWindow):
 		
 		# highlight zones
 		self.updatescript()
+		
+		# if deselect, close the matching details windows
+		if state is False and sel in self.details:
+			self.details[sel].dispose()
 	
 	def selectionbox(self):
 		''' return the bounding box of the selection '''
