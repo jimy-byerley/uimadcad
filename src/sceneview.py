@@ -100,13 +100,13 @@ class SceneView(Scene):
 			return super().event(event)
 			
 	def objcontrol(self, rdri, subi, evt):
-		''' overload the Scene method, to implement the edition behaviors '''
+		''' overwrite the Scene method, to implement the edition behaviors '''
 		grp,rdr = self.stack[rdri]
 		
 		# an editor exists for this object
 		if grp in self.main.editors:
 			self.tool = rdr.control(self, grp, subi, evt)
-			if not evt.accepted():
+			if not evt.isAccepted():
 				if evt.button() == Qt.LeftButton and evt.type() == QEvent.MouseButtonDblClick:
 					self.main.finishedit(grp)
 					evt.accept()
