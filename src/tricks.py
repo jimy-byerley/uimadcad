@@ -1,6 +1,6 @@
 from PyQt5.QtCore import QEvent
 from PyQt5.QtGui import QTextCursor
-from madcad.mathutils import vec3
+from madcad.mathutils import vec3, affineInverse
 import re, ast
 from madcad.displays import *
 from nprint import nprint
@@ -18,7 +18,7 @@ edit_text = 8
 class EditionError(Exception):	pass
 
 class EditorNode:
-	''' base class the simplify the implementation of editors based on a text node '''
+	''' base class the simplify the implementation of editors based on an AST node '''
 	def __init__(self, main, name):
 		self.main = main
 		self.name = name
@@ -65,21 +65,26 @@ class PointEditor(EditorNode):
 		def __init__(self, scene, editor):
 			super().__init__(scene, editor.point, color=edit_color)
 			self.editor = editor
+			self.transform = fmat4(editor.main.poses[editor.name].pose())
 		def control(self, scene, rdri, ident, evt):
-			self.startpt = vec3(self.editor.point)
-			return self.move
+			if evt.type() == QEvent.MouseButtonPress:
+				evt.accept()
+				self.startpt = fvec3(self.transform * fvec4(self.position,1))
+				return self.move
+		def select(self, idents, state=None):
+			pass
 		def move(self, scene, evt):
 			if evt.type() == QEvent.MouseMove:
-				store(self.editor.point, scene.ptfrom((evt.x(), evt.y()), self.startpt))
-				self.position = fvec3(self.editor.point)
+				evt.accept()
+				worldpt = fvec3(scene.ptfrom((evt.x(), evt.y()), self.startpt))
+				self.position = fvec3(affineInverse(self.transform) * fvec4(worldpt,1))
+				store(self.editor.point, vec3(self.position))
 				scene.update()
 			else:
 				self.editor.apply()
 				scene.tool = None
 				if self.editor.main.exectrigger:
-					print('execute')
 					self.editor.main.execute()
-			return True
 
 
 class MeshEditor(EditorNode):
