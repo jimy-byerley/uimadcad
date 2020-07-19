@@ -87,6 +87,7 @@ class Main(QMainWindow):
 		self.currentexport = None
 		
 		# insert components to docker
+		self.script.modificationChanged.connect(self.setWindowModified)
 		self.setDockNestingEnabled(True)
 		self.addDockWidget(Qt.LeftDockWidgetArea, dock(ScriptView(self), 'script view'))
 		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self), 'scene view'))
@@ -147,8 +148,8 @@ class Main(QMainWindow):
 		menu.addSeparator()
 		action = self.scenelistdock.toggleViewAction()
 		action.setShortcut(QKeySequence('Shift+D'))
-		menu.addAction('reset solids poses +')
 		menu.addAction(action)
+		menu.addAction('reset solids poses', self.reset_poses)
 		menu.addSeparator()
 		
 		themes = menu.addMenu('theme preset')
@@ -318,10 +319,16 @@ class Main(QMainWindow):
 	
 	def update_title(self):
 		if self.currentfile:
-			filename = self.currentfile[self.currentfile.rfind(os.sep)+1:]
-			self.setWindowTitle('{} - ̶-  madcad v{}'.format(filename, version))
+			#filename = self.currentfile[self.currentfile.rfind(os.sep)+1:]
+			#self.setWindowTitle('{} - ̶-  madcad v{}'.format(filename, version))
+			self.setWindowFilePath(self.currentfile)
 		else:
-			self.setWindowTitle('madcad v{}'.format(version))
+			#self.setWindowTitle('madcad v{}'.format(version))
+			self.setWindowFilePath('')
+		self.script.setModified(False)
+	
+	def reset_poses(self):
+		self.poses = {}
 	
 	# END
 	# BEGIN --- file management system ---
@@ -904,6 +911,7 @@ if __name__ == '__main__':
 	from PyQt5.QtWidgets import QApplication
 	QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
 	app = QApplication(sys.argv)
+	app.setApplicationDisplayName('madcad v{}'.format(version))
 	print(QStyleFactory.keys())
 	main = Main()
 		
