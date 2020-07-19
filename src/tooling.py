@@ -262,7 +262,7 @@ class ToolAssist(QWidget):
 		self.update_visibility()
 	def info(self, text):
 		''' set the info text about the current state of the tool procedure '''
-		if text:	text = '• '+text
+		if text and not text.startswith('•'):	text = '• '+text
 		self._info.setText(text)
 	
 	def update_visibility(self):
