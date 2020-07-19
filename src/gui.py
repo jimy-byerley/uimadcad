@@ -143,8 +143,19 @@ class Main(QMainWindow):
 		menu.addAction('reset solids poses +')
 		menu.addAction(action)
 		menu.addSeparator()
-		menu.addAction('theme preset + >')
-		menu.addAction('layout preset + >')
+		
+		themes = menu.addMenu('theme preset')
+		themes.addAction('blue +')
+		themes.addAction('orange +')
+		themes.addAction('grey +')
+		themes.addAction('white +')
+		themes.addAction('dark +')
+		
+		layouts = menu.addMenu('layout preset')
+		layouts.addAction('simple +')
+		layouts.addAction('side toolbar +')
+		layouts.addAction('multiview +')
+		
 		menu.addAction('harvest toolbars on window side +')
 		menu.addAction('take floating toolbars to mouse +')
 		
@@ -167,17 +178,29 @@ class Main(QMainWindow):
 		menu.addAction(action)
 		action = QAction('display annotations +', self, checkable=True, shortcut=QKeySequence('Shift+T'))
 		menu.addAction(action)
+		action = QAction('display grid +', self, checkable=True, shortcut=QKeySequence('Shift+G'))
+		menu.addAction(action)
 		menu.addSeparator()
 		menu.addAction('center on object', self._centerselection, shortcut=QKeySequence('Shift+C'))
 		menu.addAction('adapt to object', self._lookselection, shortcut=QKeySequence('Shift+A'))
 		menu.addSeparator()
-		menu.addAction('top +')
-		menu.addAction('bottom +')
-		menu.addAction('front +')
-		menu.addAction('back +')
-		menu.addAction('right +')
-		menu.addAction('left +')
+		
+		cameras = menu.addMenu("standard cameras")
+		cameras.addAction('-Z &top +')
+		cameras.addAction('+Z &bottom+')
+		cameras.addAction('-X &front +')
+		cameras.addAction('+X &back +')
+		cameras.addAction('-Y &right +')
+		cameras.addAction('+Y &left +')
+		
+		anims = menu.addMenu('camera animations')
+		anims.addAction('rotate &world +')
+		anims.addAction('rotate &local +')
+		anims.addAction('rotate &random +')
+		anims.addAction('cyclic &adapt +')
+		
 		menu.addSeparator()
+		
 		menu.addAction('explode objects +')
 		
 		
@@ -193,6 +216,15 @@ class Main(QMainWindow):
 		menu.addAction(action)
 		menu.addAction('find +')
 		menu.addAction('replace +')
+		
+		menu = self.menuBar().addMenu('&Graphic')
+		menu.addAction('display curve labels +')
+		menu.addAction('display curve points +')
+		menu.addAction('display axis ticks +')
+		menu.addAction('display grid +')
+		menu.addSeparator()
+		menu.addAction('adapt to curve +')
+		menu.addAction('zoom on zone +')
 	
 	def init_toolbars_(self):
 		tools = self.addToolBar('creation')
@@ -773,14 +805,18 @@ class SolidBox:
 		rdr.control = self.control
 		return rdr,
 	def control(self, scene, grp, subi, evt):
-		gen = self.controler(scene)
-		next(gen)
-		def tool(scene, evt):
-			try:	gen.send(evt)
-			except StopIteration:	scene.tool = None
-		tool(scene, evt)
-		return tool
+		if evt.type() in (QEvent.MouseButtonDblClick, QEvent.MouseMove):
+			evt.accept()
+			gen = self.controler(scene)
+			next(gen)
+			def tool(scene, evt):
+				try:	gen.send(evt)
+				except StopIteration:	scene.tool = None
+			return tool
 	def controler(self, scene):		
+		self.main.assist.tool('kinematic manipulation')
+		self.main.assist.info('• move any solid by one of its objects\n• click a solid to set/unset it fixed')
+			
 		# tool event loop
 		kin = self.main.active_kinematic
 		while True:
@@ -812,7 +848,7 @@ class SolidBox:
 						try:	kin.solve(precision=1e-2, maxiter=50)
 						except SolveError:	pass
 						startpt = solid.position - quat(solid.orientation)*ptoffset
-						main.applyposes()
+						self.main.applyposes()
 					
 					#elif evt.type() == QEvent.MouseButtonRelease:
 					else:
@@ -835,10 +871,14 @@ class SolidBox:
 						
 						# finish movement on a better precision
 						try:	kin.solve(precision=1e-4, maxiter=1000)
-						except SolveError as err:	print(err)
-						main.applyposes()
+						except SolveError as err:	
+							self.main.assist.info('<p style="color:#ff5555">{}</p>'.format(err))
+						else:
+							self.main.assist.info('successfully solved')
+						self.main.applyposes()
 						scene.update()
 						break
+		self.main.assist.tool('')
 
 def store(dst, src):
 	for i in range(len(dst)):
