@@ -22,11 +22,13 @@ class ErrorView(QWidget):
 		# ui layout
 		lower = QWidget()
 		layout = QHBoxLayout()
+		layout.setContentsMargins(0,0,0,0)
 		layout.addWidget(self._keepchk)
 		layout.addWidget(self._sourcebtn)
 		layout.addWidget(self._label)
 		lower.setLayout(layout)
 		layout = QVBoxLayout()
+		layout.setContentsMargins(0,0,0,0)
 		layout.addWidget(self._text)
 		layout.addWidget(lower)
 		self.setLayout(layout)
