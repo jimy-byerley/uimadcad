@@ -11,7 +11,7 @@ class InterpreterError(Exception):	pass
 class Interpreter:
 	''' script interpreter using caching '''
 	# TODO: make this class thread-safe
-	backupstep = 0.1
+	backupstep = 0.2
 
 	def __init__(self, text='', env=None, title='custom-interpreter'):
 		self.persistent = ModuleType(title)	# persistent datas (the global module used)
@@ -88,10 +88,9 @@ class Interpreter:
 				# autobackup
 				t = time()
 				if t - starttime > self.backupstep:
-					print('* backup time elasped, backing up', stmt.end_position)
 					self.backups[self.lastbackup(stmt.position)+1
 								:self.lastbackup(target)+1] = [(stmt.end_position, copyvars(env, locations.keys()))]
-					starttime = t
+					starttime = time()
 				
 		else:
 			code = compile(processed, self.persistent.__name__, 'exec')
