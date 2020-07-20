@@ -914,11 +914,10 @@ if __name__ == '__main__':
 	import sys
 	from PyQt5.QtCore import Qt, QCoreApplication
 	from PyQt5.QtWidgets import QApplication
+	
 	QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
 	app = QApplication(sys.argv)
 	app.setApplicationDisplayName('madcad v{}'.format(version))
-	print(QStyleFactory.keys())
 	main = Main()
-		
 	main.show()
 	sys.exit(app.exec())

@@ -70,6 +70,7 @@ class PointEditor(EditorNode):
 			if evt.type() == QEvent.MouseButtonPress:
 				evt.accept()
 				self.startpt = fvec3(self.transform * fvec4(self.position,1))
+				#self.startpt = vec3(self.position)
 				return self.move
 		def select(self, idents, state=None):
 			pass
@@ -79,6 +80,9 @@ class PointEditor(EditorNode):
 				worldpt = fvec3(scene.ptfrom((evt.x(), evt.y()), self.startpt))
 				self.position = fvec3(affineInverse(self.transform) * fvec4(worldpt,1))
 				store(self.editor.point, vec3(self.position))
+				#pt = scene.localptfrom((evt.x(), evt.y()), self.startpt)
+				#self.position = fvec3(pt)
+				#store(self.editor.point, pt)
 				scene.update()
 			else:
 				self.editor.apply()

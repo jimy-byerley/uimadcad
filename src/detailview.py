@@ -67,6 +67,7 @@ class DetailView(QWidget):
 		indev
 		
 	def sync(self, updated=None):
+		''' sync the displayed informations with the main scene '''
 		main = self.main
 		grp, sub = self.ident
 		# remove the current view if the referenced group doesn't exist
@@ -96,10 +97,12 @@ class DetailView(QWidget):
 				self.main.views.pop(i)
 	
 	def dispose(self):
+		''' close the detail window if it has not been pinned '''
 		if not self._btnpin.isChecked():
 			self.close()
 	
 	def info(self, infos):
+		''' set the displayed informations '''
 		cursor = QTextCursor(self._text.document())
 		if isinstance(infos, dict):
 			for key in sorted(list(infos)):
