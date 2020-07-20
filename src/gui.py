@@ -503,17 +503,22 @@ class Main(QMainWindow):
 		''' change the selection state of the given key (scene key, sub ident) 
 			register the change in self.selection, and update the scene views
 		'''
-		# set as active solid
-		obj = self.scene[sel[0]]
-		if isinstance(obj, SolidBox):
-			self.active_solid = obj.solid
-		if isinstance(obj, Solid):
-			self.active_solid = obj
-					
 		# set the selection state
 		if state is None:	state = sel not in self.selection
 		if state:	self.selection.add(sel)
 		else:		self.selection.discard(sel)
+		
+		# set as active solid
+		obj = self.scene[sel[0]]
+		if state:
+			if isinstance(obj, SolidBox):
+				self.active_solid = obj.solid
+				self.updateposes()
+				self.applyposes()
+			if isinstance(obj, Solid):
+				self.active_solid = obj
+				self.updateposes()
+				self.applyposes()
 		
 		# set the selection state for renderers
 		for view in self.views:
