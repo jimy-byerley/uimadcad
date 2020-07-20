@@ -43,7 +43,7 @@ def toolrequest(main, args):
 	# search the selection for the required objects
 	for i,(req,comment) in enumerate(args):
 		for grp,sub in main.selection:
-			if grp in used:	continue
+			if grp in used or grp not in main.interpreter.current:	continue
 			used.add(grp)
 			if satisfy(main.interpreter.current[grp], req):
 				match[i] = grp
@@ -181,7 +181,7 @@ def createpoint(main):
 		evt = yield
 	c = (evt.x(), evt.y())
 	scene = main.active_sceneview
-	p = scene.ptfrom(c, scene.manipulator.center)
+	p = scene.localptfrom(c, scene.manipulator.center)
 	main.syncviews([main.addtemp(p)])
 	return 'vec3({:.4g}, {:.4g}, {:.4g})'.format(*p)
 	
@@ -229,8 +229,9 @@ class ToolAssist(QWidget):
 		f.setPointSize(int(f.pointSize()*1.2))
 		self._tool.setFont(f)
 		# cancel shortcut
-		self.shortcut = QShortcut(QKeySequence('Escape'), main)
-		self.shortcut.activated.connect(self.cancel)
+		self.shortcut = QAction('cancel', self, shortcut=QKeySequence('Escape'))
+		self.shortcut.triggered.connect(self.cancel)
+		self.addAction(self.shortcut)
 		# cancel button
 		cancel = QPushButton('cancel')
 		cancel.clicked.connect(self.cancel)

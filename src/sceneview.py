@@ -14,7 +14,7 @@ from PyQt5.QtGui import (
 		QPainter, QPainterPath,
 		)
 
-from madcad.mathutils import vec3, fvec3, fmat4, Box, boundingbox, inf, length
+from madcad.mathutils import vec3, fvec3, fmat4, Box, boundingbox, inf, length, inverse
 from madcad.view import Scene
 from madcad.displays import SolidDisplay, WebDisplay
 from madcad.mesh import Mesh, Web, Wire
@@ -152,6 +152,20 @@ class SceneView(Scene):
 		
 		detail.show()
 		detail.activateWindow()
+	
+	def localptfrom(self, pos, center):
+		center = vec3(center)
+		solid = self.main.active_solid
+		if not solid:	return self.ptfrom(pos, center)
+		wcenter = solid.orientation * center + solid.position
+		wpt = self.ptfrom(pos, wcenter)
+		return inverse(solid.orientation) * (wpt - solid.position)
+	
+	def localptat(self, pos):
+		solid = self.main.active_solid
+		if not solid:	return self.ptat(pos)
+		wpt = self.ptat(pos)
+		return inverse(solid.orientation) * (wpt - solid.position)
 
 
 class SceneList(QPlainTextEdit):
