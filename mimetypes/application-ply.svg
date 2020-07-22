@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:osb="http://www.openswatchbook.org/uri/2009/osb"
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   version="1.0"
+   width="60"
+   height="60"
+   id="svg1"
+   style="display:inline"
+   sodipodi:docname="application-ply.svg"
+   inkscape:version="0.92.4 (5da689c313, 2019-01-14)">
+  <metadata
+     id="metadata2230">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="793"
+     inkscape:window-height="480"
+     id="namedview2228"
+     showgrid="false"
+     inkscape:zoom="3.9333333"
+     inkscape:cx="30"
+     inkscape:cy="30"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer11" />
+  <defs
+     id="defs3">
+    <linearGradient
+       id="linearGradient2261"
+       osb:paint="solid">
+      <stop
+         style="stop-color:#000000;stop-opacity:1;"
+         offset="0"
+         id="stop2259" />
+    </linearGradient>
+    <radialGradient
+       cx="76.764198"
+       cy="58.0625"
+       r="66.164497"
+       id="XMLID_27_"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(0.9397,0,0,0.9397,4.2153,4.1331)">
+      <stop
+         id="stop107"
+         style="stop-color:#ffffff;stop-opacity:1"
+         offset="0" />
+      <stop
+         id="stop109"
+         style="stop-color:#fdfdfc;stop-opacity:1"
+         offset="0.32780001" />
+      <stop
+         id="stop111"
+         style="stop-color:#f4f5f4;stop-opacity:1"
+         offset="0.6773591" />
+      <stop
+         id="stop113"
+         style="stop-color:#cacfd0;stop-opacity:1"
+         offset="1" />
+    </radialGradient>
+    <linearGradient
+       id="linearGradient39155">
+      <stop
+         id="stop39157"
+         style="stop-color:#ffffff;stop-opacity:1"
+         offset="0" />
+      <stop
+         id="stop39159"
+         style="stop-color:#dadada;stop-opacity:1"
+         offset="1" />
+    </linearGradient>
+    <linearGradient
+       id="linearGradient900">
+      <stop
+         id="stop901"
+         style="stop-color:#ff0000;stop-opacity:1"
+         offset="0" />
+      <stop
+         id="stop902"
+         style="stop-color:#000000;stop-opacity:1"
+         offset="1" />
+    </linearGradient>
+    <linearGradient
+       id="linearGradient903"
+       xlink:href="#linearGradient900" />
+    <linearGradient
+       id="linearGradient904"
+       xlink:href="#linearGradient900" />
+    <linearGradient
+       id="linearGradient905"
+       xlink:href="#linearGradient900" />
+    <linearGradient
+       id="linearGradient906"
+       xlink:href="#linearGradient900" />
+    <linearGradient
+       id="linearGradient907"
+       xlink:href="#linearGradient900" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient2261"
+       id="linearGradient2263"
+       x1="15.979167"
+       y1="32.244792"
+       x2="35.765625"
+       y2="32.244792"
+       gradientUnits="userSpaceOnUse" />
+  </defs>
+  <g
+     id="layer11"
+     style="display:inline">
+    <path
+       d="M 17.355703,2.6019305 L 12.883697,19.291689 C 17.305383,15.373292 23.440674,13.545334 29.577076,14.806386 L 17.355703,2.6019305 z M 44.624575,29.879287 C 45.207464,32.723312 45.163966,35.745312 44.361902,38.738655 C 43.558312,41.737696 42.091933,44.368521 40.159701,46.542428 L 56.845949,42.083744 L 44.624575,29.879287 z M 7.3846264,39.814502 L 2.9126198,56.504261 L 19.598867,52.045577 C 13.654052,50.069478 9.2547208,45.418776 7.3846264,39.814502 z"
+       id="path2466"
+       style="fill:#D3CDC5;fill-opacity:1;stroke:none;stroke-width:3;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;display:inline" />
+    <path
+       d="M 25.715442,9.2343672 C 12.191441,9.2343672 1.2154413,20.210366 1.2154413,33.734367 C 1.2154413,47.258368 12.191441,58.234368 25.715442,58.234367 C 39.239443,58.234367 50.215443,47.258368 50.215442,33.734367 C 50.215442,20.210366 39.239443,9.2343672 25.715442,9.2343672 z M 25.715442,11.234367 C 38.135442,11.234367 48.215442,21.314367 48.215442,33.734367 C 48.215442,46.154367 38.135442,56.234367 25.715442,56.234367 C 13.295442,56.234367 3.2154413,46.154367 3.2154413,33.734367 C 3.2154413,21.314367 13.295442,11.234367 25.715442,11.234367 z"
+       id="path2476"
+       style="opacity:1;fill:#D3CDC5;fill-opacity:1;stroke:none;stroke-width:2;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
+    <flowRoot
+       xml:space="preserve"
+       id="flowRoot2251"
+       style="font-style:normal;font-weight:normal;font-size:10.66666698px;line-height:125%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#d3cdc5;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;"
+       transform="matrix(1.3340754,0,0,1.5558141,-7.8806198,-16.778043)"><flowRegion
+         id="flowRegion2253"
+         style="fill-opacity:1;fill:#d3cdc5;"><rect
+           id="rect2255"
+           width="23.644068"
+           height="12.966102"
+           x="15"
+           y="26.694916"
+           style="fill-opacity:1;fill:#d3cdc5;" /></flowRegion><flowPara
+         id="flowPara2257"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-family:sans-serif;-inkscape-font-specification:'sans-serif Bold';fill-opacity:1;fill:#d3cdc5;">PLY</flowPara></flowRoot>  </g>
+</svg>

@@ -1,0 +1,3 @@
+#!/bin/sh
+export PYTHONPATH=$PYTHONPATH:$(dirname $(dirname $(realpath $0)))/share/uimadcad
+exec python3 -m uimadcad

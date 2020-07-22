@@ -1,0 +1,15 @@
+[Desktop Entry]
+Name=madcad
+Comment=Script based CAD software
+GenericName=Mechanical Advanced Computer Aided Design
+Icon=madcad
+Type=Application
+StartupNotify=true
+Terminal=false
+MimeType=application/madcad
+
+Path=/home/jimy/cad/uimadcad
+Exec=/usr/bin/python3 -m uimadcad
+
+Comment[fr_FR]=Logicel de CAO basé sur les scripts
+
