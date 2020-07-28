@@ -17,7 +17,7 @@ class Interpreter:
 		self.persistent = ModuleType(title)	# persistent datas (the global module used)
 		self.backups = [(0,env or {})]	# local variables used
 		self.text = text
-		self.ast = ast.Module(body=[])
+		self.ast = ast.Module(body=[], type_ignores=[])
 		self.ast_end = 0
 		
 		self.target = 0
@@ -70,14 +70,14 @@ class Interpreter:
 		part = ast.Module(body=self.ast.body[
 						 astatpos(self.ast, backpos)
 						:astatpos(self.ast, target)
-						])
+						], type_ignores=[])
 		processed, locations = self.process(part, backenv.keys())
 		
 		if autobackup:
 			env = copyvars(backenv, locations.keys())
 			starttime = time()
 			for stmt in processed.body:
-				code = compile(ast.Module(body=[stmt]), self.persistent.__name__, 'exec')
+				code = compile(ast.Module(body=[stmt], type_ignores=[]), self.persistent.__name__, 'exec')
 				
 				# execute the code
 				try:
@@ -135,7 +135,9 @@ class Interpreter:
 				# capture the whole assignment (name included)
 				if isinstance(node, ast.Assign):
 					astpropagate(node, descend)
-					knownvars[node.targets[0].id] = node
+					for target in node.targets:
+						if isinstance(target, ast.Name):
+							knownvars[target.id] = node
 				# capture expressions
 				elif isinstance(node, (ast.BoolOp, ast.BinOp, ast.Call, ast.Tuple, ast.List)):
 					# capture sub expressions only if there is no controlflow structure at our level
