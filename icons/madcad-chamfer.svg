@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with Inkscape (http://www.inkscape.org/) -->
-
 <svg
    xmlns:osb="http://www.openswatchbook.org/uri/2009/osb"
    xmlns:dc="http://purl.org/dc/elements/1.1/"
@@ -16,8 +14,13 @@
    viewBox="0 0 12.7 12.7"
    version="1.1"
    id="svg8"
-   inkscape:version="0.92.4 (5da689c313, 2019-01-14)"
+   inkscape:version="1.0.1 (1.0.1+r73)"
    sodipodi:docname="madcad-chamfer.svg">
+  <style
+     id="current-color-scheme">
+	  .ColorScheme-Text { color:#232629; }
+      .ColorScheme-Highlight { color:#93cee9; }
+  </style>
   <defs
      id="defs2">
     <linearGradient
@@ -211,36 +214,6 @@
        gradientTransform="translate(0.65956684,-0.5073591)" />
     <linearGradient
        inkscape:collect="always"
-       xlink:href="#main"
-       id="linearGradient1252"
-       x1="1.9781107"
-       y1="290.64395"
-       x2="10.637363"
-       y2="290.64395"
-       gradientUnits="userSpaceOnUse"
-       gradientTransform="translate(0.65956684,-0.5073591)" />
-    <linearGradient
-       inkscape:collect="always"
-       xlink:href="#user"
-       id="linearGradient1260"
-       x1="1.1669259"
-       y1="286.59912"
-       x2="3.0948906"
-       y2="286.59912"
-       gradientUnits="userSpaceOnUse"
-       gradientTransform="matrix(0.82340725,0,0,0.82340725,0.86565225,49.817573)" />
-    <linearGradient
-       inkscape:collect="always"
-       xlink:href="#user"
-       id="linearGradient1260-1"
-       x1="1.1669259"
-       y1="286.59912"
-       x2="3.0948906"
-       y2="286.59912"
-       gradientUnits="userSpaceOnUse"
-       gradientTransform="matrix(0.82340724,0,0,0.82340724,9.3565591,58.627604)" />
-    <linearGradient
-       inkscape:collect="always"
        xlink:href="#second"
        id="linearGradient867"
        x1="-3.1351018"
@@ -287,7 +260,7 @@
      borderopacity="1.0"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:zoom="5.2149125"
+     inkscape:zoom="2.7582555"
      inkscape:cx="29.443674"
      inkscape:cy="24.555372"
      inkscape:document-units="px"
@@ -296,12 +269,13 @@
      units="px"
      inkscape:window-width="891"
      inkscape:window-height="584"
-     inkscape:window-x="748"
-     inkscape:window-y="576"
+     inkscape:window-x="769"
+     inkscape:window-y="238"
      inkscape:window-maximized="0"
      borderlayer="false"
      inkscape:showpageshadow="false"
-     inkscape:snap-global="false">
+     inkscape:snap-global="false"
+     inkscape:document-rotation="0">
     <inkscape:grid
        type="xygrid"
        id="grid939" />
@@ -330,25 +304,28 @@
        inkscape:connector-curvature="0"
        sodipodi:nodetypes="ccc" />
     <path
-       style="fill:none;stroke:url(#linearGradient1252);stroke-width:0.66145831;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       style="fill:none;stroke:currentColor;stroke-width:0.66145831;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
        d="m 2.6382673,285.83808 c 5.0919324,-0.0227 8.6392777,3.30487 8.5236327,8.72658"
        id="path1246"
        inkscape:connector-curvature="0"
-       sodipodi:nodetypes="cc" />
+       sodipodi:nodetypes="cc"
+       class="ColorScheme-Text" />
     <rect
-       style="fill:url(#linearGradient1260);fill-opacity:1;stroke:none;stroke-width:0.32678977;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.32678977;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
        id="rect1254"
        width="1.5875"
        height="1.5875"
        x="1.8265076"
-       y="285.0116" />
+       y="285.0116"
+       class="ColorScheme-Highlight" />
     <rect
-       style="fill:url(#linearGradient1260-1);fill-opacity:1;stroke:none;stroke-width:0.3267898;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.3267898;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
        id="rect1254-4"
        width="1.5875"
        height="1.5875"
        x="10.317414"
-       y="293.82166" />
+       y="293.82166"
+       class="ColorScheme-Highlight" />
     <path
        style="fill:none;stroke:url(#linearGradient867);stroke-width:0.26458332;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
        d="m 4.8199114,286.34544 -7.6103863,7.2045"

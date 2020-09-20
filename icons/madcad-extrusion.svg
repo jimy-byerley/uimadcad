@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with Inkscape (http://www.inkscape.org/) -->
-
 <svg
    xmlns:osb="http://www.openswatchbook.org/uri/2009/osb"
    xmlns:dc="http://purl.org/dc/elements/1.1/"
@@ -16,8 +14,12 @@
    viewBox="0 0 12.7 12.7"
    version="1.1"
    id="svg8"
-   inkscape:version="0.92.4 (5da689c313, 2019-01-14)"
+   inkscape:version="1.0.1 (1.0.1+r73)"
    sodipodi:docname="madcad-extrusion.svg">
+  <style
+     id="current-color-scheme">
+	  .ColorScheme-Text { color:#232629; }
+      .ColorScheme-Highlight { color:#93cee9; }</style>
   <defs
      id="defs2">
     <linearGradient
@@ -241,35 +243,6 @@
        y2="290.12527"
        gradientUnits="userSpaceOnUse"
        gradientTransform="translate(0.30441546,0.40588728)" />
-    <linearGradient
-       inkscape:collect="always"
-       xlink:href="#main"
-       id="linearGradient1736"
-       x1="-0.11075733"
-       y1="290.54453"
-       x2="0.56898737"
-       y2="290.54453"
-       gradientUnits="userSpaceOnUse" />
-    <linearGradient
-       inkscape:collect="always"
-       xlink:href="#user"
-       id="linearGradient1746"
-       x1="8.484148"
-       y1="290.59534"
-       x2="9.8108101"
-       y2="290.59534"
-       gradientUnits="userSpaceOnUse"
-       gradientTransform="translate(1.2735875,-0.03587571)" />
-    <linearGradient
-       inkscape:collect="always"
-       xlink:href="#user"
-       id="linearGradient1752"
-       x1="4.6817794"
-       y1="290.57822"
-       x2="10.673023"
-       y2="290.57822"
-       gradientUnits="userSpaceOnUse"
-       gradientTransform="matrix(1.4011976,0,0,1,-4.281991,0)" />
   </defs>
   <sodipodi:namedview
      id="base"
@@ -278,21 +251,22 @@
      borderopacity="1.0"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:zoom="7.375"
-     inkscape:cx="26.3784"
-     inkscape:cy="22.832808"
+     inkscape:zoom="7.1387724"
+     inkscape:cx="24.210512"
+     inkscape:cy="28.083283"
      inkscape:document-units="px"
-     inkscape:current-layer="layer1"
+     inkscape:current-layer="g890"
      showgrid="false"
      units="px"
      inkscape:window-width="891"
-     inkscape:window-height="584"
-     inkscape:window-x="60"
-     inkscape:window-y="707"
+     inkscape:window-height="568"
+     inkscape:window-x="616"
+     inkscape:window-y="395"
      inkscape:window-maximized="0"
      borderlayer="false"
      inkscape:showpageshadow="false"
-     inkscape:snap-global="false">
+     inkscape:snap-global="false"
+     inkscape:document-rotation="0">
     <inkscape:grid
        type="xygrid"
        id="grid939" />
@@ -323,21 +297,27 @@
        y="286.04102"
        ry="0" />
     <path
-       style="fill:none;stroke:url(#linearGradient1736);stroke-width:0.5291667;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 0.40588728,285.68226 v 9.69777"
+       style="fill:none;stroke:currentColor;stroke-width:0.760798;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 0.40588728,286.09456 v 8.90928"
        id="path1730"
        inkscape:connector-curvature="0"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:none;stroke:url(#linearGradient1752);stroke-width:0.78298271;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 2.2781073,290.57823 h 8.3949157 v 0 0 0"
-       id="path1738"
-       inkscape:connector-curvature="0" />
-    <path
-       style="fill:none;stroke:url(#linearGradient1746);stroke-width:0.26458332;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 9.8478814,289.60958 1.0403956,0.93277 -1.0403956,0.96864"
-       id="path1740"
-       inkscape:connector-curvature="0"
-       sodipodi:nodetypes="ccc" />
+       sodipodi:nodetypes="cc"
+       class="ColorScheme-Text" />
+    <g
+       id="g890"
+       style="stroke:currentColor;stroke-opacity:1"
+       class="ColorScheme-Highlight">
+      <path
+         style="fill:none;stroke-width:0.79375;stroke-miterlimit:4;stroke-dasharray:none"
+         d="m 2.2781073,290.57823 h 8.3949157 v 0 0 0"
+         id="path1738"
+         inkscape:connector-curvature="0" />
+      <path
+         style="fill:none;stroke-width:0.52916667;stroke-miterlimit:4;stroke-dasharray:none"
+         d="m 9.8478814,289.60958 1.0403956,0.93277 -1.0403956,0.96864"
+         id="path1740"
+         inkscape:connector-curvature="0"
+         sodipodi:nodetypes="ccc" />
+    </g>
   </g>
 </svg>
