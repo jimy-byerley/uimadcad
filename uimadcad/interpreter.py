@@ -2,7 +2,7 @@ import ast
 from types import ModuleType
 from copy import copy, deepcopy
 from time import time
-from madcad.mathutils import dichotomy_index
+from madcad.mathutils import bisect
 from nprint import nprint
 
 
@@ -41,7 +41,7 @@ class Interpreter:
 		
 	def lastbackup(self, position):
 		''' get the index of the last env backup before position '''
-		i = dichotomy_index(self.backups, position, key=lambda backup: backup[0])
+		i = bisect(self.backups, position, key=lambda backup: backup[0])
 		if i == len(self.backups) or self.backups[i][0] > position:	i -= 1
 		return i
 	
