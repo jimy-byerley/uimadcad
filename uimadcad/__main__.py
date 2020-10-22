@@ -3,10 +3,10 @@ if __name__ == '__main__':
 	from .gui import *
 
 	import sys
-	from PyQt5.QtCore import Qt, QCoreApplication
+	from PyQt5.QtCore import Qt
 	from PyQt5.QtWidgets import QApplication
 	
-	QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
+	QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
 	app = QApplication(sys.argv)
 	app.setApplicationName('madcad')
 	app.setApplicationVersion(version)
