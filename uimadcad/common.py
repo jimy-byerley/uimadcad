@@ -47,12 +47,12 @@ def extraselection(cursor, format):
 	return o
 		
 
-def dock(widget, title, closable=True):
+def dock(widget, title, closable=True, floatable=True):
 	''' create a QDockWidget '''
 	dock = QDockWidget(title)
 	dock.setWidget(widget)
 	dock.setFeatures(	QDockWidget.DockWidgetMovable
-					|	QDockWidget.DockWidgetFloatable
+					|	(QDockWidget.DockWidgetFloatable if floatable else 0)
 					|	(QDockWidget.DockWidgetClosable if closable else 0)
 					)
 	dock.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)

@@ -14,6 +14,7 @@ fi
 
 # desktop implantation
 install madcad.desktop $prefix/share/applications/
+install -d $prefix/share/icons/hicolor/scalable/apps
 install icons/*.svg $prefix/share/icons/hicolor/scalable/apps/
 install -d $prefix/share/icons/hicolor/scalable/mimetypes
 install mimetypes/*.svg $prefix/share/icons/hicolor/scalable/mimetypes/
