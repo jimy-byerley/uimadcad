@@ -103,10 +103,12 @@ class ScriptView(QWidget):
 		
 	def changeEvent(self, event):
 		# detect QDockWidget integration
-		if event.type() == event.ParentChange and isinstance(self.parent(), QDockWidget):
-			self.parent().setTitleBarWidget(self.statusbar)
-		else:
-			self.layout().addWidget(self.statusbar)
+		if event.type() == event.ParentChange:
+			if isinstance(self.parent(), QDockWidget):
+				self.parent().setTitleBarWidget(self.statusbar)
+				self.layout().removeWidget(self.statusbar)
+			else:
+				self.layout().addWidget(self.statusbar)
 		return super().changeEvent(event)
 	
 	def closeEvent(self, event):
