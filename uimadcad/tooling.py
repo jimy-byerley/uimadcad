@@ -288,7 +288,6 @@ class ToolAssist(QWidget):
 def init_toolbars(self):
 	tools = self.addToolBar('creation')
 	tools.addAction(self.createaction('import', tool_import, 	'madcad-import'))
-	tools.addAction('select')
 	tools.addAction(QIcon.fromTheme('madcad-solid'), 'solid')
 	tools.addAction(QIcon.fromTheme('madcad-meshing'), 'manual meshing')
 	tools.addAction(self.createtool('point', tool_point,		'madcad-point'))
@@ -310,8 +309,8 @@ def init_toolbars(self):
 	tools.addAction(QIcon.fromTheme('madcad-triangulation'), 'surface')
 	
 	tools = self.addToolBar('amelioration')
-	tools.addAction('merge closes')
-	tools.addAction('strip buffers')
+	tools.addAction(QIcon.fromTheme('madcad-mergeclose'), 'merge closes')
+	tools.addAction(QIcon.fromTheme('madcad-stripbuffer'), 'strip buffers')
 	
 	tools = self.addToolBar('constraints')
 	tools.addAction(self.createtool('distance', tool_distance, 'madcad-cst-distance'))

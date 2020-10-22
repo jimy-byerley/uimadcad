@@ -19,6 +19,7 @@ from madcad.mathutils import vec3, fvec3, Box, boundingbox, inf, length
 from madcad import Mesh, Wire, Solid, Kinematic, displayable, isconstraint, isprimitive
 from madcad.annotations import annotations
 from madcad import displays
+from madcad.rendering import Display, Scene
 import madcad.settings
 
 from .common import *
@@ -38,7 +39,7 @@ import os
 import re
 
 
-version = '0.4'
+version = '0.5'
 
 
 class Main(QMainWindow):
@@ -56,7 +57,7 @@ class Main(QMainWindow):
 		self.setWindowRole('madcad')
 		self.setWindowIcon(QIcon.fromTheme('madcad'))
 		self.setMinimumSize(500,300)
-				
+		
 		# main components
 		self.script = QTextDocument(self)
 		self.script.setDocumentLayout(QPlainTextDocumentLayout(self.script))
@@ -69,8 +70,7 @@ class Main(QMainWindow):
 		self.displayzones = []
 		self.neverused = set()
 		
-		self.scene = {}	# objets a afficher sur les View
-		self.poses = {}	# pose for each variable name
+		self.scenes = [Scene()]	# objets a afficher sur les View
 		self.views = []
 		self.active_sceneview = None
 		self.active_scriptview = None
@@ -91,11 +91,11 @@ class Main(QMainWindow):
 		self.setDockNestingEnabled(True)
 		self.addDockWidget(Qt.LeftDockWidgetArea, dock(ScriptView(self), 'script view'))
 		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self), 'scene view'))
-		self.scenelistdock = dock(SceneList(self), 'forced variables display')
-		self.addDockWidget(Qt.LeftDockWidgetArea, self.scenelistdock)
+		#self.scenelistdock = dock(SceneList(self), 'forced variables display')
+		#self.addDockWidget(Qt.LeftDockWidgetArea, self.scenelistdock)
 		self.addDockWidget(Qt.LeftDockWidgetArea, dock(self.assist, 'tool assist'))
 		#self.addDockWidget(Qt.BottomDockWidgetArea, dock(self.console, 'console'))
-		self.resizeDocks([self.scenelistdock], [0], Qt.Horizontal)	# Qt 5.10 hack to avoid issue of docks reseting their size after user set it
+		#self.resizeDocks([self.scenelistdock], [0], Qt.Horizontal)	# Qt 5.10 hack to avoid issue of docks reseting their size after user set it
 		
 		#self.details = DictView(self, 3, {'type': 'flat', 'precision':5.232311e-3, 'color':fvec3(0.1,0.2,0.3), 'comment':'this is a raw surface, TODO'})
 		#self.details.show()
@@ -103,6 +103,7 @@ class Main(QMainWindow):
 		
 		self.init_menus()
 		self.init_toolbars()
+		self.restoreState(b'\x00\x00\x00\xff\x00\x00\x00\x00\xfd\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x01q\x00\x00\x02+\xfc\x02\x00\x00\x00\x03\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x00\x87\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x01\x8e\x00\x00\x00\xb9\x00\x00\x00:\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00z\x01\x00\x00\x03\x00\x00\x00\x01\x00\x00\x02:\x00\x00\x02+\xfc\x02\x00\x00\x00\x01\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x000\x01\x00\x00\x03\x00\x00\x00\x00\x00\x00\x02+\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x08\x00\x00\x00\x08\xfc\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00\x02\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x014\x00\x00\x00L\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x00\xda\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x01,\x00\x00\x00d\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00')
 		self.update_title()
 		
 		cursor = QTextCursor(self.script)
@@ -141,18 +142,17 @@ class Main(QMainWindow):
 		
 		menu = self.menuBar().addMenu('&View')
 		menu.addAction('new 3D view', self.new_sceneview)
-		menu.addAction('freeze view content', lambda: self.active_sceneview.freeze())
-		menu.addSeparator()
 		menu.addAction('new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
 		menu.addSeparator()
-		action = self.scenelistdock.toggleViewAction()
-		action.setShortcut(QKeySequence('Shift+D'))
-		menu.addAction(action)
+		#action = self.scenelistdock.toggleViewAction()
+		#action.setShortcut(QKeySequence('Shift+D'))
+		#menu.addAction(action)
 		menu.addAction('reset solids poses', self.reset_poses)
 		menu.addSeparator()
 		
 		themes = menu.addMenu('theme preset')
+		themes.addAction('system +')
 		themes.addAction('blue +')
 		themes.addAction('orange +')
 		themes.addAction('grey +')
@@ -163,9 +163,12 @@ class Main(QMainWindow):
 		layouts.addAction('simple +')
 		layouts.addAction('side toolbar +')
 		layouts.addAction('multiview +')
+		layouts.addAction('compact +')
+		layouts.addAction('vertical +')
 		
 		menu.addAction('harvest toolbars on window side +')
 		menu.addAction('take floating toolbars to mouse +')
+		menu.addAction('save window layout', lambda: print(self.saveState()))
 		
 		menu = self.menuBar().addMenu('&Scene')
 		action = QAction('display points', self, checkable=True, shortcut=QKeySequence('Shift+P'))
@@ -309,13 +312,14 @@ class Main(QMainWindow):
 		''' open a new sceneview floating at the center of the main window '''
 		new = SceneView(self)
 		if self.active_sceneview:
-			new.manipulator = deepcopy(self.active_sceneview.manipulator)
+			new.navigation = deepcopy(self.active_sceneview.navigation)
 		win = dock(new, 'scene view')
 		self.addDockWidget(Qt.RightDockWidgetArea, win)
-		win.setFloating(True)
-		zone = self.geometry().center()
-		size = QPoint(300,300)
-		win.setGeometry(QRect(zone-size/2, zone+size/2))
+		# put the dock floating right at the center of the main window
+		#win.setFloating(True)
+		#zone = self.geometry().center()
+		#size = QPoint(300,300)
+		#win.setGeometry(QRect(zone-size/2, zone+size/2))
 	
 	def update_title(self):
 		if self.currentfile:
@@ -328,7 +332,7 @@ class Main(QMainWindow):
 		self.script.setModified(False)
 	
 	def reset_poses(self):
-		self.poses = {}
+		indev
 	
 	# END
 	# BEGIN --- file management system ---
@@ -645,12 +649,6 @@ class Main(QMainWindow):
 			if isinstance(view, ScriptView):
 				view.label_execution.setText(label)
 	
-	def syncviews(self, updated):
-		''' update all the scene views with the current self.scene '''
-		for view in self.views:
-			if hasattr(view, 'sync'):
-				view.sync(updated)
-	
 	def cursorat(self, position):
 		''' notice the main that the cursur is at the given (line,column) '''
 		#if not self.trytrick(position):
@@ -675,23 +673,22 @@ class Main(QMainWindow):
 					if zs <= ts and te <= ze and displayable(temp):
 						newscene[name] = temp
 		# remove kinematics and change solids representants
-		for name,obj in newscene.items():
-			if isinstance(obj, Solid):
-				newscene[name] = SolidBox(obj, self)
-			elif isinstance(obj, Kinematic):
-				self.active_kinematic = obj
-				newscene[name] = None
+		#for name,obj in newscene.items():
+			#if isinstance(obj, Solid):
+				#newscene[name] = SolidBox(obj, self)
+			#elif isinstance(obj, Kinematic):
+				#self.active_kinematic = obj
+				#newscene[name] = None
 		
 		# add the editor displays
 		newscene.update(self.editors)
 		
 		# change the scene
 		update = {'<ANNOTATIONS>'}.union(change)
-		self.scene = newscene
-		self.scene['<ANNOTATIONS>'] = list(annotations(self.scene))	# TODO: ne pas recalculer toutes les annotations
-		# update views
-		self.updateposes()
-		self.syncviews(update)
+		newscene['<ANNOTATIONS>'] = list(annotations(newscene))	# TODO: ne pas recalculer toutes les annotations
+		
+		self.active_sceneview.scene.sync(newscene)
+		self.active_sceneview.update()
 	
 	def objattext(self, position):
 		mscore = inf
@@ -759,151 +756,6 @@ class Main(QMainWindow):
 			if isinstance(view, ScriptView):
 				view.editor.setExtraSelections(extra)
 	
-	def applyposes(self):
-		for view in self.views:
-			if hasattr(view, 'applyposes'):
-				view.applyposes()
-	
-	def updateposes(self):
-		poses = {}	# {name: solid name}
-		
-		# get the objects directly attached to the solids
-		attached = {} # {id(var): solid name}
-		used = set()
-		for name,obj in self.interpreter.current.items():
-			if isinstance(obj, Solid):
-				for visu in obj.visuals:
-					attached[id(visu)] = name
-				poses[name] = name
-				# restore the former positions if there is
-				if name in self.poses:
-					obj.position = self.poses[name].position
-					obj.orientation = self.poses[name].orientation
-		# get the visuals present in the scope
-		for name,obj in self.interpreter.current.items():
-			if id(obj) in attached:
-				poses[name] = attached[id(obj)]
-				used.add(id(obj))
-		# display the visuals not present in the scope
-		visunames = []
-		for name,obj in self.interpreter.current.items():
-			if isinstance(obj, Solid):
-				remains = [visu   for visu in obj.visuals if id(visu) not in used]
-				visualsname = name+'.visuals'
-				visunames.append(visualsname)
-				self.scene[visualsname] = remains
-				poses[visualsname] = name
-		
-		# get the objects implicated by those directly attached
-		stack = list(poses.items())
-		while stack:
-			name, parent = stack.pop()
-			poses[name] = poses[parent]
-			def search(node):
-				if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
-					stack.append((node.id, name))
-				else:
-					astpropagate(node, search)
-			if name in self.interpreter.locations:
-				search(self.interpreter.locations[name])
-		
-		# update poses
-		for name,solid in poses.items():
-			self.poses[name] = self.interpreter.current[solid]
 	
 	# END
 	
-
-from madcad.mathutils import inverse, quat, fmat4
-from madcad import SolveError
-from .interpreter import astpropagate
-class SolidBox:
-	def __init__(self, solid, main, **kwargs):
-		self.main = main
-		self.solid = solid
-		self.dispargs = kwargs
-	
-	def display(self, scene):
-		rdr = displays.BoxDisplay(scene, boundingbox(self.solid.visuals), **self.dispargs)
-		rdr.control = self.control
-		return rdr,
-	def control(self, scene, grp, subi, evt):
-		if evt.type() in (QEvent.MouseButtonDblClick, QEvent.MouseMove):
-			evt.accept()
-			gen = self.controler(scene)
-			next(gen)
-			def tool(scene, evt):
-				try:	gen.send(evt)
-				except StopIteration:	scene.tool = None
-			return tool
-	def controler(self, scene):		
-		self.main.assist.tool('kinematic manipulation')
-		self.main.assist.info('• move any solid by one of its objects\n• click a solid to set/unset it fixed')
-			
-		# tool event loop
-		kin = self.main.active_kinematic
-		while True:
-			evt = yield True
-			if evt.type() in (QEvent.MouseButtonPress, QEvent.MouseButtonDblClick):
-				evt.accept()
-				
-				# get the solid and the click position
-				pos = scene.objnear((evt.x(), evt.y()))
-				if not pos:		break
-				key = scene.grpat(pos)[0]
-				if not key in self.main.poses:	continue
-				solid = self.main.poses[key]
-				
-				# setup the solid movement
-				startpt = scene.ptat(pos)
-				ptoffset = inverse(quat(solid.orientation)) * (solid.position - startpt)
-				moved = False
-				while True:
-					evt = yield True
-					
-					if evt.type() == QEvent.MouseMove and id(solid) not in kin.fixed:
-						evt.accept()
-						
-						# move solid
-						moved = True
-						pt = scene.ptfrom((evt.x(), evt.y()), startpt)
-						solid.position = pt + quat(solid.orientation)*ptoffset
-						try:	kin.solve(precision=1e-2, maxiter=50)
-						except SolveError:	pass
-						startpt = solid.position - quat(solid.orientation)*ptoffset
-						self.main.applyposes()
-					
-					#elif evt.type() == QEvent.MouseButtonRelease:
-					else:
-						if not moved:
-							boxname = 'fixed-{}'.format(id(solid))
-							# lock solid
-							if id(solid) in kin.fixed:		
-								kin.fixed.remove(id(solid))
-								self.main.scene[boxname] = None
-							else:
-								kin.fixed.add(id(solid))
-								box = boundingbox(solid.visuals)
-								m = min(box.width)
-								box.min -= 0.22*m
-								box.max += 0.22*m
-								self.main.poses[boxname] = solid
-								self.main.scene[boxname] = displays.Displayable(displays.BoxDisplay, box, color=fvec3(1, 1, 0))
-								# fvec3(0.6,0.6,0.6)
-							scene.sync(boxname)
-						
-						# finish movement on a better precision
-						try:	kin.solve(precision=1e-4, maxiter=1000)
-						except SolveError as err:	
-							self.main.assist.info('<p style="color:#ff5555">{}</p>'.format(err))
-						else:
-							self.main.assist.info('successfully solved')
-						self.main.applyposes()
-						scene.update()
-						break
-		self.main.assist.tool('')
-
-def store(dst, src):
-	for i in range(len(dst)):
-		dst[i] = src[i]
-

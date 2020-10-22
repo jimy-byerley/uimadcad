@@ -3,8 +3,8 @@ from PyQt5.QtCore import (
 		QEvent, pyqtSignal,
 		)
 from PyQt5.QtWidgets import (
-		QWidget, QStyleFactory, QSizePolicy,
-		QPlainTextEdit,
+		QWidget, QStyleFactory, QSizePolicy, QHBoxLayout, 
+		QPlainTextEdit, QComboBox, QDockWidget, QPushButton,
 		)
 from PyQt5.QtGui import (
 		QFont, QFontMetrics, 
@@ -15,7 +15,7 @@ from PyQt5.QtGui import (
 		)
 
 from madcad.mathutils import vec3, fvec3, fmat4, Box, boundingbox, inf, length, inverse
-from madcad.view import Scene
+from madcad.rendering import Scene, View, Display
 from madcad.displays import SolidDisplay, WebDisplay
 from madcad.mesh import Mesh, Web, Wire
 import madcad.settings
@@ -28,56 +28,32 @@ from copy import deepcopy, copy
 from nprint import nprint
 
 
-
 QEventGLContextChange = 215	# opengl context change event type, not yet defined in PyQt5
 
-class SceneView(Scene):
+class SceneView(View):
 	''' dockable and reparentable scene view widget, bases on madcad.Scene '''
-	def __init__(self, main, **kwargs):
+	def __init__(self, main, scene=None, **kwargs):
 		self.main = main
-		self.frozen = False
 		self.initnum = 0
-		super().__init__(**kwargs)
+		
+		if scene:
+			pass
+		elif main.active_sceneview:
+			scene = main.active_sceneview.scene
+		elif main.scenes:
+			scene = main.scenes[0]
+		else:
+			scene = Scene()
+			main.scenes.append(scene)
+		super().__init__(scene, **kwargs)
+		
+		self.setMinimumSize(100,100)
+		self.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
 		
 		main.views.append(self)
 		if not main.active_sceneview:	main.active_sceneview = self
-		self.sync()
 	
-	def initializeGL(self):
-		self.initnum = 1
-		super().initializeGL()
-		
-	def focusInEvent(self, event):
-		self.main.active_sceneview = self
-	
-	def freeze(self):
-		self.frozen = True
-		parent = self.parent()
-		if isinstance(parent, QDockWidget):
-			parent.setWindowTitle(parent.windowTitle() + ' - frozen')
-	
-	def sync(self, updated=()):
-		if not self.frozen:
-			for key in list(self.displayed):
-				if key not in self.main.scene or key in updated:
-					self.remove(key)
-			for key,obj in self.main.scene.items():
-				if key not in self.displayed or key in updated:
-					self.add(obj, key)
-			self.update()
-	
-	def applyposes(self):
-		for name,rdr in self.stack:
-			if hasattr(rdr, 'transform'):
-				solid = self.main.poses.get(name, self.main.active_solid)
-				if solid is not None:
-					rdr.transform = fmat4(solid.pose())
-	
-	def dequeue(self):
-		dequeued = bool(self.queue)
-		super().dequeue()
-		if dequeued:
-			self.applyposes()
+		self.statusbar = SceneStatusBar(self)
 	
 	def closeEvent(self, event):
 		super().closeEvent(event)
@@ -87,21 +63,19 @@ class SceneView(Scene):
 			if view is self:
 				self.main.views.pop(i)
 		event.accept()
+		
+	def focusInEvent(self, event):
+		super().focusInEvent(event)
+		self.main.active_sceneview = self
 	
-	# exceptional override of this method to handle the opengl context change
-	def event(self, event):
-		if event.type() == QEventGLContextChange:
-			if self.initnum >= 1:
-				# reinit completely the scene to rebuild opengl contextual objects
-				dock = self.parent()
-				self.close()
-				dock.setWidget(SceneView(self.main, 
-									projection=self.projection, 
-									manipulator=self.manipulator))
-			return True
-		else:
-			return super().event(event)
-			
+	def changeEvent(self, event):
+		# detect QDockWidget integration
+		if event.type() == event.ParentChange:
+			if isinstance(self.parent(), QDockWidget):
+				self.parent().setTitleBarWidget(self.statusbar)
+		return super().changeEvent(event)
+	
+	# DEPRECATED
 	def objcontrol(self, rdri, subi, evt):
 		''' overwrite the Scene method, to implement the edition behaviors '''
 		grp,rdr = self.stack[rdri]
@@ -152,7 +126,14 @@ class SceneView(Scene):
 		
 		detail.show()
 		detail.activateWindow()
+		
+	def separate_scene(self):
+		#self.scene = self.scene.duplicate(self.scene.ctx)
+		self.scene = Scene
+		self.main.scenes.append(self.scene)
+		self.initializeGL()
 	
+	# DEPRECATED
 	def localptfrom(self, pos, center):
 		center = vec3(center)
 		solid = self.main.active_solid
@@ -161,17 +142,65 @@ class SceneView(Scene):
 		wpt = self.ptfrom(pos, wcenter)
 		return inverse(solid.orientation) * (wpt - solid.position)
 	
+	# DEPRECATED
 	def localptat(self, pos):
 		solid = self.main.active_solid
 		if not solid:	return self.ptat(pos)
 		wpt = self.ptat(pos)
 		return inverse(solid.orientation) * (wpt - solid.position)
+		
+
+
+class SceneStatusBar(QWidget):
+	''' statusbar for a sceneview, containing scene management tools '''
+	def __init__(self, sceneview, parent=None):
+		super().__init__(parent)
+		self.sceneview = sceneview
+		
+		self.scenes = QComboBox()
+		self.scenes.setFrame(False)
+		
+		def btn(icon, callback=None):
+			b = QPushButton(QIcon.fromTheme(icon), '')
+			b.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+			b.setFlat(True)
+			if callback:
+				b.clicked.connect(callback)
+			return b
+		
+		btn_compose = btn('madcad-compose')
+		self.composition = SceneList(sceneview.main, btn_compose)
+		btn_compose.clicked.connect(self.show_composition)
+			
+		layout = QHBoxLayout()
+		layout.addWidget(self.scenes)
+		layout.addWidget(btn('list-add', sceneview.separate_scene))
+		layout.addWidget(QWidget())
+		layout.addWidget(btn_compose)
+		layout.addWidget(btn('dialog-close-icon', sceneview.close))
+		self.setLayout(layout)
+		
+		self.scenes_changed()
+	
+	def scenes_changed(self):
+		menu = self.scenes
+		for i in reversed(range(menu.count())):
+			menu.removeItem(i)
+		for i in range(len(self.sceneview.main.scenes)):
+			menu.addItem('scene {}'.format(i))
+	
+	def show_composition(self):
+		self.composition.show()
+		self.composition.activateWindow()
+		self.composition.setFocus()
 
 
 class SceneList(QPlainTextEdit):
 	''' text view to specify objects main.currentenv we want to append to main.scene '''
-	def __init__(self, main):
-		super().__init__()
+	def __init__(self, main, parent=None):
+		super().__init__(parent)
+		self.setWindowFlags(Qt.Window | Qt.Tool | Qt.FramelessWindowHint)
+		
 		self.main = main
 		self.document().contentsChange.connect(self._contentsChange)
 		margins = self.viewportMargins()
@@ -182,12 +211,24 @@ class SceneList(QPlainTextEdit):
 			)
 		self.setMinimumHeight(height)
 		self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-	
-	def sizeHint(self):
-		return self.document().size().toSize()
-	
+		
 	def _contentsChange(self, item):
-		self.updateGeometry()
 		self.main.forceddisplays = set(self.toPlainText().split())
 		self.main.updatescene()
+		self.resize(self.width(), self.document().defaultFont().pointSize()*(self.document().lineCount()+1)*2)
+
+	def focusOutEvent(self, evt):
+		super().focusOutEvent(evt)
+		self.setVisible(False)
+			
+	def setVisible(self, visible):
+		super().setVisible(visible)
+		parent = self.parent()
+		if visible and parent:
+			psize = parent.size()
+			self.resize(100, self.document().defaultFont().pointSize()*(self.document().lineCount()+1)*2)
+			self.move(parent.mapToGlobal(QPoint(0,0)) + QPoint(
+					psize.width()-self.width(), 
+					psize.height(),
+					))
 
