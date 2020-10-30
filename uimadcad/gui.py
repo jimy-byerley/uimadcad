@@ -19,13 +19,13 @@ from madcad.mathutils import vec3, fvec3, Box, boundingbox, inf, length
 from madcad import Mesh, Wire, Solid, Kinematic, displayable, isconstraint, isprimitive
 from madcad.annotations import annotations
 from madcad import displays
-from madcad.rendering import Display, Scene
+from madcad.rendering import Display
 import madcad.settings
 
 from .common import *
 from .interpreter import Interpreter, InterpreterError, astinterval
 from .scriptview import ScriptView
-from .sceneview import SceneView, SceneList
+from .sceneview import Scene, SceneView, SceneList
 from .errorview import ErrorView
 from .detailview import DetailView
 from .tricks import PointEditor, EditionError
@@ -40,6 +40,68 @@ import re
 
 
 version = '0.5'
+
+from weakref import WeakSet, ref
+from PyQt5.QtCore import QObject, QStringListModel
+
+class Madcad(QObject):
+	executed = pyqtSignal()
+	exectarget_changed = pyqtSignal()
+	
+	def __init__(self):
+		super().__init__()
+		
+		# main components
+		self.script = QTextDocument(self)
+		self.script.setDocumentLayout(QPlainTextDocumentLayout(self.script))
+		self.script.contentsChange.connect(self._contentsChange)
+		self.interpreter = Interpreter()
+		self.assist = tooling.ToolAssist(self)
+		self.scenesmenu = QStringListModel()
+		self.hiddens = set()
+		self.displayzones = []
+		self.neverused = set()
+		
+		self.scenes = WeakSet()
+		self.views = WeakSet()
+		self.mainwindow = None
+		self.active_sceneview = None
+		self.active_scriptview = None
+		self.active_errorview = None
+		self.active_solid = None
+		
+		self.selection = set()
+		self.exectrigger = 1
+		self.exectarget = 0
+		self.editors = {}
+		self.details = {}
+		
+		self.currentfile = None
+		self.currentexport = None
+		
+		self.startup()
+	
+	@staticmethod
+	def create_config():
+		''' create and fill the config directory if not already existing '''
+		from os.path import dirname
+		file = settings.locations['settings']
+		if not os.exists(file):
+			os.makedirs(dirname(file), exist_ok=True)
+			settings.dump()
+		file = settings.locations['startup']
+		if not os.exists(file):
+			os.makedirs(dirname(file), exist_ok=True)
+			open(file, 'w').write('from madcad import *\n\n')
+	
+	def startup(self):
+		''' set madcad in the startup state (software openning state) '''
+		self.create_config()
+		settings.load()
+		cursor = QTextCursor(self.script)
+		cursor.insertText(open(settings.locations['startup'], 'r').read())
+	
+		
 
 
 class Main(QMainWindow):
@@ -65,12 +127,12 @@ class Main(QMainWindow):
 		self.interpreter = Interpreter()
 		self.scenelist = SceneList(self)
 		self.assist = tooling.ToolAssist(self)
-		self.forceddisplays = set()	# choix des variables a afficher
+		self.scenesmenu = SceneList(self)
 		self.hiddens = set()
 		self.displayzones = []
 		self.neverused = set()
 		
-		self.scenes = [Scene()]	# objets a afficher sur les View
+		self.scenes = []	# objets a afficher sur les View
 		self.views = []
 		self.active_sceneview = None
 		self.active_scriptview = None
@@ -116,7 +178,8 @@ class Main(QMainWindow):
 		evt.accept()
 	
 	def init_menus(self):
-		menu = self.menuBar().addMenu('&File')
+		menubar = self.menuBar()
+		menu = menubar.addMenu('&File')
 		menu.addAction(QIcon.fromTheme('document-open'), 'open', self._open, QKeySequence('Ctrl+O'))
 		menu.addAction(QIcon.fromTheme('document-save'), 'save', self._save, QKeySequence('Ctrl+S'))
 		menu.addAction(QIcon.fromTheme('document-save-as'), 'save as', self._save_as, QKeySequence('Ctrl+Shift+S'))
@@ -125,7 +188,7 @@ class Main(QMainWindow):
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('emblem-system'), 'settings +')
 		
-		menu = self.menuBar().addMenu('&Edit')
+		menu = menubar.addMenu('&Edit')
 		menu.addAction(QIcon.fromTheme('edit-undo'), 'undo', self.script.undo, QKeySequence('Ctrl+Z'))
 		menu.addAction(QIcon.fromTheme('edit-redo'), 'redo', self.script.redo, QKeySequence('Ctrl+Shift+Z'))
 		menu.addAction(QIcon.fromTheme('media-playback-start'), 'execute', self.execute, QKeySequence('Ctrl+Return'))
@@ -140,7 +203,7 @@ class Main(QMainWindow):
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', self._deselectall, QKeySequence('Ctrl+A'))
 		
-		menu = self.menuBar().addMenu('&View')
+		menu = menubar.addMenu('&View')
 		menu.addAction('new 3D view', self.new_sceneview)
 		menu.addAction('new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
@@ -170,7 +233,7 @@ class Main(QMainWindow):
 		menu.addAction('take floating toolbars to mouse +')
 		menu.addAction('save window layout', lambda: print(self.saveState()))
 		
-		menu = self.menuBar().addMenu('&Scene')
+		menu = menubar.addMenu('&Scene')
 		action = QAction('display points', self, checkable=True, shortcut=QKeySequence('Shift+P'))
 		action.setChecked(madcad.settings.scene['display_points'])
 		action.toggled.connect(self._display_points)
@@ -189,11 +252,12 @@ class Main(QMainWindow):
 		menu.addAction(action)
 		action = QAction('display annotations +', self, checkable=True, shortcut=QKeySequence('Shift+T'))
 		menu.addAction(action)
-		action = QAction('display grid +', self, checkable=True, shortcut=QKeySequence('Shift+G'))
+		action = QAction('display grid +', self, checkable=True, shortcut=QKeySequence('Shift+B'))
 		menu.addAction(action)
 		menu.addSeparator()
-		menu.addAction('center on object', self._centerselection, shortcut=QKeySequence('Shift+C'))
-		menu.addAction('adapt to object', self._lookselection, shortcut=QKeySequence('Shift+A'))
+		menu.addAction('center on object', self._viewcenter, shortcut=QKeySequence('Shift+C'))
+		menu.addAction('adjust to object', self._viewadjust, shortcut=QKeySequence('Shift+A'))
+		menu.addAction('look to object', self._viewlook, shortcut=QKeySequence('Shift+L'))
 		menu.addSeparator()
 		
 		cameras = menu.addMenu("standard cameras")
@@ -215,7 +279,7 @@ class Main(QMainWindow):
 		menu.addAction('explode objects +')
 		
 		
-		menu = self.menuBar().addMenu('Scrip&t')
+		menu = menubar.addMenu('Scrip&t')
 		action = QAction('show line numbers', self, checkable=True, shortcut=QKeySequence('F11'))
 		action.toggled.connect(self._show_line_numbers)
 		menu.addAction(action)
@@ -228,7 +292,7 @@ class Main(QMainWindow):
 		menu.addAction('find +')
 		menu.addAction('replace +')
 		
-		menu = self.menuBar().addMenu('&Graphic')
+		menu = menubar.addMenu('&Graphic')
 		menu.addAction('display curve labels +')
 		menu.addAction('display curve points +')
 		menu.addAction('display axis ticks +')
@@ -236,41 +300,7 @@ class Main(QMainWindow):
 		menu.addSeparator()
 		menu.addAction('adapt to curve +')
 		menu.addAction('zoom on zone +')
-	
-	def init_toolbars_(self):
-		tools = self.addToolBar('creation')
-		tools.addAction(QIcon.fromTheme('madcad-import'), 'import', 	lambda: tooling.tool_import(self))
-		tools.addAction('select')
-		tools.addAction(QIcon.fromTheme('madcad-solid'), 'solid')
-		tools.addAction(QIcon.fromTheme('madcad-meshing'), 'manual meshing')
-		tools.addAction(QIcon.fromTheme('madcad-point'), 'point', 		lambda: tooling.tool_point(self))
-		tools.addAction(QIcon.fromTheme('madcad-segment'), 'segment', 	lambda: tooling.tool_segment(self))
-		tools.addAction(QIcon.fromTheme('madcad-arc'), 'arc', 			lambda: tooling.tool_arcthrough(self))
-		tools.addAction(QIcon.fromTheme('madcad-spline'), 'spline')
 		
-		tools = self.addToolBar('mesh')
-		tools.addAction(QIcon.fromTheme('madcad-boolean'), 'boolean')
-		tools.addAction(QIcon.fromTheme('madcad-chamfer'), 'chamfer')
-		
-		tools = self.addToolBar('web')
-		tools.addAction(QIcon.fromTheme('madcad-extrusion'), 'extrusion')
-		tools.addAction(QIcon.fromTheme('madcad-revolution'), 'revolution')
-		tools.addAction(QIcon.fromTheme('madcad-extrans'), 'screw')
-		tools.addAction(QIcon.fromTheme('madcad-junction'), 'join')
-		tools.addAction(QIcon.fromTheme('madcad-triangulation'), 'surface')
-		
-		tools = self.addToolBar('amelioration')
-		tools.addAction('merge closes')
-		tools.addAction('strip buffers')
-		
-		tools = self.addToolBar('constraints')
-		tools.addAction(QIcon.fromTheme('madcad-cst-distance'), 'distance')
-		tools.addAction(QIcon.fromTheme('madcad-cst-radius'), 'radius')
-		tools.addAction(QIcon.fromTheme('madcad-cst-angle'), 'angle')
-		tools.addAction(QIcon.fromTheme('madcad-cst-pivot'), 'pivot')
-		tools.addAction(QIcon.fromTheme('madcad-cst-plane'), 'plane')
-		tools.addAction(QIcon.fromTheme('madcad-cst-track'), 'track')
-	
 	def init_toolbars(self):
 		tooling.init_toolbars(self)
 		
@@ -288,7 +318,7 @@ class Main(QMainWindow):
 					try:	gen.send(evt)
 					except StopIteration:	
 						scene.tool = None
-						self.updatescene()
+						scene.sync()
 					return True
 				self.active_sceneview.tool = tool
 		action.triggered.connect(callback)
@@ -310,16 +340,7 @@ class Main(QMainWindow):
 	
 	def new_sceneview(self):
 		''' open a new sceneview floating at the center of the main window '''
-		new = SceneView(self)
-		if self.active_sceneview:
-			new.navigation = deepcopy(self.active_sceneview.navigation)
-		win = dock(new, 'scene view')
-		self.addDockWidget(Qt.RightDockWidgetArea, win)
-		# put the dock floating right at the center of the main window
-		#win.setFloating(True)
-		#zone = self.geometry().center()
-		#size = QPoint(300,300)
-		#win.setGeometry(QRect(zone-size/2, zone+size/2))
+		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self), 'scene view'))
 	
 	def update_title(self):
 		if self.currentfile:
@@ -429,7 +450,7 @@ class Main(QMainWindow):
 			self.exectarget_changed.emit()
 			self.execute()
 		else:
-			self.execution_label('MODIFIED  (Ctrl+Return to execute)')
+			self.execution_label('MODIFIED')
 	
 	def execute(self):
 		''' execute the script until the line exectarget 
@@ -457,7 +478,6 @@ class Main(QMainWindow):
 			self.currentenv = self.interpreter.current
 			self.neverused |= used
 			self.neverused -= reused
-			self.updatescene(used)
 			self.updatescript()
 			self.executed.emit()
 	
@@ -488,7 +508,7 @@ class Main(QMainWindow):
 		else:	return
 		try:	
 			self.editors[name] = e = editor(self, name)
-			self.updatescene([name])
+			self.active_sceneview.scene.sync()
 			self.updatescript()
 		except EditionError as err:
 			print('unable to edit variable', name, ':', err)
@@ -501,70 +521,32 @@ class Main(QMainWindow):
 			del self.editors[name]
 			self.updatescene([name])
 			self.updatescript()
-		
-	
-	def select(self, sel, state=None):
-		''' change the selection state of the given key (scene key, sub ident) 
-			register the change in self.selection, and update the scene views
-		'''
-		# set the selection state
-		if state is None:	state = sel not in self.selection
-		if state:	self.selection.add(sel)
-		else:		self.selection.discard(sel)
-		
-		# set as active solid
-		obj = self.scene[sel[0]]
-		if state:
-			if isinstance(obj, SolidBox):
-				self.active_solid = obj.solid
-				self.updateposes()
-				self.applyposes()
-			if isinstance(obj, Solid):
-				self.active_solid = obj
-				self.updateposes()
-				self.applyposes()
-		
-		# set the selection state for renderers
-		for view in self.views:
-			if isinstance(view, SceneView):
-				for grp,rdr in view.stack:
-					if grp == sel[0] and hasattr(rdr, 'select'):
-						rdr.select(sel[1], state)
-				view.update()
-		
-		# move the cursor position
-		#oldcursor = self.active_scriptview.editor.textCursor()
-		#cursor = QTextCursor(oldcursor)
-		#cursor.setPosition(self.interpreter.locations[sel[0]].position)
-		#self.active_scriptview.editor.setTextCursor(cursor)
-		#self.active_scriptview.editor.ensureCursorVisible()
-		#self.active_scriptview.editor.setTextCursor(oldcursor)
-		
-		# highlight zones
-		self.updatescript()
-		
-		# if deselect, close the matching details windows
-		if state is False and sel in self.details:
-			self.details[sel].dispose()
 	
 	def selectionbox(self):
 		''' return the bounding box of the selection '''
-		box = Box(vec3(inf), vec3(-inf))
-		for key,sub in self.selection:
-			obj = self.scene.get(key)
-			if hasattr(obj, 'group'):
-				obj = obj.group(sub)
-				obj.strippoints()
-			box.union(boundingbox(obj))
-		return box
+		def selbox(level):
+			box = Box(vec3(inf), vec3(-inf))
+			for disp in level:
+				if isinstance(disp, madcad.rendering.Group):
+					sub = selbox(box.displays.values())
+					if not sub.isempty():
+						box.union(sub.transform(disp.pose))
+				elif disp.selected:
+					box.union(disp.box)
+			return box
+		selbox(self.active_sceneview.scene.displays.values())
 	
-	def _centerselection(self):
-		self.active_sceneview.look(self.selectionbox().center)
-		self.active_sceneview.update()
+	def _viewcenter(self):
+		box = self.selectionbox() or self.active_sceneview.scene.box()
+		self.active_sceneview.center(box.center)
 	
-	def _lookselection(self):
-		self.active_sceneview.look(self.selectionbox())
-		self.active_sceneview.update()
+	def _viewadjust(self):
+		box = self.selectionbox() or self.active_sceneview.scene.box()
+		self.active_sceneview.adjust(box)
+	
+	def _viewlook(self):
+		box = self.selectionbox() or self.active_sceneview.scene.box()
+		self.active_sceneview.look(box.center)
 	
 	def _deselectall(self):
 		selected = {}
@@ -632,16 +614,20 @@ class Main(QMainWindow):
 		self.active_scriptview.editor.setWordWrapMode(enable)
 	
 	def _display_faces(self, enable):
-		self.active_sceneview.options['display_faces'] = enable
+		self.active_sceneview.scene.options['display_faces'] = enable
+		self.active_sceneview.scene.touch()
 		self.active_sceneview.update()
 	def _display_groups(self, enable):
-		self.active_sceneview.options['display_groups'] = enable
+		self.active_sceneview.scene.options['display_groups'] = enable
+		self.active_sceneview.scene.touch()
 		self.active_sceneview.update()
 	def _display_wire(self, enable):
-		self.active_sceneview.options['display_wire'] = enable
+		self.active_sceneview.scene.options['display_wire'] = enable
+		self.active_sceneview.scene.touch()
 		self.active_sceneview.update()
 	def _display_points(self, enable):
-		self.active_sceneview.options['display_points'] = enable
+		self.active_sceneview.scene.options['display_points'] = enable
+		self.active_sceneview.scene.touch()
 		self.active_sceneview.update()
 	
 	def execution_label(self, label):
@@ -653,43 +639,7 @@ class Main(QMainWindow):
 		''' notice the main that the cursur is at the given (line,column) '''
 		#if not self.trytrick(position):
 		self.showtemps(position)
-	
-	def updatescene(self, change=()):
-		''' update self.scene with the last execution results '''
-		# objects selection in env, and already present objs
-		newscene = {}
 		
-		# display objects that are requested by the user, or that are never been used (lastly generated)
-		for name,obj in self.interpreter.current.items():
-			if displayable(obj) and (	name in self.forceddisplays 
-									or	name in self.neverused):
-				newscene[name] = obj
-		# display objects in the display zones
-		for zs,ze in self.displayzones:
-			for name,node in self.interpreter.locations.items():
-				if name not in newscene:
-					ts,te = astinterval(node)
-					temp = self.interpreter.current[name]
-					if zs <= ts and te <= ze and displayable(temp):
-						newscene[name] = temp
-		# remove kinematics and change solids representants
-		#for name,obj in newscene.items():
-			#if isinstance(obj, Solid):
-				#newscene[name] = SolidBox(obj, self)
-			#elif isinstance(obj, Kinematic):
-				#self.active_kinematic = obj
-				#newscene[name] = None
-		
-		# add the editor displays
-		newscene.update(self.editors)
-		
-		# change the scene
-		update = {'<ANNOTATIONS>'}.union(change)
-		newscene['<ANNOTATIONS>'] = list(annotations(newscene))	# TODO: ne pas recalculer toutes les annotations
-		
-		self.active_sceneview.scene.sync(newscene)
-		self.active_sceneview.update()
-	
 	def objattext(self, position):
 		mscore = inf
 		mname = None
@@ -710,7 +660,8 @@ class Main(QMainWindow):
 			self.displayzones = [astinterval(self.interpreter.locations[name])]
 		else:
 			self.displayzones = []
-		self.updatescene()
+		for scene in self.scenes:
+			scene.sync()
 		self.updatescript()
 	
 	def addtemp(self, obj):	
