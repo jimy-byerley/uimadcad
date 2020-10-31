@@ -30,14 +30,15 @@ class Interpreter:
 		# get the position in the AST (the position of the line beginning, because change occuring on an existing line can change its semantic)
 		i = astatpos(self.ast, self.text.rfind('\n', 0, position)+1)
 		if i < len(self.ast.body):
-			self.ast_end = self.ast.body[i].position
+			self.ast_end = self.ast.body[i-1].end_position
 			self.ast.body[i:] = []
 			self.backups[self.lastbackup(self.ast_end)+1:] = []
 		elif self.ast.body:
 			self.ast_end = self.ast.body[-1].end_position
 		else:
 			self.ast_end = 0
-		#print('insert', position, oldsize, len(newcontent), '-->', self.ast_end)
+
+		#print(self.text[self.ast_end:])
 		
 	def lastbackup(self, position):
 		''' get the index of the last env backup before position '''
