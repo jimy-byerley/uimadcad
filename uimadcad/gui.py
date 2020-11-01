@@ -29,12 +29,12 @@ from .errorview import ErrorView
 from .detailview import DetailView
 from .tricks import PointEditor, EditionError
 from . import tooling
+from . import settings
 
 from copy import deepcopy, copy
 from nprint import nprint
-import ast
-import traceback
-import os
+import ast, traceback
+import os, sys
 import re
 
 
@@ -199,7 +199,8 @@ class Main(QMainWindow):
 		menu.addAction(QIcon.fromTheme('emblem-shared'), 'export +', self._export, QKeySequence('Ctrl+E'))
 		menu.addAction(QIcon.fromTheme('insert-image'), 'screenshot +', self._screenshot, QKeySequence('Ctrl+I'))
 		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('emblem-system'), 'settings +')
+		menu.addAction(QIcon.fromTheme('emblem-system'), 'interface settings +')
+		menu.addAction(QIcon.fromTheme('text-x-generic'), 'pymadcad settings', self._open_pymadcad_settings)
 		
 		menu = menubar.addMenu('&Edit')
 		menu.addAction(QIcon.fromTheme('edit-undo'), 'undo', self.script.undo, QKeySequence('Ctrl+Z'))
@@ -459,6 +460,14 @@ class Main(QMainWindow):
 	
 	def _export(self):	pass
 	def _screenshot(self):	pass
+	
+	def _open_pymadcad_settings(self):
+		if 'linux' in sys.platform:
+			os.system('xdg-open {}'.format(settings.locations['pysettings']))
+		elif 'win' in sys.platform:
+			os.system('start {}'.format(settings.locations['pysettings']))
+		else:
+			raise EnvironmentError('unable to open a textfile on platform {}'.format(os.platform))
 	
 	# END
 	# BEGIN --- editing tools ----
