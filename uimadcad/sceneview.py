@@ -122,23 +122,19 @@ class SceneView(madcad.rendering.View):
 		super().focusInEvent(event)
 		self.main.active_sceneview = self
 	
-	def changeEvent(self, event):
+	def changeEvent(self, evt):
 		# detect QDockWidget integration
-		if event.type() == event.ParentChange:
+		if evt.type() == evt.ParentChange:
 			if isinstance(self.parent(), QDockWidget):
 				self.parent().setTitleBarWidget(self.statusbar)
-		return super().changeEvent(event)
+		# update scene when color changes
+		elif evt.type() == QEvent.PaletteChange and settings.display['system_theme']:
+			self.scene.sync()
+		return super().changeEvent(evt)
 		
 	def control(self, key, evt):
 		''' overwrite the Scene method, to implement the edition behaviors '''
 		super().control(key, evt)
-		
-		if evt.isAccepted():
-			disp = self.scene.displays
-			for i in range(1,len(key)):
-				disp = disp[key[i-1]]
-				if isinstance(disp, Solid.display):
-					disp.selected = not disp.selected
 	
 	# DEPRECATED
 	def objcontrol(self, rdri, subi, evt):
