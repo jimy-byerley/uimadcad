@@ -16,7 +16,6 @@ from PyQt5.QtGui import (
 		)
 
 from madcad import *
-from madcad import displays
 from madcad.rendering import Display, Group, Turntable, Orbit, Displayable
 from madcad.annotations import annotations
 import madcad.settings
@@ -183,6 +182,8 @@ class Main(QMainWindow):
 	def startup(self):
 		''' set madcad in the startup state (software openning state) '''
 		# create or load config
+		if madcad.settings.display['system_theme']:
+			madcad.settings.use_qt_colors()
 		settings.install()
 		madcad.settings.install()
 		try:	settings.load()
@@ -400,16 +401,16 @@ class Main(QMainWindow):
 	
 	def _open(self):
 		''' callback for the button 'open'
-			ask the user for a new file and then call self._load(filename)
+			ask the user for a new file and then call self.open_file(filename)
 		'''
 		filename = QFileDialog.getOpenFileName(self, 'open madcad file', 
 							os.curdir, 
 							'madcad files (*.py *.mc);;text files (*.txt)',
 							)[0]
 		if filename:
-			self._load(filename)
+			self.open_file(filename)
 	
-	def _load(self, filename):
+	def open_file(self, filename):
 		''' clears the current workspace and load the specified file
 		'''
 		extension = filename[filename.find('.')+1:]
@@ -584,6 +585,7 @@ class Main(QMainWindow):
 	
 	def _viewcenter(self):
 		box = self.selectionbox() or self.active_sceneview.scene.box()
+		print('box', box)
 		self.active_sceneview.center(box.center)
 	
 	def _viewadjust(self):

@@ -2,7 +2,7 @@
 if __name__ == '__main__':
 	from .gui import *
 
-	import sys
+	import sys, os
 	from PyQt5.QtCore import Qt
 	from PyQt5.QtWidgets import QApplication
 	
@@ -13,4 +13,8 @@ if __name__ == '__main__':
 	app.setApplicationDisplayName('madcad v{}'.format(version))
 	main = Main()
 	main.show()
+	
+	if len(sys.argv) >= 2 and os.path.exists(sys.argv[1]):
+		main.open_file(sys.argv[1])
+	
 	sys.exit(app.exec())
