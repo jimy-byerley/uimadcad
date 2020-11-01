@@ -17,8 +17,8 @@ from PyQt5.QtGui import (
 		)
 
 from madcad import *
-from madcad.rendering import Display, displayable
-from madcad.displays import SolidDisplay, WebDisplay
+from madcad.rendering import Display, displayable, Displayable
+from madcad.displays import SolidDisplay, WebDisplay, GridDisplay
 import madcad
 
 from .common import *
@@ -46,6 +46,10 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.main.scenes.append(self)
 		self.main.executed.connect(self.sync)
 		self.main.scenesmenu.layoutChanged.emit()
+		
+		self.additions = {
+			'__grid__': Displayable(Grid),
+			}
 	
 	def __del__(self):
 		try:	self.main.scenes.remove(self)
@@ -69,6 +73,9 @@ class Scene(madcad.rendering.Scene, QObject):
 					temp = main.interpreter.current[name]
 					if zs <= ts and te <= ze and displayable(temp):
 						newscene[name] = temp
+		# add scene own additions
+		newscene.update(self.additions)
+		
 		# update the scene
 		super().sync(newscene)
 		# trigger the signal for dependent widgets
@@ -274,9 +281,8 @@ class SceneComposition(QPlainTextEdit):
 		
 	@propertywrite
 	def scene(self, scene):
-		print('set scene', scene, scene.composition)
 		self.setDocument(scene.composition)
-		
+	
 	def _contentsChange(self, item):
 		self._scene.forceddisplays.clear()
 		self._scene.forceddisplays.update(self.toPlainText().split())
@@ -299,4 +305,17 @@ class SceneComposition(QPlainTextEdit):
 					psize.width()-self.width(), 
 					psize.height(),
 					))
+					
+class Grid(GridDisplay):
+	def __init__(self, scene, **kwargs):
+		super().__init__(scene, fvec3(0), **kwargs)
+	
+	def stack(self, scene):
+		if scene.options['display_grid']:	return super().stack(scene)
+		else: 								return ()
+	
+	def render(self, view):
+		self.center = view.navigation.center
+		super().render(view)
+
 

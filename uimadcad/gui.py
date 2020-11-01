@@ -17,7 +17,7 @@ from PyQt5.QtGui import (
 
 from madcad import *
 from madcad import displays
-from madcad.rendering import Display, Group, Turntable, Orbit
+from madcad.rendering import Display, Group, Turntable, Orbit, Displayable
 from madcad.annotations import annotations
 import madcad.settings
 
@@ -268,7 +268,9 @@ class Main(QMainWindow):
 		menu.addAction(action)
 		action = QAction('display annotations +', self, checkable=True, shortcut=QKeySequence('Shift+T'))
 		menu.addAction(action)
-		action = QAction('display grid +', self, checkable=True, shortcut=QKeySequence('Shift+B'))
+		action = QAction('display grid', self, checkable=True, shortcut=QKeySequence('Shift+B'))
+		action.setChecked(madcad.settings.scene['display_grid'])
+		action.toggled.connect(self._display_grid)
 		menu.addAction(action)
 		menu.addSeparator()
 		menu.addAction('center on object', self._viewcenter, shortcut=QKeySequence('Shift+C'))
@@ -671,6 +673,10 @@ class Main(QMainWindow):
 		self.active_sceneview.update()
 	def _display_points(self, enable):
 		self.active_sceneview.scene.options['display_points'] = enable
+		self.active_sceneview.scene.touch()
+		self.active_sceneview.update()
+	def _display_grid(self, enable):
+		self.active_sceneview.scene.options['display_grid'] = enable
 		self.active_sceneview.scene.touch()
 		self.active_sceneview.update()
 	
