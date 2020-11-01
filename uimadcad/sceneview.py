@@ -281,7 +281,9 @@ class SceneComposition(QPlainTextEdit):
 		
 	@propertywrite
 	def scene(self, scene):
+		self.document().contentsChange.disconnect(self._contentsChange)
 		self.setDocument(scene.composition)
+		self.document().contentsChange.connect(self._contentsChange)
 	
 	def _contentsChange(self, item):
 		self._scene.forceddisplays.clear()
