@@ -70,7 +70,7 @@ class Scene(madcad.rendering.Scene, QObject):
 					if zs <= ts and te <= ze and displayable(temp):
 						newscene[name] = temp
 		# update the scene
-		self.update(newscene)
+		super().sync(newscene)
 		# trigger the signal for dependent widgets
 		self.changed.emit()
 
@@ -123,6 +123,7 @@ class SceneView(madcad.rendering.View):
 		return super().changeEvent(event)
 		
 	def control(self, key, evt):
+		''' overwrite the Scene method, to implement the edition behaviors '''
 		super().control(key, evt)
 		
 		if evt.isAccepted():

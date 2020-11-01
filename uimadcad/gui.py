@@ -15,11 +15,10 @@ from PyQt5.QtGui import (
 		QTextOption, QTextDocument, QTextCursor,
 		)
 
-from madcad.mathutils import vec3, fvec3, Box, boundingbox, inf, length
-from madcad import Mesh, Wire, Solid, Kinematic, displayable, isconstraint, isprimitive
-from madcad.annotations import annotations
+from madcad import *
 from madcad import displays
-from madcad.rendering import Display
+from madcad.rendering import Display, Group, Turntable, Orbit
+from madcad.annotations import annotations
 import madcad.settings
 
 from .common import *
@@ -101,7 +100,12 @@ class Madcad(QObject):
 		cursor = QTextCursor(self.script)
 		cursor.insertText(open(settings.locations['startup'], 'r').read())
 	
-		
+
+def iter_scenetree(obj):
+	for disp in obj.displays.values():
+		yield disp
+		if isinstance(disp, Group):
+			yield from iter_scenetree(disp)		
 
 
 class Main(QMainWindow):
@@ -144,6 +148,15 @@ class Main(QMainWindow):
 		self.exectarget = 0
 		self.editors = {}
 		self.details = {}
+		
+		self.standardcameras = {
+			'-Z': fquat(fvec3(0, 0, 0)),
+			'+Z': fquat(fvec3(pi, 0, 0)),
+			'-X': fquat(fvec3(pi/2, 0, 0)),
+			'+X': fquat(fvec3(pi/2, 0, pi)),
+			'-Y': fquat(fvec3(pi/2, 0, -pi/2)),
+			'+Y': fquat(fvec3(pi/2, 0, pi/2)),
+			}
 		
 		self.currentfile = None
 		self.currentexport = None
@@ -204,6 +217,8 @@ class Main(QMainWindow):
 		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', self._deselectall, QKeySequence('Ctrl+A'))
 		
 		menu = menubar.addMenu('&View')
+		menu.addAction(QAction('display navigation controls +', self, checkable=True))
+		menu.addSeparator()
 		menu.addAction('new 3D view', self.new_sceneview)
 		menu.addAction('new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
@@ -212,6 +227,7 @@ class Main(QMainWindow):
 		#action.setShortcut(QKeySequence('Shift+D'))
 		#menu.addAction(action)
 		menu.addAction('reset solids poses', self.reset_poses)
+		menu.addAction('set as current solid', self._set_current_solid)
 		menu.addSeparator()
 		
 		themes = menu.addMenu('theme preset')
@@ -260,13 +276,26 @@ class Main(QMainWindow):
 		menu.addAction('look to object', self._viewlook, shortcut=QKeySequence('Shift+L'))
 		menu.addSeparator()
 		
+		
+		def standardcamera(name):
+			orient = self.standardcameras[name]
+			nav = self.active_sceneview.navigation
+			if isinstance(nav, Turntable):
+				nav.yaw = roll(orient)
+				nav.pitch = pi/2 - pitch(orient)
+			elif isinstance(nav, Orbit):
+				nav.orient = orient
+			else:
+				raise TypeError('navigation type {} is not supported for standardcameras'.format(type(nav)))
+			self.active_sceneview.update()
+		
 		cameras = menu.addMenu("standard cameras")
-		cameras.addAction('-Z &top +')
-		cameras.addAction('+Z &bottom+')
-		cameras.addAction('-X &front +')
-		cameras.addAction('+X &back +')
-		cameras.addAction('-Y &right +')
-		cameras.addAction('+Y &left +')
+		cameras.addAction('-Z &top',	lambda: standardcamera('-Z'), shortcut=QKeySequence('Y'))
+		cameras.addAction('+Z &bottom',	lambda: standardcamera('+Z'), shortcut=QKeySequence('Shift+Y'))
+		cameras.addAction('-X &front',	lambda: standardcamera('-X'), shortcut=QKeySequence('U'))
+		cameras.addAction('+X &back',	lambda: standardcamera('+X'), shortcut=QKeySequence('Shift+U'))
+		cameras.addAction('-Y &right',	lambda: standardcamera('-Y'), shortcut=QKeySequence('I'))
+		cameras.addAction('+Y &left',	lambda: standardcamera('+Y'), shortcut=QKeySequence('Shift+I'))
 		
 		anims = menu.addMenu('camera animations')
 		anims.addAction('rotate &world +')
@@ -293,13 +322,15 @@ class Main(QMainWindow):
 		menu.addAction('replace +')
 		
 		menu = menubar.addMenu('&Graphic')
-		menu.addAction('display curve labels +')
-		menu.addAction('display curve points +')
-		menu.addAction('display axis ticks +')
-		menu.addAction('display grid +')
+		menu.addAction(QAction('display curve labels +', self, checkable=True))
+		menu.addAction(QAction('display curve points +', self, checkable=True))
+		menu.addAction(QAction('display axis ticks +', self, checkable=True))
+		menu.addAction(QAction('display grid +', self, checkable=True))
 		menu.addSeparator()
 		menu.addAction('adapt to curve +')
 		menu.addAction('zoom on zone +')
+		menu.addAction('stick to zero +')
+		menu.addAction('set ratio to unit +')
 		
 	def init_toolbars(self):
 		tooling.init_toolbars(self)
@@ -314,13 +345,12 @@ class Main(QMainWindow):
 			try:	next(gen)
 			except StopIteration:	pass
 			else:
-				def tool(scene, evt):
+				def tool(evt, view=self.active_sceneview):
 					try:	gen.send(evt)
 					except StopIteration:	
-						scene.tool = None
-						scene.sync()
-					return True
-				self.active_sceneview.tool = tool
+						view.scene.sync()
+						view.tool.remove(tool)
+				self.active_sceneview.tool.append(tool)
 		action.triggered.connect(callback)
 		return action
 
@@ -527,12 +557,12 @@ class Main(QMainWindow):
 		def selbox(level):
 			box = Box(vec3(inf), vec3(-inf))
 			for disp in level:
-				if isinstance(disp, madcad.rendering.Group):
-					sub = selbox(box.displays.values())
+				if disp.selected:
+					box.union(disp.box)
+				elif isinstance(disp, madcad.rendering.Group):
+					sub = selbox(disp.displays.values())
 					if not sub.isempty():
 						box.union(sub.transform(disp.pose))
-				elif disp.selected:
-					box.union(disp.box)
 			return box
 		selbox(self.active_sceneview.scene.displays.values())
 	
@@ -564,6 +594,20 @@ class Main(QMainWindow):
 					view.update()
 		self.selection.clear()
 		self.updatescript()
+		
+	def _set_current_solid(self):
+		#self.active_solid = first(
+				#iter_scenetree(self.active_sceneview.scene), 
+				#lambda disp: isinstance(disp, Solid.display) and disp.selected,
+				#)
+		self.active_solid = None
+		print()
+		for disp in iter_scenetree(self.active_sceneview.scene):
+			if disp.selected:	print(disp)
+			if isinstance(disp, Solid.display) and disp.selected:
+				self.active_solid = disp
+				break
+		print('current solid', self.active_solid)
 	
 	def targetcursor(self):
 		cursor = self.active_scriptview.editor.textCursor()

@@ -5,6 +5,15 @@ from PyQt5.QtGui import QTextCharFormat, QTextCursor, QColor
 from PyQt5.QtWidgets import QDockWidget, QTextEdit
 
 
+def propertywrite(func):
+	''' decorator to create a property with only a write function '''
+	fieldname = '_'+func.__name__
+	def getter(self):	return getattr(self, fieldname)
+	def setter(self, value):
+		setattr(self, fieldname, value)
+		func(self, value)
+	return property(getter, setter)
+
 def charformat(background=None, foreground=None, italic=None, overline=None, weight=None, font=None):
 	''' create a QTextCharFormat '''
 	fmt = QTextCharFormat()
