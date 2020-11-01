@@ -232,10 +232,6 @@ class Main(QMainWindow):
 		menu.addAction(QIcon.fromTheme('text-x-script'), 'new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
 		menu.addSeparator()
-		#action = self.scenelistdock.toggleViewAction()
-		#action.setShortcut(QKeySequence('Shift+D'))
-		#menu.addAction(action)
-		menu.addAction('reset solids poses', self.reset_poses)
 		menu.addAction('set as current solid', self._set_current_solid)
 		menu.addSeparator()
 		
@@ -393,9 +389,6 @@ class Main(QMainWindow):
 			self.setWindowFilePath('')
 		self.script.setModified(False)
 	
-	def reset_poses(self):
-		indev
-	
 	# END
 	# BEGIN --- file management system ---
 	
@@ -423,7 +416,8 @@ class Main(QMainWindow):
 			if box.exec() == QMessageBox.Discard:	return False
 			else:	extension = 'py'
 		
-		os.chdir(os.path.split(os.path.abspath(filename))[0])
+		filename = os.path.abspath(filename)
+		os.chdir(os.path.split(filename)[0])
 		self.currentfile = filename
 		if extension in ('py', 'txt'):
 			self.script.clear()
@@ -572,20 +566,17 @@ class Main(QMainWindow):
 	def selectionbox(self):
 		''' return the bounding box of the selection '''
 		def selbox(level):
-			box = Box(vec3(inf), vec3(-inf))
+			box = Box(fvec3(inf), fvec3(-inf))
 			for disp in level:
 				if disp.selected:
 					box.union(disp.box)
 				elif isinstance(disp, madcad.rendering.Group):
-					sub = selbox(disp.displays.values())
-					if not sub.isempty():
-						box.union(sub.transform(disp.pose))
+					box.union(selbox(disp.displays.values()).transform(disp.pose))
 			return box
-		selbox(self.active_sceneview.scene.displays.values())
+		return selbox(self.active_sceneview.scene.displays.values())
 	
 	def _viewcenter(self):
 		box = self.selectionbox() or self.active_sceneview.scene.box()
-		print('box', box)
 		self.active_sceneview.center(box.center)
 	
 	def _viewadjust(self):
