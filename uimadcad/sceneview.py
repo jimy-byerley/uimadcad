@@ -16,12 +16,12 @@ from PyQt5.QtGui import (
 		QPainter, QPainterPath,
 		)
 
-from madcad.mathutils import vec3, fvec3, fmat4, Box, boundingbox, inf, length, inverse
+from madcad import *
 from madcad.rendering import Display, displayable
 from madcad.displays import SolidDisplay, WebDisplay
-from madcad.mesh import Mesh, Web, Wire
 import madcad
 
+from .common import *
 from .detailview import DetailView
 from .interpreter import Interpreter, InterpreterError, astinterval
 from . import tricks
@@ -78,6 +78,7 @@ class Scene(madcad.rendering.Scene, QObject):
 
 class SceneView(madcad.rendering.View):
 	''' dockable and reparentable scene view widget, bases on madcad.Scene '''
+	
 	def __init__(self, main, scene=None, **kwargs):
 		self.main = main
 		
@@ -120,6 +121,16 @@ class SceneView(madcad.rendering.View):
 			if isinstance(self.parent(), QDockWidget):
 				self.parent().setTitleBarWidget(self.statusbar)
 		return super().changeEvent(event)
+		
+	def control(self, key, evt):
+		super().control(key, evt)
+		
+		if evt.isAccepted():
+			disp = self.scene.displays
+			for i in range(1,len(key)):
+				disp = disp[key[i-1]]
+				if isinstance(disp, Solid.display):
+					disp.selected = not disp.selected
 	
 	# DEPRECATED
 	def objcontrol(self, rdri, subi, evt):
@@ -192,8 +203,10 @@ class SceneViewBar(QWidget):
 		def callback(i):
 			self.sceneview.scene = self.sceneview.main.scenes[i]
 			self.sceneview.update()
+			self.composition.scene = self.sceneview.scene
 		scenes.activated.connect(callback)
 		scenes.setModel(sceneview.main.scenesmenu)
+		scenes.setCurrentIndex(sceneview.main.scenes.index(sceneview.scene))
 		
 		def btn(icon, callback=None):
 			b = QPushButton(QIcon.fromTheme(icon), '')
@@ -204,7 +217,9 @@ class SceneViewBar(QWidget):
 			return b
 			
 		def callback():
-			sceneview.separate_scene()
+			self.sceneview.separate_scene()
+			self.sceneview.update()
+			self.composition.scene = self.sceneview.scene
 			scenes.setCurrentIndex(len(sceneview.main.scenes)-1)
 		
 		btn_compose = btn('madcad-compose')
@@ -244,8 +259,6 @@ class SceneComposition(QPlainTextEdit):
 		super().__init__(parent)
 		self.setWindowFlags(Qt.Popup | Qt.Tool | Qt.FramelessWindowHint)
 		
-		self.scene = scene
-		self.setDocument(scene.composition)
 		self.document().contentsChange.connect(self._contentsChange)
 		margins = self.viewportMargins()
 		height = (
@@ -256,12 +269,20 @@ class SceneComposition(QPlainTextEdit):
 		self.setMinimumHeight(height)
 		self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 		
+		self.scene = scene
+		
+	@propertywrite
+	def scene(self, scene):
+		print('set scene', scene, scene.composition)
+		self.setDocument(scene.composition)
+		
 	def _contentsChange(self, item):
-		self.scene.forceddisplays.clear()
-		self.scene.forceddisplays.update(self.toPlainText().split())
+		self._scene.forceddisplays.clear()
+		self._scene.forceddisplays.update(self.toPlainText().split())
 		self.resize(
 			self.width(), 
 			self.document().defaultFont().pointSize() * (self.document().lineCount()+1)*2)
+		self._scene.sync()
 
 	def focusOutEvent(self, evt):
 		super().focusOutEvent(evt)
