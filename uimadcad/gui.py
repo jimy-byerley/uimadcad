@@ -80,22 +80,9 @@ class Madcad(QObject):
 		
 		self.startup()
 	
-	@staticmethod
-	def create_config():
-		''' create and fill the config directory if not already existing '''
-		from os.path import dirname
-		file = settings.locations['settings']
-		if not os.exists(file):
-			os.makedirs(dirname(file), exist_ok=True)
-			settings.dump()
-		file = settings.locations['startup']
-		if not os.exists(file):
-			os.makedirs(dirname(file), exist_ok=True)
-			open(file, 'w').write('from madcad import *\n\n')
-	
 	def startup(self):
 		''' set madcad in the startup state (software openning state) '''
-		self.create_config()
+		settings.install()
 		settings.load()
 		cursor = QTextCursor(self.script)
 		cursor.insertText(open(settings.locations['startup'], 'r').read())
@@ -107,6 +94,13 @@ def iter_scenetree(obj):
 		if isinstance(disp, Group):
 			yield from iter_scenetree(disp)		
 
+def open_file_external(file):
+	if 'linux' in sys.platform:
+		os.system('xdg-open {}'.format(file))
+	elif 'win' in sys.platform:
+		os.system('start {}'.format(file))
+	else:
+		raise EnvironmentError('unable to open a textfile on platform {}'.format(os.platform))
 
 class Main(QMainWindow):
 	''' the main madcad window '''
@@ -181,8 +175,21 @@ class Main(QMainWindow):
 		self.restoreState(b'\x00\x00\x00\xff\x00\x00\x00\x00\xfd\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x01q\x00\x00\x02+\xfc\x02\x00\x00\x00\x03\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x00\x87\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x01\x8e\x00\x00\x00\xb9\x00\x00\x00:\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00z\x01\x00\x00\x03\x00\x00\x00\x01\x00\x00\x02:\x00\x00\x02+\xfc\x02\x00\x00\x00\x01\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x000\x01\x00\x00\x03\x00\x00\x00\x00\x00\x00\x02+\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x08\x00\x00\x00\x08\xfc\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00\x02\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x014\x00\x00\x00L\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x00\xda\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x01,\x00\x00\x00d\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00')
 		self.update_title()
 		
+		#cursor = QTextCursor(self.script)
+		#cursor.insertText('from madcad import *\n\n')
+		
+		self.startup()
+	
+	def startup(self):
+		''' set madcad in the startup state (software openning state) '''
+		# create or load config
+		settings.install()
+		madcad.settings.install()
+		try:	settings.load()
+		except:	settings.clean()
+		# load startup file
 		cursor = QTextCursor(self.script)
-		cursor.insertText('from madcad import *\n\n')
+		cursor.insertText(open(settings.locations['startup'], 'r').read())
 	
 	def closeEvent(self, evt):
 		# close all the subwindows
@@ -199,7 +206,7 @@ class Main(QMainWindow):
 		menu.addAction(QIcon.fromTheme('emblem-shared'), 'export +', self._export, QKeySequence('Ctrl+E'))
 		menu.addAction(QIcon.fromTheme('insert-image'), 'screenshot +', self._screenshot, QKeySequence('Ctrl+I'))
 		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('emblem-system'), 'interface settings +')
+		menu.addAction(QIcon.fromTheme('preferences-other'), 'interface settings +', self._open_uimadcad_settings)
 		menu.addAction(QIcon.fromTheme('text-x-generic'), 'pymadcad settings', self._open_pymadcad_settings)
 		
 		menu = menubar.addMenu('&Edit')
@@ -207,7 +214,7 @@ class Main(QMainWindow):
 		menu.addAction(QIcon.fromTheme('edit-redo'), 'redo', self.script.redo, QKeySequence('Ctrl+Shift+Z'))
 		menu.addAction(QIcon.fromTheme('media-playback-start'), 'execute', self.execute, QKeySequence('Ctrl+Return'))
 		menu.addAction(QIcon.fromTheme('view-refresh'), 'reexecute all', self.reexecute, QKeySequence('Ctrl+Shift+Return'))
-		menu.addAction('target to cursor', self._targettocursor, QKeySequence('Ctrl+T'))
+		menu.addAction(QIcon.fromTheme('go-bottom'), 'target to cursor', self._targettocursor, QKeySequence('Ctrl+T'))
 		menu.addSeparator()
 		menu.addAction('disable line +')
 		menu.addAction('enable line +')
@@ -220,8 +227,8 @@ class Main(QMainWindow):
 		menu = menubar.addMenu('&View')
 		menu.addAction(QAction('display navigation controls +', self, checkable=True))
 		menu.addSeparator()
-		menu.addAction('new 3D view', self.new_sceneview)
-		menu.addAction('new text view', 
+		menu.addAction(QIcon.fromTheme('image-x-generic'), 'new 3D view', self.new_sceneview)
+		menu.addAction(QIcon.fromTheme('text-x-script'), 'new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
 		menu.addSeparator()
 		#action = self.scenelistdock.toggleViewAction()
@@ -295,10 +302,10 @@ class Main(QMainWindow):
 		cameras = menu.addMenu("standard cameras")
 		cameras.addAction('-Z &top',	lambda: standardcamera('-Z'), shortcut=QKeySequence('Y'))
 		cameras.addAction('+Z &bottom',	lambda: standardcamera('+Z'), shortcut=QKeySequence('Shift+Y'))
-		cameras.addAction('-X &front',	lambda: standardcamera('-X'), shortcut=QKeySequence('U'))
-		cameras.addAction('+X &back',	lambda: standardcamera('+X'), shortcut=QKeySequence('Shift+U'))
-		cameras.addAction('-Y &right',	lambda: standardcamera('-Y'), shortcut=QKeySequence('I'))
-		cameras.addAction('+Y &left',	lambda: standardcamera('+Y'), shortcut=QKeySequence('Shift+I'))
+		cameras.addAction('+Y &front',	lambda: standardcamera('-X'), shortcut=QKeySequence('U'))
+		cameras.addAction('-Y &back',	lambda: standardcamera('+X'), shortcut=QKeySequence('Shift+U'))
+		cameras.addAction('-X &right',	lambda: standardcamera('-Y'), shortcut=QKeySequence('I'))
+		cameras.addAction('+X &left',	lambda: standardcamera('+Y'), shortcut=QKeySequence('Shift+I'))
 		
 		anims = menu.addMenu('camera animations')
 		anims.addAction('rotate &world +')
@@ -321,8 +328,8 @@ class Main(QMainWindow):
 		action = QAction('scroll on selected object +', self, checkable=True)
 		#action.toggled.connect(self._enable_center_on_select)	# TODO when settings will be added
 		menu.addAction(action)
-		menu.addAction('find +')
-		menu.addAction('replace +')
+		menu.addAction(QIcon.fromTheme('edit-find'), 'find +', lambda: None, shortcut=QKeySequence('Ctrl+F'))
+		menu.addAction(QIcon.fromTheme('edit-find-replace'), 'replace +', lambda: None, shortcut=QKeySequence('Ctrl+R'))
 		
 		menu = menubar.addMenu('&Graphic')
 		menu.addAction(QAction('display curve labels +', self, checkable=True))
@@ -461,13 +468,11 @@ class Main(QMainWindow):
 	def _export(self):	pass
 	def _screenshot(self):	pass
 	
+	def _open_uimadcad_settings(self):
+		open_file_external(settings.locations['uisettings'])
+	
 	def _open_pymadcad_settings(self):
-		if 'linux' in sys.platform:
-			os.system('xdg-open {}'.format(settings.locations['pysettings']))
-		elif 'win' in sys.platform:
-			os.system('start {}'.format(settings.locations['pysettings']))
-		else:
-			raise EnvironmentError('unable to open a textfile on platform {}'.format(os.platform))
+		open_file_external(settings.locations['pysettings'])
 	
 	# END
 	# BEGIN --- editing tools ----

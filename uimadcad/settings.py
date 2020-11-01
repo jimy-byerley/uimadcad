@@ -1,4 +1,5 @@
 import os, json
+from os.path import dirname, exists
 
 execution = {
 	'onstartup': False,
@@ -12,7 +13,6 @@ view = {
 	'theme': 'system',
 	'enable_floating': False,	# floating dockable windows, may have performance issues with big meshes
 	'window-size': (640,480),
-	'layout': b'\x00\x00\x00\xff\x00\x00\x00\x00\xfd\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x01q\x00\x00\x02+\xfc\x02\x00\x00\x00\x03\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x00\x87\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x01\x8e\x00\x00\x00\xb9\x00\x00\x00:\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00z\x01\x00\x00\x03\x00\x00\x00\x01\x00\x00\x02:\x00\x00\x02+\xfc\x02\x00\x00\x00\x01\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x000\x01\x00\x00\x03\x00\x00\x00\x00\x00\x00\x02+\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x08\x00\x00\x00\x08\xfc\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00\x02\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x014\x00\x00\x00L\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x00\xda\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x01,\x00\x00\x00d\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00',
 	}
 
 scriptview = {
@@ -37,24 +37,44 @@ highlighter = {
 
 home = os.getenv('HOME')
 locations = {
-	'config': home+'/.config',
-	'settings': home+'/.config/madcad/settings.json',
+	'config': home+'/.config/madcad',
+	'uisettings': home+'/.config/madcad/uimadcad.json',
+	'pysettings': home+'/.config/madcad/pymadcad.json',
 	'startup': home+'/.config/madcad/startup.py',
 	}
 
 
 settings = {'execution':execution, 'view':view, 'scriptview':scriptview, 'highlighter':highlighter}
 
+
+def install():
+	''' create and fill the config directory if not already existing '''
+	file = locations['uisettings']
+	if not exists(file):
+		os.makedirs(dirname(file), exist_ok=True)
+		dump()
+	file = locations['startup']
+	if not exists(file):
+		os.makedirs(dirname(file), exist_ok=True)
+		open(file, 'w').write('from madcad import *\n\n')
+		
+def clean():
+	''' delete the default configuration file '''
+	os.rmdir(locations['config'])
+
 def load(file=None):
-	if not file:	file = locations['config']
+	''' load the settings directly in this module, from the specified file or the default one '''
+	if not file:	file = locations['uisettings']
 	if isinstance(file, str):	file = open(file, 'r')
 	changes = json.load(file)
 	for group in settings:
 		if group in changes:
-			settings.update(changes[group])
+			settings[group].update(changes[group])
 
 def dump(file=None):
-	if not file:	file = locations['config']
+	''' load the current settings into the specified file or to the default one '''
+	if not file:	file = locations['uisettings']
 	if isinstance(file, str):	file = open(file, 'w')
-	json.dump(settings, file)
+	json.dump(settings, file, indent='\t', ensure_ascii=True)
+	
 
