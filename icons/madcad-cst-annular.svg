@@ -13,7 +13,7 @@
    version="1.1"
    id="svg8"
    inkscape:version="1.0.1 (1.0.1+r73)"
-   sodipodi:docname="madcad-cst-track.svg">
+   sodipodi:docname="madcad-cst-annular.svg">
   <style
      id="current-color-scheme">
 	  .ColorScheme-Text { color:#232629; }
@@ -27,17 +27,17 @@
      borderopacity="1.0"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:zoom="6.387423"
-     inkscape:cx="35.367458"
-     inkscape:cy="24.195127"
+     inkscape:zoom="3.1527795"
+     inkscape:cx="24.54978"
+     inkscape:cy="21.143815"
      inkscape:document-units="px"
      inkscape:current-layer="g883"
      showgrid="false"
      units="px"
-     inkscape:window-width="1040"
-     inkscape:window-height="633"
-     inkscape:window-x="880"
-     inkscape:window-y="362"
+     inkscape:window-width="1055"
+     inkscape:window-height="635"
+     inkscape:window-x="790"
+     inkscape:window-y="232"
      inkscape:window-maximized="0"
      borderlayer="false"
      inkscape:showpageshadow="false"
@@ -65,42 +65,48 @@
      id="layer1"
      transform="translate(0,-284.29998)">
     <g
+       id="g883"
+       style="stroke:#888888;stroke-opacity:1;stroke-width:0.52916667;stroke-miterlimit:4;stroke-dasharray:none">
+      <rect
+         style="fill:none;stroke:#888888;stroke-width:0.3"
+         id="rect838"
+         width="11.016444"
+         height="3.7356849"
+         x="0.84260464"
+         y="290.41821" />
+      <path
+         style="fill:none;stroke-width:0.96128;stroke-miterlimit:4;stroke-dasharray:none"
+         d="m 6.3931021,294.18954 -0.038902,2.93198"
+         id="path2528"
+         inkscape:connector-curvature="0" />
+      <path
+         style="fill:#888888;stroke:none"
+         d="m 6.2202822,295.70166 0.00962,-1.49203 -1.6868886,0.0262 z"
+         id="path840" />
+    </g>
+    <g
        id="g879"
        style="fill:currentColor;fill-opacity:1;stroke:currentColor;stroke-opacity:1;stroke-width:0.79375;stroke-miterlimit:4;stroke-dasharray:none"
        class="ColorScheme-Text">
       <path
-         style="fill:none;fill-opacity:1;stroke-width:0.79375;stroke-miterlimit:4;stroke-dasharray:none"
-         d="m 6.3790846,285.54667 v 3.5057"
+         style="fill:none;fill-opacity:1;stroke-width:0.792562;stroke-miterlimit:4;stroke-dasharray:none"
+         d="m 6.3790846,284.48833 v 3.49522"
          id="path2373"
          inkscape:connector-curvature="0"
          sodipodi:nodetypes="cc" />
       <path
-         style="fill-opacity:1;stroke:none;stroke-width:0.79375;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;stroke-miterlimit:4;stroke-dasharray:none"
-         d="m 6.6098347,287.56467 v 1.36328 h 1.327401 z"
-         id="path2405"
-         inkscape:connector-curvature="0" />
-      <rect
-         style="fill:none;fill-opacity:1;paint-order:markers stroke fill;stroke-width:0.79375;stroke-miterlimit:4;stroke-dasharray:none"
-         id="rect2520"
-         width="8.0740719"
-         height="4.1053219"
-         x="2.5775473"
-         y="288.9942" />
-    </g>
-    <g
-       id="g883"
-       style="stroke:#888888;stroke-opacity:1;stroke-width:0.52916667;stroke-miterlimit:4;stroke-dasharray:none">
-      <path
-         style="fill:none;stroke-width:0.52916667;stroke-miterlimit:4;stroke-dasharray:none"
-         d="M 1.7738259,291.03846 H 0.0876677"
-         id="path2528"
-         inkscape:connector-curvature="0" />
-      <path
-         style="fill:none;stroke-width:0.529167;stroke-miterlimit:4;stroke-dasharray:none"
-         d="m 11.440744,290.77862 1.251585,-6e-4"
-         id="path2536"
-         inkscape:connector-curvature="0"
-         sodipodi:nodetypes="cc" />
+         style="fill:none;stroke-width:0.7"
+         id="path1903"
+         sodipodi:type="arc"
+         sodipodi:cx="6.2739463"
+         sodipodi:cy="290.59247"
+         sodipodi:rx="2.7219601"
+         sodipodi:ry="2.6180284"
+         sodipodi:start="0.65313188"
+         sodipodi:end="0.64207582"
+         sodipodi:open="true"
+         sodipodi:arc-type="arc"
+         d="m 8.4356849,292.18338 a 2.7219601,2.6180284 0 0 1 -3.8098289,0.49268 2.7219601,2.6180284 0 0 1 -0.522759,-3.66299 2.7219601,2.6180284 0 0 1 3.806939,-0.51292 2.7219601,2.6180284 0 0 1 0.5438039,3.66015" />
     </g>
   </g>
 </svg>

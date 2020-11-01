@@ -82,7 +82,7 @@ def toolrequest(main, args):
 				evt = yield
 				if not (evt.type() == QEvent.MouseButtonPress and evt.button() == Qt.LeftButton):
 					continue
-				pos = main.active_sceneview.objnear((evt.x(), evt.y()), 10)
+				pos = main.active_sceneview.somenear(evt.pos(), 10)
 				if not pos:	
 					continue
 				grp,rdr,sub = main.active_sceneview.grpat(pos)
@@ -181,8 +181,8 @@ def createpoint(main):
 	while evt.type() != QEvent.MouseButtonPress or evt.button() != Qt.LeftButton:
 		evt = yield
 	c = (evt.x(), evt.y())
-	scene = main.active_sceneview
-	p = scene.localptfrom(c, scene.manipulator.center)
+	view = main.active_sceneview
+	p = view.ptfrom(c, view.manipulator.center)
 	main.syncviews([main.addtemp(p)])
 	return 'vec3({:.4g}, {:.4g}, {:.4g})'.format(*p)
 	
@@ -211,7 +211,6 @@ def toolcapsule(main, name, procedure):
 	else:
 		main.assist.tool('')
 		main.assist.info('')
-	main.updatescene()
 
 
 class ToolAssist(QWidget):
@@ -289,13 +288,15 @@ def init_toolbars(self):
 	tools = self.addToolBar('creation')
 	tools.addAction(self.createaction('import', tool_import, 	'madcad-import'))
 	tools.addAction(QIcon.fromTheme('madcad-solid'), 'solid')
-	tools.addAction(QIcon.fromTheme('madcad-meshing'), 'manual meshing')
+	tools.addAction(QIcon.fromTheme('madcad-meshing'), 'manual triangulated meshing')
+	tools.addAction(QIcon.fromTheme('madcad-splined'), 'manual splined meshing')
 	tools.addAction(self.createtool('point', tool_point,		'madcad-point'))
 	tools.addAction(self.createtool('segment', tool_segment,	'madcad-segment'))
 	tools.addAction(self.createtool('arc', tool_arcthrough,		'madcad-arc'))
 	tools.addAction(QIcon.fromTheme('madcad-spline'), 'spline')
-	tools.addAction('text')
-	tools.addAction('image')
+	tools.addAction(QIcon.fromTheme('insert-text'), 'text')
+	tools.addAction(QIcon.fromTheme('insert-image'), 'image')
+	tools.addAction(QIcon.fromTheme('madcad-annotation'), 'annotation')
 	
 	tools = self.addToolBar('mesh')
 	tools.addAction(self.createtool('boolean', tool_boolean, 'madcad-boolean'))
@@ -316,9 +317,17 @@ def init_toolbars(self):
 	tools.addAction(self.createtool('distance', tool_distance, 'madcad-cst-distance'))
 	tools.addAction(self.createtool('radius', tool_radius, 'madcad-cst-radius'))
 	tools.addAction(self.createtool('angle', tool_angle, 'madcad-cst-angle'))
-	tools.addAction(QIcon.fromTheme('madcad-cst-pivot'), 'pivot')
+	tools.addAction(QIcon.fromTheme('madcad-cst-projection'), 'projection')
+	tools.addAction(QIcon.fromTheme('madcad-cst-ball'), 'ball')
 	tools.addAction(QIcon.fromTheme('madcad-cst-plane'), 'plane')
+	tools.addAction(QIcon.fromTheme('madcad-cst-pivot'), 'pivot')
+	tools.addAction(QIcon.fromTheme('madcad-cst-gliding'), 'gliding')
+	tools.addAction(QIcon.fromTheme('madcad-cst-helicoid'), 'helicoid')
 	tools.addAction(QIcon.fromTheme('madcad-cst-track'), 'track')
+	tools.addAction(QIcon.fromTheme('madcad-cst-annular'), 'linear annular')
+	tools.addAction(QIcon.fromTheme('madcad-cst-punctiform'), 'punctiform')
+	tools.addAction(QIcon.fromTheme('madcad-cst-gear'), 'gear')
+	
 
 def tool_rename(main):
 	if not main.selection:
