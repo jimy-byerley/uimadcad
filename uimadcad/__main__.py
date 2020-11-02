@@ -17,6 +17,6 @@ if __name__ == '__main__':
 	if len(sys.argv) >= 2 and os.path.exists(sys.argv[1]):
 		main.open_file(sys.argv[1])
 	
-	main = Main(madcad)
+	main = MainWindow(madcad)
 	main.show()
 	sys.exit(app.exec())

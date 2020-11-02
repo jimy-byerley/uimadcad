@@ -540,7 +540,7 @@ def open_file_external(file):
 	else:
 		raise EnvironmentError('unable to open a textfile on platform {}'.format(os.platform))
 
-class Main(QMainWindow):
+class MainWindow(QMainWindow):
 	''' the main madcad window '''
 	
 	# signals
