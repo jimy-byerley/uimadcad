@@ -36,17 +36,20 @@ class Scene(madcad.rendering.Scene, QObject):
 	changed = pyqtSignal()
 	
 	def __init__(self, main, *args, **kwargs):
+		# data graph setup
 		madcad.rendering.Scene.__init__(self, *args, **kwargs)
 		QObject.__init__(self)
 		self.main = main
-		self.forceddisplays = set()
+		main.scenes.append(self)
+		main.executed.connect(self.sync)
+		main.scenesmenu.layoutChanged.emit()
+		
+		# scene data
 		self.composition = QTextDocument()
 		self.composition.setDocumentLayout(QPlainTextDocumentLayout(self.composition))
 		
-		self.main.scenes.append(self)
-		self.main.executed.connect(self.sync)
-		self.main.scenesmenu.layoutChanged.emit()
-		
+		self.active_solid = None
+		self.forceddisplays = set()
 		self.additions = {
 			'__grid__': Displayable(Grid),
 			}
@@ -110,13 +113,15 @@ class SceneView(madcad.rendering.View):
 		self.scene.changed.connect(self.update)
 	
 	def closeEvent(self, event):
-		super().closeEvent(event)
 		# WARNING: due to some Qt bugs, a removed Scene can be closed multiple times, and the added scenes are never closed nor displayed
 		#self.main.views.remove(self)
 		for i,view in enumerate(self.main.views):
 			if view is self:
 				self.main.views.pop(i)
-		event.accept()
+		if isinstance(self.parent(), QDockWidget):
+			self.main.mainwindow.removeDockWidget(self.parent())
+		else:
+			super().close()
 		
 	def focusInEvent(self, event):
 		super().focusInEvent(event)

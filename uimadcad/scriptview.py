@@ -142,7 +142,7 @@ class ScriptView(QWidget):
 				digits += 1
 			charwidth = QFontMetrics(self.font).maxWidth()
 			border = charwidth/2
-			width = (digits+1)*charwidth
+			width = (digits+3)*charwidth
 			self.editor.setViewportMargins(width, 0, 0, 0)
 			cr = self.editor.contentsRect()	# only this rect has the correct area, with the good margins with the real widget geometry
 			self.wlinenumbers.setGeometry(QRect(cr.left(), cr.top(), width, cr.height()))
@@ -158,7 +158,7 @@ class ScriptView(QWidget):
 	def close(self):
 		self.main.views.remove(self)
 		if isinstance(self.parent(), QDockWidget):
-			self.main.removeDockWidget(self.parent())
+			self.main.mainwindow.removeDockWidget(self.parent())
 		else:
 			super().close()
 
@@ -176,11 +176,12 @@ class LineNumbers(QWidget):
 		view = self.parent()
 		block = view.firstVisibleBlock()
 		top = view.blockBoundingGeometry(block).translated(view.contentOffset()).top()
+		charwidth = QFontMetrics(self.font).maxWidth()
 		while block.isValid() and top <= zone.bottom():
 			if block.isVisible() and top >= zone.top():
 				height = view.blockBoundingRect(block).height()
 				painter.setFont(self.font)
-				painter.drawText(0, top, self.width, height, Qt.AlignRight, str(block.blockNumber()+1))
+				painter.drawText(0, top, self.width-2*charwidth, height, Qt.AlignRight, str(block.blockNumber()+1))
 				top += height
 			block = block.next()
 

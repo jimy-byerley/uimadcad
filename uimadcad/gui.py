@@ -1,6 +1,7 @@
 from PyQt5.QtCore import (
 		Qt, QSize, QRect, QPoint, QPointF,
-		QEvent, pyqtSignal,
+		QEvent, pyqtSignal, QObject, 
+		QStringListModel,
 		)
 from PyQt5.QtWidgets import (
 		QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction,
@@ -39,98 +40,20 @@ import re
 
 version = '0.5'
 
-from weakref import WeakSet, ref
-from PyQt5.QtCore import QObject, QStringListModel
 
 class Madcad(QObject):
+	# madcad signals
 	executed = pyqtSignal()
 	exectarget_changed = pyqtSignal()
+	file_changed = pyqtSignal()
 	
 	def __init__(self):
 		super().__init__()
 		
-		# main components
-		self.script = QTextDocument(self)
-		self.script.setDocumentLayout(QPlainTextDocumentLayout(self.script))
-		self.script.contentsChange.connect(self._contentsChange)
-		self.interpreter = Interpreter()
-		self.assist = tooling.ToolAssist(self)
-		self.scenesmenu = QStringListModel()
-		self.hiddens = set()
-		self.displayzones = []
-		self.neverused = set()
-		
-		self.scenes = WeakSet()
-		self.views = WeakSet()
-		self.mainwindow = None
-		self.active_sceneview = None
-		self.active_scriptview = None
-		self.active_errorview = None
-		self.active_solid = None
-		
-		self.selection = set()
-		self.exectrigger = 1
-		self.exectarget = 0
-		self.editors = {}
-		self.details = {}
-		
+		# madcad state
 		self.currentfile = None
 		self.currentexport = None
 		
-		self.startup()
-	
-	def startup(self):
-		''' set madcad in the startup state (software openning state) '''
-		settings.install()
-		settings.load()
-		cursor = QTextCursor(self.script)
-		cursor.insertText(open(settings.locations['startup'], 'r').read())
-	
-
-def iter_scenetree(obj):
-	for disp in obj.displays.values():
-		yield disp
-		if isinstance(disp, Group):
-			yield from iter_scenetree(disp)		
-
-def open_file_external(file):
-	if 'linux' in sys.platform:
-		os.system('xdg-open {}'.format(file))
-	elif 'win' in sys.platform:
-		os.system('start {}'.format(file))
-	else:
-		raise EnvironmentError('unable to open a textfile on platform {}'.format(os.platform))
-
-class Main(QMainWindow):
-	''' the main madcad window '''
-	
-	# signals
-	exectarget_changed = pyqtSignal()
-	executed = pyqtSignal()
-	
-	# BEGIN --- paneling and initialization ---
-	
-	def __init__(self, parent=None, filename=None):
-		super().__init__(parent)
-		# window setup
-		self.setWindowRole('madcad')
-		self.setWindowIcon(QIcon.fromTheme('madcad'))
-		self.setMinimumSize(500,300)
-		
-		# main components
-		self.script = QTextDocument(self)
-		self.script.setDocumentLayout(QPlainTextDocumentLayout(self.script))
-		self.script.contentsChange.connect(self._contentsChange)
-		self.interpreter = Interpreter()
-		self.scenelist = SceneList(self)
-		self.assist = tooling.ToolAssist(self)
-		self.scenesmenu = SceneList(self)
-		self.hiddens = set()
-		self.displayzones = []
-		self.neverused = set()
-		
-		self.scenes = []	# objets a afficher sur les View
-		self.views = []
 		self.active_sceneview = None
 		self.active_scriptview = None
 		self.active_errorview = None
@@ -141,7 +64,11 @@ class Main(QMainWindow):
 		self.exectarget = 0
 		self.editors = {}
 		self.details = {}
+		self.hiddens = set()
+		self.displayzones = []
+		self.neverused = set()
 		
+		# madcad ressources (and widgets)
 		self.standardcameras = {
 			'-Z': fquat(fvec3(0, 0, 0)),
 			'+Z': fquat(fvec3(pi, 0, 0)),
@@ -151,34 +78,25 @@ class Main(QMainWindow):
 			'+Y': fquat(fvec3(pi/2, 0, pi/2)),
 			}
 		
-		self.currentfile = None
-		self.currentexport = None
+		# madcad widgets
+		self.script = QTextDocument(self)
+		self.script.setDocumentLayout(QPlainTextDocumentLayout(self.script))
+		self.script.contentsChange.connect(self._contentsChange)
+		self.scenesmenu = SceneList(self)
+		self.interpreter = Interpreter()
 		
-		# insert components to docker
-		self.script.modificationChanged.connect(self.setWindowModified)
-		self.setDockNestingEnabled(True)
-		self.addDockWidget(Qt.LeftDockWidgetArea, dock(ScriptView(self), 'script view'))
-		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self), 'scene view'))
-		#self.scenelistdock = dock(SceneList(self), 'forced variables display')
-		#self.addDockWidget(Qt.LeftDockWidgetArea, self.scenelistdock)
-		self.addDockWidget(Qt.LeftDockWidgetArea, dock(self.assist, 'tool assist'))
-		#self.addDockWidget(Qt.BottomDockWidgetArea, dock(self.console, 'console'))
-		#self.resizeDocks([self.scenelistdock], [0], Qt.Horizontal)	# Qt 5.10 hack to avoid issue of docks reseting their size after user set it
-		
-		#self.details = DictView(self, 3, {'type': 'flat', 'precision':5.232311e-3, 'color':fvec3(0.1,0.2,0.3), 'comment':'this is a raw surface, TODO'})
-		#self.details.show()
-		#self.views.append(self.details)
-		
-		self.init_menus()
-		self.init_toolbars()
-		self.restoreState(b'\x00\x00\x00\xff\x00\x00\x00\x00\xfd\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x01q\x00\x00\x02+\xfc\x02\x00\x00\x00\x03\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x00\x87\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x01\x8e\x00\x00\x00\xb9\x00\x00\x00:\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00z\x01\x00\x00\x03\x00\x00\x00\x01\x00\x00\x02:\x00\x00\x02+\xfc\x02\x00\x00\x00\x01\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x000\x01\x00\x00\x03\x00\x00\x00\x00\x00\x00\x02+\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x08\x00\x00\x00\x08\xfc\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00\x02\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x014\x00\x00\x00L\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x00\xda\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x01,\x00\x00\x00d\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00')
-		self.update_title()
-		
-		#cursor = QTextCursor(self.script)
-		#cursor.insertText('from madcad import *\n\n')
+		self.scenes = []	# objets a afficher sur les View
+		self.views = []		# widgets d'affichage (textview, sceneview, graphicview, ...)
+		self.assist = tooling.ToolAssist(self)
+		self.mainwindow = None
 		
 		self.startup()
 	
+	def close(self):# close all the subwindows
+		for view in self.views:
+			view.close()
+		if self.mainwindow:	self.mainwindow.close()
+
 	def startup(self):
 		''' set madcad in the startup state (software openning state) '''
 		# create or load config
@@ -191,157 +109,8 @@ class Main(QMainWindow):
 		# load startup file
 		cursor = QTextCursor(self.script)
 		cursor.insertText(open(settings.locations['startup'], 'r').read())
+
 	
-	def closeEvent(self, evt):
-		# close all the subwindows
-		for view in self.views:
-			view.close()
-		evt.accept()
-	
-	def init_menus(self):
-		menubar = self.menuBar()
-		menu = menubar.addMenu('&File')
-		menu.addAction(QIcon.fromTheme('document-open'), 'open', self._open, QKeySequence('Ctrl+O'))
-		menu.addAction(QIcon.fromTheme('document-save'), 'save', self._save, QKeySequence('Ctrl+S'))
-		menu.addAction(QIcon.fromTheme('document-save-as'), 'save as', self._save_as, QKeySequence('Ctrl+Shift+S'))
-		menu.addAction(QIcon.fromTheme('emblem-shared'), 'export +', self._export, QKeySequence('Ctrl+E'))
-		menu.addAction(QIcon.fromTheme('insert-image'), 'screenshot +', self._screenshot, QKeySequence('Ctrl+I'))
-		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('preferences-other'), 'interface settings +', self._open_uimadcad_settings)
-		menu.addAction(QIcon.fromTheme('text-x-generic'), 'pymadcad settings', self._open_pymadcad_settings)
-		
-		menu = menubar.addMenu('&Edit')
-		menu.addAction(QIcon.fromTheme('edit-undo'), 'undo', self.script.undo, QKeySequence('Ctrl+Z'))
-		menu.addAction(QIcon.fromTheme('edit-redo'), 'redo', self.script.redo, QKeySequence('Ctrl+Shift+Z'))
-		menu.addAction(QIcon.fromTheme('media-playback-start'), 'execute', self.execute, QKeySequence('Ctrl+Return'))
-		menu.addAction(QIcon.fromTheme('view-refresh'), 'reexecute all', self.reexecute, QKeySequence('Ctrl+Shift+Return'))
-		menu.addAction(QIcon.fromTheme('go-bottom'), 'target to cursor', self._targettocursor, QKeySequence('Ctrl+T'))
-		menu.addSeparator()
-		menu.addAction('disable line +')
-		menu.addAction('enable line +')
-		menu.addAction('disable line dependencies +')
-		menu.addSeparator()
-		menu.addAction(self.createaction('rename object', tooling.tool_rename, shortcut=QKeySequence('F2')))
-		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', self._deselectall, QKeySequence('Ctrl+A'))
-		
-		menu = menubar.addMenu('&View')
-		menu.addAction(QAction('display navigation controls +', self, checkable=True))
-		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('image-x-generic'), 'new 3D view', self.new_sceneview)
-		menu.addAction(QIcon.fromTheme('text-x-script'), 'new text view', 
-			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(self), 'build script')))
-		menu.addSeparator()
-		menu.addAction('set as current solid', self._set_current_solid)
-		menu.addSeparator()
-		
-		themes = menu.addMenu('theme preset')
-		themes.addAction('system +')
-		themes.addAction('blue +')
-		themes.addAction('orange +')
-		themes.addAction('grey +')
-		themes.addAction('white +')
-		themes.addAction('dark +')
-		
-		layouts = menu.addMenu('layout preset')
-		layouts.addAction('simple +')
-		layouts.addAction('side toolbar +')
-		layouts.addAction('multiview +')
-		layouts.addAction('compact +')
-		layouts.addAction('vertical +')
-		
-		menu.addAction('harvest toolbars on window side +')
-		menu.addAction('take floating toolbars to mouse +')
-		menu.addAction('save window layout', lambda: print(self.saveState()))
-		
-		menu = menubar.addMenu('&Scene')
-		action = QAction('display points', self, checkable=True, shortcut=QKeySequence('Shift+P'))
-		action.setChecked(madcad.settings.scene['display_points'])
-		action.toggled.connect(self._display_points)
-		menu.addAction(action)
-		action = QAction('display wire', self, checkable=True, shortcut=QKeySequence('Shift+W'))
-		action.setChecked(madcad.settings.scene['display_wire'])
-		action.toggled.connect(self._display_wire)
-		menu.addAction(action)
-		action = QAction('display groups', self, checkable=True, shortcut=QKeySequence('Shift+G'))
-		action.setChecked(madcad.settings.scene['display_groups'])
-		action.toggled.connect(self._display_groups)
-		menu.addAction(action)
-		action = QAction('display faces', self, checkable=True, shortcut=QKeySequence('Shift+F'))
-		action.setChecked(madcad.settings.scene['display_faces'])
-		action.toggled.connect(self._display_faces)
-		menu.addAction(action)
-		action = QAction('display annotations +', self, checkable=True, shortcut=QKeySequence('Shift+T'))
-		menu.addAction(action)
-		action = QAction('display grid', self, checkable=True, shortcut=QKeySequence('Shift+B'))
-		action.setChecked(madcad.settings.scene['display_grid'])
-		action.toggled.connect(self._display_grid)
-		menu.addAction(action)
-		menu.addSeparator()
-		menu.addAction('center on object', self._viewcenter, shortcut=QKeySequence('Shift+C'))
-		menu.addAction('adjust to object', self._viewadjust, shortcut=QKeySequence('Shift+A'))
-		menu.addAction('look to object', self._viewlook, shortcut=QKeySequence('Shift+L'))
-		menu.addSeparator()
-		
-		
-		def standardcamera(name):
-			orient = self.standardcameras[name]
-			nav = self.active_sceneview.navigation
-			if isinstance(nav, Turntable):
-				nav.yaw = roll(orient)
-				nav.pitch = pi/2 - pitch(orient)
-			elif isinstance(nav, Orbit):
-				nav.orient = orient
-			else:
-				raise TypeError('navigation type {} is not supported for standardcameras'.format(type(nav)))
-			self.active_sceneview.update()
-		
-		cameras = menu.addMenu("standard cameras")
-		cameras.addAction('-Z &top',	lambda: standardcamera('-Z'), shortcut=QKeySequence('Y'))
-		cameras.addAction('+Z &bottom',	lambda: standardcamera('+Z'), shortcut=QKeySequence('Shift+Y'))
-		cameras.addAction('+Y &front',	lambda: standardcamera('-X'), shortcut=QKeySequence('U'))
-		cameras.addAction('-Y &back',	lambda: standardcamera('+X'), shortcut=QKeySequence('Shift+U'))
-		cameras.addAction('-X &right',	lambda: standardcamera('-Y'), shortcut=QKeySequence('I'))
-		cameras.addAction('+X &left',	lambda: standardcamera('+Y'), shortcut=QKeySequence('Shift+I'))
-		
-		anims = menu.addMenu('camera animations')
-		anims.addAction('rotate &world +')
-		anims.addAction('rotate &local +')
-		anims.addAction('rotate &random +')
-		anims.addAction('cyclic &adapt +')
-		
-		menu.addSeparator()
-		
-		menu.addAction('explode objects +')
-		
-		
-		menu = menubar.addMenu('Scrip&t')
-		action = QAction('show line numbers', self, checkable=True, shortcut=QKeySequence('F11'))
-		action.toggled.connect(self._show_line_numbers)
-		menu.addAction(action)
-		action = QAction('enable line wrapping', self, checkable=True, shortcut=QKeySequence('F10'))
-		action.toggled.connect(self._enable_line_wrapping)
-		menu.addAction(action)
-		action = QAction('scroll on selected object +', self, checkable=True)
-		#action.toggled.connect(self._enable_center_on_select)	# TODO when settings will be added
-		menu.addAction(action)
-		menu.addAction(QIcon.fromTheme('edit-find'), 'find +', lambda: None, shortcut=QKeySequence('Ctrl+F'))
-		menu.addAction(QIcon.fromTheme('edit-find-replace'), 'replace +', lambda: None, shortcut=QKeySequence('Ctrl+R'))
-		
-		menu = menubar.addMenu('&Graphic')
-		menu.addAction(QAction('display curve labels +', self, checkable=True))
-		menu.addAction(QAction('display curve points +', self, checkable=True))
-		menu.addAction(QAction('display axis ticks +', self, checkable=True))
-		menu.addAction(QAction('display grid +', self, checkable=True))
-		menu.addSeparator()
-		menu.addAction('adapt to curve +')
-		menu.addAction('zoom on zone +')
-		menu.addAction('stick to zero +')
-		menu.addAction('set ratio to unit +')
-		
-	def init_toolbars(self):
-		tooling.init_toolbars(self)
-		
 	def createtool(self, name, procedure, icon=None, shortcut=None):
 		''' create a QAction for the main class, with the given generator procedure '''
 		action = QAction(name, self)
@@ -375,19 +144,6 @@ class Main(QMainWindow):
 		
 		return action
 	
-	def new_sceneview(self):
-		''' open a new sceneview floating at the center of the main window '''
-		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self), 'scene view'))
-	
-	def update_title(self):
-		if self.currentfile:
-			#filename = self.currentfile[self.currentfile.rfind(os.sep)+1:]
-			#self.setWindowTitle('{} - ̶-  madcad v{}'.format(filename, version))
-			self.setWindowFilePath(self.currentfile)
-		else:
-			#self.setWindowTitle('madcad v{}'.format(version))
-			self.setWindowFilePath('')
-		self.script.setModified(False)
 	
 	# END
 	# BEGIN --- file management system ---
@@ -396,7 +152,7 @@ class Main(QMainWindow):
 		''' callback for the button 'open'
 			ask the user for a new file and then call self.open_file(filename)
 		'''
-		filename = QFileDialog.getOpenFileName(self, 'open madcad file', 
+		filename = QFileDialog.getOpenFileName(self.mainwindow, 'open madcad file', 
 							os.curdir, 
 							'madcad files (*.py *.mc);;text files (*.txt)',
 							)[0]
@@ -423,7 +179,8 @@ class Main(QMainWindow):
 			self.script.clear()
 			QTextCursor(self.script).insertText(open(filename, 'r').read())
 		
-		self.update_title()
+		self.script.setModified(False)
+		self.file_changed.emit()
 		return True
 				
 	
@@ -447,13 +204,14 @@ class Main(QMainWindow):
 			if extension in ('py', 'txt'):
 				open(self.currentfile, 'w').write(self.script.toPlainText())
 			
-			self.update_title()
+			self.script.setModified(False)
+			self.file_changed.emit()
 			
 	def _save_as(self):
 		''' callback for button 'save as' 
 			ask the user for a new value for self.currentfile
 		'''
-		dialog = QFileDialog(self, 'save madcad file', self.currentfile or os.curdir)
+		dialog = QFileDialog(self.mainwindow, 'save madcad file', self.currentfile or os.curdir)
 		dialog.setAcceptMode(QFileDialog.AcceptSave)
 		dialog.exec()
 		if dialog.result() == QDialog.Accepted:
@@ -766,4 +524,205 @@ class Main(QMainWindow):
 	
 	
 	# END
+	
+
+def iter_scenetree(obj):
+	for disp in obj.displays.values():
+		yield disp
+		if isinstance(disp, Group):
+			yield from iter_scenetree(disp)		
+
+def open_file_external(file):
+	if 'linux' in sys.platform:
+		os.system('xdg-open {}'.format(file))
+	elif 'win' in sys.platform:
+		os.system('start {}'.format(file))
+	else:
+		raise EnvironmentError('unable to open a textfile on platform {}'.format(os.platform))
+
+class Main(QMainWindow):
+	''' the main madcad window '''
+	
+	# signals
+	exectarget_changed = pyqtSignal()
+	executed = pyqtSignal()
+	
+	# BEGIN --- paneling and initialization ---
+	
+	def __init__(self, main, parent=None):
+		super().__init__(parent)
+		# window setup
+		self.setWindowRole('madcad')
+		self.setWindowIcon(QIcon.fromTheme('madcad'))
+		self.setMinimumSize(500,300)
+		self.setDockNestingEnabled(True)
+		
+		self.main = main
+		self.main.mainwindow = self
+		
+		main.script.modificationChanged.connect(self.setWindowModified)
+		main.file_changed.connect(self._file_changed)
+		self._create_menus()
+		tooling.create_toolbars(self.main, self)
+		self._file_changed()
+		
+		# insert components to docker
+		self.addDockWidget(Qt.LeftDockWidgetArea, dock(ScriptView(main), 'script view'))
+		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(main), 'scene view'))
+		self.addDockWidget(Qt.LeftDockWidgetArea, dock(self.main.assist, 'tool assist'))
+		
+		# use state to get the proper layout until we have a proper state backup
+		self.restoreState(b'\x00\x00\x00\xff\x00\x00\x00\x00\xfd\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x01q\x00\x00\x02+\xfc\x02\x00\x00\x00\x03\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x00\x87\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x01\x8e\x00\x00\x00\xb9\x00\x00\x00:\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00z\x01\x00\x00\x03\x00\x00\x00\x01\x00\x00\x02:\x00\x00\x02+\xfc\x02\x00\x00\x00\x01\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x000\x01\x00\x00\x03\x00\x00\x00\x00\x00\x00\x02+\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x08\x00\x00\x00\x08\xfc\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00\x02\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x014\x00\x00\x00L\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x00\xda\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x01,\x00\x00\x00d\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00')
+	
+	
+	def closeEvent(self, evt):
+		self.main.close()
+		evt.accept()
+		
+	def _file_changed(self):
+		self.setWindowFilePath(self.main.currentfile or '')
+	
+	def _create_menus(self):
+		main = self.main
+		menubar = self.menuBar()
+		menu = menubar.addMenu('&File')
+		menu.addAction(QIcon.fromTheme('document-open'), 'open', main._open, QKeySequence('Ctrl+O'))
+		menu.addAction(QIcon.fromTheme('document-save'), 'save', main._save, QKeySequence('Ctrl+S'))
+		menu.addAction(QIcon.fromTheme('document-save-as'), 'save as', main._save_as, QKeySequence('Ctrl+Shift+S'))
+		menu.addAction(QIcon.fromTheme('emblem-shared'), 'export +', main._export, QKeySequence('Ctrl+E'))
+		menu.addAction(QIcon.fromTheme('insert-image'), 'screenshot +', main._screenshot, QKeySequence('Ctrl+I'))
+		menu.addSeparator()
+		menu.addAction(QIcon.fromTheme('preferences-other'), 'interface settings +', main._open_uimadcad_settings)
+		menu.addAction(QIcon.fromTheme('text-x-generic'), 'pymadcad settings', main._open_pymadcad_settings)
+		
+		menu = menubar.addMenu('&Edit')
+		menu.addAction(QIcon.fromTheme('edit-undo'), 'undo', main.script.undo, QKeySequence('Ctrl+Z'))
+		menu.addAction(QIcon.fromTheme('edit-redo'), 'redo', main.script.redo, QKeySequence('Ctrl+Shift+Z'))
+		menu.addAction(QIcon.fromTheme('media-playback-start'), 'execute', main.execute, QKeySequence('Ctrl+Return'))
+		menu.addAction(QIcon.fromTheme('view-refresh'), 'reexecute all', main.reexecute, QKeySequence('Ctrl+Shift+Return'))
+		menu.addAction(QIcon.fromTheme('go-bottom'), 'target to cursor', main._targettocursor, QKeySequence('Ctrl+T'))
+		menu.addSeparator()
+		menu.addAction('disable line +')
+		menu.addAction('enable line +')
+		menu.addAction('disable line dependencies +')
+		menu.addSeparator()
+		menu.addAction(main.createaction('rename object', tooling.tool_rename, shortcut=QKeySequence('F2')))
+		menu.addSeparator()
+		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main._deselectall, QKeySequence('Ctrl+A'))
+		
+		menu = menubar.addMenu('&View')
+		menu.addAction(QAction('display navigation controls +', main, checkable=True))
+		menu.addSeparator()
+		menu.addAction(QIcon.fromTheme('image-x-generic'), 'new 3D view', 
+			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(main), 'scene view')))
+		menu.addAction(QIcon.fromTheme('text-x-script'), 'new text view', 
+			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(main), 'build script')))
+		menu.addSeparator()
+		menu.addAction('set as current solid', main._set_current_solid)
+		menu.addSeparator()
+		
+		themes = menu.addMenu('theme preset')
+		themes.addAction('system +')
+		themes.addAction('blue +')
+		themes.addAction('orange +')
+		themes.addAction('grey +')
+		themes.addAction('white +')
+		themes.addAction('dark +')
+		
+		layouts = menu.addMenu('layout preset')
+		layouts.addAction('simple +')
+		layouts.addAction('side toolbar +')
+		layouts.addAction('multiview +')
+		layouts.addAction('compact +')
+		layouts.addAction('vertical +')
+		
+		menu.addAction('harvest toolbars on window side +')
+		menu.addAction('take floating toolbars to mouse +')
+		menu.addAction('save window layout', lambda: print(main.saveState()))
+		
+		menu = menubar.addMenu('&Scene')
+		action = QAction('display points', main, checkable=True, shortcut=QKeySequence('Shift+P'))
+		action.setChecked(madcad.settings.scene['display_points'])
+		action.toggled.connect(main._display_points)
+		menu.addAction(action)
+		action = QAction('display wire', main, checkable=True, shortcut=QKeySequence('Shift+W'))
+		action.setChecked(madcad.settings.scene['display_wire'])
+		action.toggled.connect(main._display_wire)
+		menu.addAction(action)
+		action = QAction('display groups', main, checkable=True, shortcut=QKeySequence('Shift+G'))
+		action.setChecked(madcad.settings.scene['display_groups'])
+		action.toggled.connect(main._display_groups)
+		menu.addAction(action)
+		action = QAction('display faces', main, checkable=True, shortcut=QKeySequence('Shift+F'))
+		action.setChecked(madcad.settings.scene['display_faces'])
+		action.toggled.connect(main._display_faces)
+		menu.addAction(action)
+		action = QAction('display annotations +', main, checkable=True, shortcut=QKeySequence('Shift+T'))
+		menu.addAction(action)
+		action = QAction('display grid', main, checkable=True, shortcut=QKeySequence('Shift+B'))
+		action.setChecked(madcad.settings.scene['display_grid'])
+		action.toggled.connect(main._display_grid)
+		menu.addAction(action)
+		menu.addSeparator()
+		menu.addAction('center on object', main._viewcenter, shortcut=QKeySequence('Shift+C'))
+		menu.addAction('adjust to object', main._viewadjust, shortcut=QKeySequence('Shift+A'))
+		menu.addAction('look to object', main._viewlook, shortcut=QKeySequence('Shift+L'))
+		menu.addSeparator()
+		
+		
+		def standardcamera(name):
+			orient = self.main.standardcameras[name]
+			nav = self.main.active_sceneview.navigation
+			if isinstance(nav, Turntable):
+				nav.yaw = roll(orient)
+				nav.pitch = pi/2 - pitch(orient)
+			elif isinstance(nav, Orbit):
+				nav.orient = orient
+			else:
+				raise TypeError('navigation type {} is not supported for standardcameras'.format(type(nav)))
+			self.main.active_sceneview.update()
+		
+		cameras = menu.addMenu("standard cameras")
+		cameras.addAction('-Z &top',	lambda: standardcamera('-Z'), shortcut=QKeySequence('Y'))
+		cameras.addAction('+Z &bottom',	lambda: standardcamera('+Z'), shortcut=QKeySequence('Shift+Y'))
+		cameras.addAction('+Y &front',	lambda: standardcamera('-X'), shortcut=QKeySequence('U'))
+		cameras.addAction('-Y &back',	lambda: standardcamera('+X'), shortcut=QKeySequence('Shift+U'))
+		cameras.addAction('-X &right',	lambda: standardcamera('-Y'), shortcut=QKeySequence('I'))
+		cameras.addAction('+X &left',	lambda: standardcamera('+Y'), shortcut=QKeySequence('Shift+I'))
+		
+		anims = menu.addMenu('camera animations')
+		anims.addAction('rotate &world +')
+		anims.addAction('rotate &local +')
+		anims.addAction('rotate &random +')
+		anims.addAction('cyclic &adapt +')
+		
+		menu.addSeparator()
+		
+		menu.addAction('explode objects +')
+		
+		
+		menu = menubar.addMenu('Scrip&t')
+		action = QAction('show line numbers', main, checkable=True, shortcut=QKeySequence('F11'))
+		action.toggled.connect(main._show_line_numbers)
+		menu.addAction(action)
+		action = QAction('enable line wrapping', main, checkable=True, shortcut=QKeySequence('F10'))
+		action.toggled.connect(main._enable_line_wrapping)
+		menu.addAction(action)
+		action = QAction('scroll on selected object +', main, checkable=True)
+		#action.toggled.connect(main._enable_center_on_select)	# TODO when settings will be added
+		menu.addAction(action)
+		menu.addAction(QIcon.fromTheme('edit-find'), 'find +', lambda: None, shortcut=QKeySequence('Ctrl+F'))
+		menu.addAction(QIcon.fromTheme('edit-find-replace'), 'replace +', lambda: None, shortcut=QKeySequence('Ctrl+R'))
+		
+		menu = menubar.addMenu('&Graphic')
+		menu.addAction(QAction('display curve labels +', main, checkable=True))
+		menu.addAction(QAction('display curve points +', main, checkable=True))
+		menu.addAction(QAction('display axis ticks +', main, checkable=True))
+		menu.addAction(QAction('display grid +', main, checkable=True))
+		menu.addSeparator()
+		menu.addAction('adapt to curve +')
+		menu.addAction('zoom on zone +')
+		menu.addAction('stick to zero +')
+		menu.addAction('set ratio to unit +')
+	
 	

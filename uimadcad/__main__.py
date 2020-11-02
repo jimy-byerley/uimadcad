@@ -11,10 +11,12 @@ if __name__ == '__main__':
 	app.setApplicationName('madcad')
 	app.setApplicationVersion(version)
 	app.setApplicationDisplayName('madcad v{}'.format(version))
-	main = Main()
-	main.show()
+	
+	madcad = Madcad()
 	
 	if len(sys.argv) >= 2 and os.path.exists(sys.argv[1]):
 		main.open_file(sys.argv[1])
 	
+	main = Main(madcad)
+	main.show()
 	sys.exit(app.exec())

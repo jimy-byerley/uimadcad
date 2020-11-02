@@ -284,39 +284,39 @@ class ToolAssist(QWidget):
 		
 
 
-def init_toolbars(self):
-	tools = self.addToolBar('creation')
-	tools.addAction(self.createaction('import', tool_import, 	'madcad-import'))
+def create_toolbars(main, widget):
+	tools = widget.addToolBar('creation')
+	tools.addAction(main.createaction('import', tool_import, 	'madcad-import'))
 	tools.addAction(QIcon.fromTheme('madcad-solid'), 'solid')
 	tools.addAction(QIcon.fromTheme('madcad-meshing'), 'manual triangulated meshing')
 	tools.addAction(QIcon.fromTheme('madcad-splined'), 'manual splined meshing')
-	tools.addAction(self.createtool('point', tool_point,		'madcad-point'))
-	tools.addAction(self.createtool('segment', tool_segment,	'madcad-segment'))
-	tools.addAction(self.createtool('arc', tool_arcthrough,		'madcad-arc'))
+	tools.addAction(main.createtool('point', tool_point,		'madcad-point'))
+	tools.addAction(main.createtool('segment', tool_segment,	'madcad-segment'))
+	tools.addAction(main.createtool('arc', tool_arcthrough,		'madcad-arc'))
 	tools.addAction(QIcon.fromTheme('madcad-spline'), 'spline')
 	tools.addAction(QIcon.fromTheme('insert-text'), 'text')
 	tools.addAction(QIcon.fromTheme('insert-image'), 'image')
 	tools.addAction(QIcon.fromTheme('madcad-annotation'), 'annotation')
 	
-	tools = self.addToolBar('mesh')
-	tools.addAction(self.createtool('boolean', tool_boolean, 'madcad-boolean'))
+	tools = widget.addToolBar('mesh')
+	tools.addAction(main.createtool('boolean', tool_boolean, 'madcad-boolean'))
 	tools.addAction(QIcon.fromTheme('madcad-chamfer'), 'chamfer')
 	
-	tools = self.addToolBar('web')
-	tools.addAction(self.createtool('extrusion', tool_extrusion, 'madcad-extrusion'))
+	tools = widget.addToolBar('web')
+	tools.addAction(main.createtool('extrusion', tool_extrusion, 'madcad-extrusion'))
 	tools.addAction(QIcon.fromTheme('madcad-revolution'), 'revolution')
 	tools.addAction(QIcon.fromTheme('madcad-extrans'), 'screw')
 	tools.addAction(QIcon.fromTheme('madcad-junction'), 'join')
 	tools.addAction(QIcon.fromTheme('madcad-triangulation'), 'surface')
 	
-	tools = self.addToolBar('amelioration')
+	tools = widget.addToolBar('amelioration')
 	tools.addAction(QIcon.fromTheme('madcad-mergeclose'), 'merge closes')
 	tools.addAction(QIcon.fromTheme('madcad-stripbuffer'), 'strip buffers')
 	
-	tools = self.addToolBar('constraints')
-	tools.addAction(self.createtool('hold distance', tool_distance, 'madcad-cst-distance'))
-	tools.addAction(self.createtool('hold radius', tool_radius, 'madcad-cst-radius'))
-	tools.addAction(self.createtool('hold angle', tool_angle, 'madcad-cst-angle'))
+	tools = widget.addToolBar('constraints')
+	tools.addAction(main.createtool('hold distance', tool_distance, 'madcad-cst-distance'))
+	tools.addAction(main.createtool('hold radius', tool_radius, 'madcad-cst-radius'))
+	tools.addAction(main.createtool('hold angle', tool_angle, 'madcad-cst-angle'))
 	tools.addAction(QIcon.fromTheme('madcad-cst-tangent'), 'make tangent')
 	tools.addAction(QIcon.fromTheme('madcad-cst-onplane'), 'hold on plane')
 	tools.addAction(QIcon.fromTheme('madcad-cst-projection'), 'hold projection')
@@ -337,8 +337,8 @@ def tool_rename(main):
 	name,_ = next(iter(main.selection))
 	rename(main, name)
 
-def tool_import(self):
-	filename = QFileDialog.getOpenFileName(self, 'import file', 
+def tool_import(main):
+	filename = QFileDialog.getOpenFileName(main, 'import file', 
 						os.curdir, 
 						'ply files (*.ply);;stl files (*.stl);;obj files (*.obj)',
 						)[0]
@@ -346,7 +346,7 @@ def tool_import(self):
 		raise ToolError('no file selected')
 	objname = os.path.splitext(os.path.basename(filename))[0]
 	if not objname.isidentifier():	objname = 'imported'
-	self.insertstmt('{} = read({})'.format(objname, repr(filename)))
+	main.insertstmt('{} = read({})'.format(objname, repr(filename)))
 
 def tool_point(main):
 	main.assist.tool('point')
