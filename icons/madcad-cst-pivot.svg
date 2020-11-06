@@ -69,18 +69,18 @@
        id="g905"
        style="fill-opacity:1;stroke:#888888;stroke-width:0.52916667;stroke-miterlimit:4;stroke-dasharray:none">
       <path
-         style="fill:url(#linearGradient911);fill-opacity:1;stroke-width:0.52916667;stroke-miterlimit:4;stroke-dasharray:none"
+         style="stroke-width:0.52916667;stroke-miterlimit:4;stroke-dasharray:none"
          d="M 1.3229167,290.75581 H 11.854056"
          id="path2381"
          inkscape:connector-curvature="0"
          sodipodi:nodetypes="cc" />
       <path
-         style="fill:url(#linearGradient911);fill-opacity:1;stroke-width:0.52916667;stroke-miterlimit:4;stroke-dasharray:none"
+         style="stroke-width:0.52916667;stroke-miterlimit:4;stroke-dasharray:none"
          d="m 1.209995,288.51595 v 4.43845"
          id="path2389"
          inkscape:connector-curvature="0" />
       <path
-         style="fill:url(#linearGradient911);fill-opacity:1;stroke-width:0.52916667;stroke-miterlimit:4;stroke-dasharray:none"
+         style="stroke-width:0.52916667;stroke-miterlimit:4;stroke-dasharray:none"
          d="m 11.70871,288.53302 v 4.42991"
          id="path2391"
          inkscape:connector-curvature="0" />
@@ -90,17 +90,17 @@
        style="fill-opacity:1;fill:currentColor;stroke:currentColor;stroke-width:0.79375;stroke-miterlimit:4;stroke-dasharray:none"
        class="ColorScheme-Text">
       <path
-         style="fill:url(#linearGradient900);fill-opacity:1;stroke-width:0.79375;stroke-miterlimit:4;stroke-dasharray:none"
+         style="stroke-width:0.79375;stroke-miterlimit:4;stroke-dasharray:none"
          d="M 2.3842732,292.71002 H 10.575598"
          id="path2359"
          inkscape:connector-curvature="0" />
       <path
-         style="fill:url(#linearGradient900);fill-opacity:1;stroke-width:0.79375;stroke-miterlimit:4;stroke-dasharray:none"
+         style="stroke-width:0.79375;stroke-miterlimit:4;stroke-dasharray:none"
          d="M 2.2844618,288.69361 H 10.563864"
          id="path2357"
          inkscape:connector-curvature="0" />
       <path
-         style="fill:url(#linearGradient900);fill-opacity:1;stroke-width:0.79375;stroke-miterlimit:4;stroke-dasharray:none"
+         style="stroke-width:0.79375;stroke-miterlimit:4;stroke-dasharray:none"
          d="m 6.3073332,285.18791 v 3.5057"
          id="path2373"
          inkscape:connector-curvature="0"

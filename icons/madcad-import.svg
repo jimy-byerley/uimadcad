@@ -20,103 +20,7 @@
      id="current-color-scheme">
 	  .ColorScheme-Text { color:#232629; }
       .ColorScheme-Highlight { color:#93cee9; }</style>
-  <defs
-     id="defs2">
-    <linearGradient
-       id="linearGradient3667"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#000000;stop-opacity:1;"
-         offset="0"
-         id="stop3665" />
-    </linearGradient>
-    <linearGradient
-       id="linearGradient866"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#000000;stop-opacity:1;"
-         offset="0"
-         id="stop864" />
-    </linearGradient>
-    <linearGradient
-       id="linearGradient860"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#000000;stop-opacity:1;"
-         offset="0"
-         id="stop858" />
-    </linearGradient>
-    <linearGradient
-       id="linearGradient850"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#000000;stop-opacity:1;"
-         offset="0"
-         id="stop848" />
-    </linearGradient>
-    <linearGradient
-       id="user"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#3a8bb0;stop-opacity:1;"
-         offset="0"
-         id="stop1582" />
-    </linearGradient>
-    <linearGradient
-       id="second"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#878787;stop-opacity:1;"
-         offset="0"
-         id="stop1576" />
-    </linearGradient>
-    <linearGradient
-       id="main"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#ffffff;stop-opacity:1;"
-         offset="0"
-         id="stop1570" />
-    </linearGradient>
-    <inkscape:perspective
-       sodipodi:type="inkscape:persp3d"
-       inkscape:vp_x="0 : 8.4666667 : 1"
-       inkscape:vp_y="0 : 999.99996 : 0"
-       inkscape:vp_z="16.933333 : 8.4666667 : 1"
-       inkscape:persp3d-origin="8.4666667 : 5.6444445 : 1"
-       id="perspective817" />
-    <linearGradient
-       inkscape:collect="always"
-       xlink:href="#user"
-       id="linearGradient3675"
-       gradientUnits="userSpaceOnUse"
-       gradientTransform="matrix(1.0258204,0,0,1.0258202,-0.56875366,-35.234469)"
-       x1="4.1564841"
-       y1="285.00372"
-       x2="25.685919"
-       y2="285.00372" />
-    <linearGradient
-       inkscape:collect="always"
-       xlink:href="#user"
-       id="linearGradient3677"
-       gradientUnits="userSpaceOnUse"
-       gradientTransform="matrix(1.0258204,0,0,1.0258202,-0.56875366,-35.234469)"
-       x1="4.2887759"
-       y1="285.00372"
-       x2="25.553629"
-       y2="285.00372" />
-    <font
-       horiz-adv-x="1024"
-       id="font3723"
-       inkscape:label="fonte 1">
-      <font-face
-         units-per-em="1024"
-         id="font-face3725"
-         font-family="SVGFont 1" />
-      <missing-glyph
-         d="M0,0h1000v1024h-1000z"
-         id="missing-glyph3727" />
-    </font>
+  <defs id="defs2">
   </defs>
   <sodipodi:namedview
      id="base"
@@ -125,15 +29,15 @@
      borderopacity="1.0"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:zoom="3.5536616"
-     inkscape:cx="42.324441"
-     inkscape:cy="28.138934"
+     inkscape:zoom="4.865205"
+     inkscape:cx="37.609007"
+     inkscape:cy="41.031701"
      inkscape:document-units="px"
-     inkscape:current-layer="g869"
+     inkscape:current-layer="layer1"
      showgrid="false"
      units="px"
-     inkscape:window-width="1040"
-     inkscape:window-height="571"
+     inkscape:window-width="1019"
+     inkscape:window-height="561"
      inkscape:window-x="748"
      inkscape:window-y="424"
      inkscape:window-maximized="0"
@@ -162,8 +66,8 @@
      id="layer1"
      transform="translate(0,-284.29998)">
     <path
-       style="fill:none;stroke:#888888;stroke-width:0.56707323;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 1.5949093,284.6701 v 10.94252 h 9.6526287 v -7.83177 l -3.4329438,-3.07416 z"
+       style="fill:none;stroke:#888888;stroke-width:0.568149;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 1.8307852,284.52732 v 11.14373 h 9.5143618 v -7.97579 l -3.383769,-3.13068 z"
        id="path846"
        inkscape:connector-curvature="0"
        sodipodi:nodetypes="cccccc" />
@@ -207,20 +111,5 @@
          inkscape:connector-curvature="0"
          sodipodi:nodetypes="cc" />
     </g>
-    <text
-       id="text3714"
-       style="font-style:normal;font-weight:normal;font-size:20px;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none"
-       xml:space="preserve"><tspan
-         id="tspan3712"
-         style="font-style:normal;font-weight:normal;font-size:10.8566px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:url(#linearGradient3675);fill-opacity:1;stroke:url(#linearGradient3677);stroke-width:0.271415;stroke-miterlimit:4;stroke-dasharray:none"
-         sodipodi:role="line"
-         xml:space="preserve"><tspan
-           id="tspan3710"
-           style="font-size:4.34264px;fill:url(#linearGradient3675);fill-opacity:1;stroke:url(#linearGradient3677);stroke-width:0.271415;stroke-miterlimit:4;stroke-dasharray:none"
-           sodipodi:role="line"
-           xml:space="preserve">.<tspan
-   id="tspan3708"
-   style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Purista;-inkscape-font-specification:Purista;fill:url(#linearGradient3675);stroke:url(#linearGradient3677);stroke-width:0.271415"
-   xml:space="preserve">STL</tspan></tspan></tspan></text>
   </g>
 </svg>
