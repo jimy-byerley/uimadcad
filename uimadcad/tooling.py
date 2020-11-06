@@ -67,13 +67,7 @@ def toolrequest(main, args):
 	# create successive missing objects (if they are sufficiently simple objects)
 	for i,req,comment in missing:
 		main.assist.info(comment)
-		if req == vec3:
-			create = createpoint(main)
-		#elif req == isaxis:
-			#o = yield from createpoint(main)
-			#p = yield from createpoint(main)
-			#match[i] = (o, normalize(p-o))
-		else:
+		if req not in completition:
 			raise ToolError('missing {}'.format(comment))
 	
 		# run a selection in concurrence with the creation
@@ -98,12 +92,14 @@ def toolrequest(main, args):
 					return grp
 	
 		# get the first returned value from the selector or the creation
-		iterator = race(select(main), create)
+		iterator = race(select(main), completition[req](main))
 		next(iterator)
 		match[i] = yield from iterator
 	
 	main.selection.clear()
 	return match
+
+	
 
 def islive(main, name):
 	''' return True if the variable using this name is in a text area that 
@@ -180,12 +176,12 @@ def createpoint(main):
 	evt = yield
 	while evt.type() != QEvent.MouseButtonPress or evt.button() != Qt.LeftButton:
 		evt = yield
-	c = (evt.x(), evt.y())
 	view = main.active_sceneview
-	p = view.ptfrom(c, view.manipulator.center)
-	main.syncviews([main.addtemp(p)])
-	return 'vec3({:.4g}, {:.4g}, {:.4g})'.format(*p)
-	
+	p = view.ptfrom(evt.pos(), view.navigation.center)
+	main.addtemp(p)
+	main.active_sceneview.scene.add(p)
+	return p
+
 def autoname(main, oldname):
 	obj = main.interpreter.current[oldname]
 	if isinstance(obj, vec3):	basename = 'P'
@@ -219,6 +215,7 @@ class ToolAssist(QWidget):
 		super().__init__(parent)
 		self.main = main
 		self.visible = False
+		self.generator = None
 		self._tool = QLabel()
 		self._info = QLabel()
 		
@@ -246,12 +243,11 @@ class ToolAssist(QWidget):
 		
 	def cancel(self):
 		''' cancel the current tool procedure '''
-		tool = self.main.active_sceneview.tool
-		if hasattr(tool, 'throw'):	tool.throw(ToolError('action canceled'))
-		self.main.active_sceneview.tool = None
+		if self.generator:
+			try:	self.generator.throw(ToolError('action canceled'))
+			except ToolError:	pass
 		self.tool(None)
-		self.info('no active tool')
-		
+	
 	def tool(self, name):
 		''' set the current tool name, if set to None or an empty name, the assistant will be hidden '''
 		if name:	
@@ -338,7 +334,7 @@ def tool_rename(main):
 	rename(main, name)
 
 def tool_import(main):
-	filename = QFileDialog.getOpenFileName(main, 'import file', 
+	filename = QFileDialog.getOpenFileName(main.mainwindow, 'import file', 
 						os.curdir, 
 						'ply files (*.ply);;stl files (*.stl);;obj files (*.obj)',
 						)[0]
@@ -352,7 +348,7 @@ def tool_point(main):
 	main.assist.tool('point')
 	main.assist.info('click to place the point')
 	p = yield from createpoint(main)
-	main.insertexpr(p)
+	main.insertexpr(repr(p))
 	
 def tool_segment(main):
 	args = yield from toolrequest(main, [
@@ -438,6 +434,13 @@ def tool_angle(main):
 	main.insertexpr('Angle({}, {}, {})'.format(*args, target))
 
 
+
+	
+
+# tools that will automatically used to create missing objects in request
+completition = {
+	vec3:	createpoint,
+	}
 
 
 '''

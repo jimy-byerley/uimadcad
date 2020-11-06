@@ -53,6 +53,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.additions = {
 			'__grid__': Displayable(Grid),
 			}
+		self.editors = {}
 	
 	def __del__(self):
 		try:	self.main.scenes.remove(self)
@@ -126,6 +127,7 @@ class SceneView(madcad.rendering.View):
 	def focusInEvent(self, event):
 		super().focusInEvent(event)
 		self.main.active_sceneview = self
+		self.main.active_changed.emit()
 	
 	def changeEvent(self, evt):
 		# detect QDockWidget integration

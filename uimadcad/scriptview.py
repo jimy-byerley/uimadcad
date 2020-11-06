@@ -54,6 +54,12 @@ class ScriptView(QWidget):
 		#self.enable_linenumbers(True)
 		self.targetcursor = TargetCursor(main, self.editor)
 		
+		# set cursor position on openning
+		if main.active_scriptview:
+			self.editor.setTextCursor(self.active_scriptview.editor.textCursor())
+		else:
+			self.editor.moveCursor(QTextCursor.End)
+		
 		# statusbar
 		statusbar = QWidget()
 		self.label_location = QLabel('line 1, column 1')

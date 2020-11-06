@@ -1,3 +1,15 @@
+'''	Definition of the mainframe of the MADCAD gui
+
+	Architecture
+	============
+	
+		At contrary to usual data structures, in a gui and using Qt events in particular, the user will is received by the bottom nodes of the data tree: the user is not controling the top classes but interacting with the bottom unit objects.
+		Therefore the data access is inverted allow the user will to be better used: the unit classes are referencing their parents and manage their content.
+		
+		More specifically the gui is centered around a main non-graphical class Madcad, which most of the top widgets are referencing and exploiting as a shared ressource. The same is true for subwidgets of these top widgets.
+'''
+
+
 from PyQt5.QtCore import (
 		Qt, QSize, QRect, QPoint, QPointF,
 		QEvent, pyqtSignal, QObject, 
@@ -28,11 +40,12 @@ from .sceneview import Scene, SceneView, SceneList
 from .errorview import ErrorView
 from .detailview import DetailView
 from .tricks import PointEditor, EditionError
+from .tooling import ToolAssist, ToolError
 from . import tooling
 from . import settings
 
 from copy import deepcopy, copy
-from nprint import nprint
+from nprint import nprint, nformat
 import ast, traceback
 import os, sys
 import re
@@ -42,10 +55,14 @@ version = '0.5'
 
 
 class Madcad(QObject):
+	'''
+		Main class of the madcad gui. It represents the gui software itself and is meant to be used as a shared ressource across all widgets.
+	'''
 	# madcad signals
 	executed = pyqtSignal()
 	exectarget_changed = pyqtSignal()
 	file_changed = pyqtSignal()
+	active_changed = pyqtSignal()
 	
 	def __init__(self):
 		super().__init__()
@@ -87,12 +104,13 @@ class Madcad(QObject):
 		
 		self.scenes = []	# objets a afficher sur les View
 		self.views = []		# widgets d'affichage (textview, sceneview, graphicview, ...)
-		self.assist = tooling.ToolAssist(self)
+		self.assist = ToolAssist(self)
 		self.mainwindow = None
 		
 		self.startup()
 	
-	def close(self):# close all the subwindows
+	def close(self):
+		# close all the subwindows
 		for view in self.views:
 			view.close()
 		if self.mainwindow:	self.mainwindow.close()
@@ -116,18 +134,42 @@ class Madcad(QObject):
 		action = QAction(name, self)
 		if shortcut:	action.setShortcut(shortcut)
 		if icon:		action.setIcon(QIcon.fromTheme(icon))
+		
+		# generator packing the given procedure to handle exceptions
+		def capsule():
+			self.assist.generator = gen = procedure(self)
+			self.assist.tool(name)
+			self.assist.info('')
+			try:
+				yield from gen
+			except ToolError as err:
+				self.assist.info('<b style="color:#ff5555">{}</b>'.format(err))
+			except Exception as err:
+				traceback.print_exception(type(err), err, err.__traceback__)
+				self.assist.info('<b style="color:#ff5555">internal error, check console</b>')
+			self.assist.tool('')
+			self.assist.info('')
+			self.active_sceneview.scene.sync()
+		# button callback
 		def callback():
-			gen = tooling.toolcapsule(self, name, procedure)
+			gen = capsule()
+			# tools can run in one-sot
 			try:	next(gen)
-			except StopIteration:	pass
-			else:
-				def tool(evt, view=self.active_sceneview):
+			except StopIteration:	return
+			# or ask for more interactions
+			scene = self.active_sceneview.scene
+			for view in self.views:
+				if not isinstance(view, SceneView) or view.scene is not scene:
+					continue
+				def tool(evt):
 					try:	gen.send(evt)
 					except StopIteration:	
-						view.scene.sync()
 						view.tool.remove(tool)
-				self.active_sceneview.tool.append(tool)
+					else:
+						view.scene.touch()
+				view.tool.append(tool)
 		action.triggered.connect(callback)
+		
 		return action
 
 	def createaction(self, name, procedure, icon=None, shortcut=None):
@@ -135,9 +177,12 @@ class Madcad(QObject):
 		action = QAction(name, self)
 		if shortcut:	action.setShortcut(shortcut)
 		if icon:		action.setIcon(QIcon.fromTheme(icon))
+		
+		# simple on-shot callback
 		def callback():
-			try:				procedure(self)
-			except tooling.ToolError as err:	
+			try:				
+				procedure(self)
+			except ToolError as err:	
 				self.assist.tool(name)
 				self.assist.info('<b style="color:#ff5555">{}</b>'.format(err))
 		action.triggered.connect(callback)
@@ -227,6 +272,9 @@ class Madcad(QObject):
 	def _open_pymadcad_settings(self):
 		open_file_external(settings.locations['pysettings'])
 	
+	def _open_startup_file(self):
+		open_file_external(settings.locations['startup'])
+	
 	# END
 	# BEGIN --- editing tools ----
 				
@@ -298,7 +346,7 @@ class Madcad(QObject):
 			self.active_errorview = ErrorView(self, err)
 			self.active_errorview.show()
 			self.views.append(self.active_errorview)
-		self.activateWindow()
+		#self.mainwindow.activateWindow()
 		
 	def edit(self, name):
 		obj = self.scene[name]
@@ -381,7 +429,7 @@ class Madcad(QObject):
 		cursor.setPosition(self.exectarget)
 		return cursor
 		
-	def insertexpr(self, text):
+	def insertexpr(self, text, format=True):
 		cursor = self.targetcursor()
 		cursor.movePosition(QTextCursor.NextWord)
 		cursor.movePosition(QTextCursor.PreviousWord, QTextCursor.KeepAnchor)
@@ -392,7 +440,7 @@ class Madcad(QObject):
 
 		if not re.match(r'.*[,\n+\-\*/\=]\s*$', prev):
 			cursor.insertText('\n')
-		cursor.insertText(text)
+		cursor.insertText(nformat(text) if format else text)
 		self.exectarget = cursor.position()
 		if self.exectrigger:
 			self.execute()
@@ -483,12 +531,13 @@ class Madcad(QObject):
 		''' add a variable to the scene, that will be removed at next execution
 			a new unused temp name is used and returned
 		'''
+		env = self.interpreter.current
 		i = 0
 		while True:
 			name = 'temp{}'.format(i)
-			if name not in self.scene:	break
+			if name not in env:	break
 			i += 1
-		self.interpreter.current[name] = self.scene[name] = obj
+		env[name] = obj
 		return name
 	
 	def updatescript(self):
@@ -541,7 +590,9 @@ def open_file_external(file):
 		raise EnvironmentError('unable to open a textfile on platform {}'.format(os.platform))
 
 class MainWindow(QMainWindow):
-	''' the main madcad window '''
+	''' The main window of the gui. 
+		Only here to organize the other top-level widgets
+	'''
 	
 	# signals
 	exectarget_changed = pyqtSignal()
@@ -592,8 +643,9 @@ class MainWindow(QMainWindow):
 		menu.addAction(QIcon.fromTheme('emblem-shared'), 'export +', main._export, QKeySequence('Ctrl+E'))
 		menu.addAction(QIcon.fromTheme('insert-image'), 'screenshot +', main._screenshot, QKeySequence('Ctrl+I'))
 		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('preferences-other'), 'interface settings +', main._open_uimadcad_settings)
+		menu.addAction(QIcon.fromTheme('preferences-other'), 'interface settings', main._open_uimadcad_settings)
 		menu.addAction(QIcon.fromTheme('text-x-generic'), 'pymadcad settings', main._open_pymadcad_settings)
+		menu.addAction(QIcon.fromTheme('text-x-generic'), 'startup file', main._open_startup_file)
 		
 		menu = menubar.addMenu('&Edit')
 		menu.addAction(QIcon.fromTheme('edit-undo'), 'undo', main.script.undo, QKeySequence('Ctrl+Z'))
