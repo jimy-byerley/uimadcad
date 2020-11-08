@@ -389,23 +389,6 @@ class Madcad(QObject):
 		scene = self.active_sceneview.scene
 		box = scene.selectionbox() or scene.box()
 		self.active_sceneview.look(box.center)
-	
-	def _deselectall(self):
-		selected = {}
-		for grp,sub in self.selection:
-			if grp not in selected:	selected[grp] = []
-			selected[grp].append(sub)
-			
-		for g,subs in selected.items():
-			for view in self.views:
-				if isinstance(view, SceneView):
-					for grp,rdr in view.stack:
-						if grp == g and hasattr(rdr, 'select'):
-							for sub in subs:
-								rdr.select(sub, False)
-					view.update()
-		self.selection.clear()
-		self.updatescript()
 		
 	def _set_current_solid(self):
 		#self.active_solid = first(
@@ -663,7 +646,7 @@ class MainWindow(QMainWindow):
 		menu.addSeparator()
 		menu.addAction(main.createaction('rename object', tooling.tool_rename, shortcut=QKeySequence('F2')))
 		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main._deselectall, QKeySequence('Ctrl+A'))
+		menu.addAction(main.createaction('deselect all', tooling.deselectall, 'edit-select-all', shortcut=QKeySequence('Ctrl+A')))
 		
 		menu = menubar.addMenu('&View')
 		menu.addAction(QAction('display navigation controls +', main, checkable=True))

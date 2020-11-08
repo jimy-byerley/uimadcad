@@ -121,24 +121,13 @@ def rename(main, oldname, newname=None):
 	''' rename the object
 		if the object is a temporary value, its expression is moved into a new assignation statement
 		if the object is an existing variable, simply change the name the value is assigned to
-		
-		NOTE: 
-			the name in the interpreter and in the scene will remain the old name until the script is reexecuted
-			the script may be reexecuted during this function call, as the renaming can insert newlines
-			the name is changed in main.selection to get things right at the next execution
 	'''
 	if not islive(main, oldname):
 		raise ToolError('cannot rename variable {} in a modified area'.format(repr(oldname)))
 	if not newname:
-		newname = QInputDialog.getText(main, 'choose variable name', 'new name:')[0]
+		newname = QInputDialog.getText(main.mainwindow, 'choose variable name', 'new name:')[0]
 	if not newname:
 		raise ToolError('no new name entered')
-	
-	# change the name in selection
-	newsel = set()
-	for grp,sub in main.selection:
-		newsel.add((newname,sub) if grp == oldname else (grp,sub))
-	main.selection = newsel
 	
 	node = main.interpreter.locations[oldname]
 	# the renamed object already has a variable name
@@ -172,6 +161,15 @@ def rename(main, oldname, newname=None):
 			cursor.insertText('{} = {}\n'.format(newname, expr))
 		
 		cursor.endEditBlock()
+		
+def deselectall(main):
+	for disp in main.active_sceneview.scene.unroll():
+		if disp.selected:	disp.selected = False
+		if type(disp).__name__ in ('MeshDisplay', 'WireDisplay'):
+			disp.vertices.flags &= ~0x1
+			disp.vertices.flags_updated = True
+	main.active_sceneview.update()
+	main.updatescript()
 	
 def createpoint(main):
 	evt = yield from waitclick()
@@ -346,9 +344,13 @@ def create_toolbars(main, widget):
 	
 
 def tool_rename(main):
-	args = yield from toolrequest(main, [(object, 'object to rename')], create=False)
-	name,_ = next(iter(main.selection))
-	rename(main, name)
+	#args = yield from toolrequest(main, [(object, 'object to rename')], create=False)
+	for disp in main.active_sceneview.scene.unroll():
+		if not hasattr(disp, 'source'):	continue
+		i = id(disp.source)
+		if disp.selected and disp.source and i in main.interpreter.ids:
+			rename(main, main.interpreter.ids[i])
+			break
 
 def tool_import(main):
 	filename = QFileDialog.getOpenFileName(main.mainwindow, 'import file', 
