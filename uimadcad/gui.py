@@ -76,7 +76,6 @@ class Madcad(QObject):
 		self.active_errorview = None
 		self.active_solid = None
 		
-		self.selection = set()
 		self.exectrigger = 1
 		self.exectarget = 0
 		self.editors = {}
@@ -326,6 +325,7 @@ class Madcad(QObject):
 			self.neverused |= used
 			self.neverused -= reused
 			self.updatescript()
+			self.hideerror()
 			self.executed.emit()
 	
 	def reexecute(self):
@@ -346,7 +346,12 @@ class Madcad(QObject):
 			self.active_errorview = ErrorView(self, err)
 			self.active_errorview.show()
 			self.views.append(self.active_errorview)
-		#self.mainwindow.activateWindow()
+		self.mainwindow.activateWindow()
+	
+	def hideerror(self):
+		view = self.active_errorview
+		if view and not view.keep:
+			view.hide()
 		
 	def edit(self, name):
 		obj = self.scene[name]
@@ -368,29 +373,21 @@ class Madcad(QObject):
 			del self.editors[name]
 			self.updatescene([name])
 			self.updatescript()
-	
-	def selectionbox(self):
-		''' return the bounding box of the selection '''
-		def selbox(level):
-			box = Box(fvec3(inf), fvec3(-inf))
-			for disp in level:
-				if disp.selected:
-					box.union(disp.box)
-				elif isinstance(disp, madcad.rendering.Group):
-					box.union(selbox(disp.displays.values()).transform(disp.pose))
-			return box
-		return selbox(self.active_sceneview.scene.displays.values())
+			
 	
 	def _viewcenter(self):
-		box = self.selectionbox() or self.active_sceneview.scene.box()
+		scene = self.active_sceneview.scene
+		box = scene.selectionbox() or scene.box()
 		self.active_sceneview.center(box.center)
 	
 	def _viewadjust(self):
-		box = self.selectionbox() or self.active_sceneview.scene.box()
+		scene = self.active_sceneview.scene
+		box = scene.selectionbox() or scene.box()
 		self.active_sceneview.adjust(box)
 	
 	def _viewlook(self):
-		box = self.selectionbox() or self.active_sceneview.scene.box()
+		scene = self.active_sceneview.scene
+		box = scene.selectionbox() or scene.box()
 		self.active_sceneview.look(box.center)
 	
 	def _deselectall(self):
@@ -544,7 +541,7 @@ class Madcad(QObject):
 		zonehighlight = QColor(40, 200, 240, 60)
 		selectionhighlight = QColor(100, 200, 40, 80)
 		editionhighlight = QColor(255, 200, 50, 60)
-		background = QColor(0,0,0)
+		it = self.interpreter
 	
 		cursor = QTextCursor(self.script)
 		extra = []
@@ -553,16 +550,22 @@ class Madcad(QObject):
 			cursor.setPosition(ze, QTextCursor.KeepAnchor)
 			extra.append(extraselection(cursor, charformat(background=zonehighlight)))
 		
-		seen = set()
-		for selected,sub in self.selection:
-			if selected not in seen and selected in self.interpreter.locations:
-				seen.add(selected)
-				zone = self.interpreter.locations[selected]
-				cursor.setPosition(zone.position)
-				cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
-				extra.append(extraselection(cursor, charformat(background=selectionhighlight)))
+		if self.active_sceneview:
+			seen = set()
+			for obj in self.active_sceneview.scene.unroll():
+				if not hasattr(obj, 'source'):	continue
+				i = id(obj.source)
+				if (obj.selected and obj.source 
+				and i not in seen 
+				and	i in it.ids):
+					seen.add(i)
+					zone = it.locations[it.ids[i]]
+					cursor.setPosition(zone.position)
+					cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
+					extra.append(extraselection(cursor, charformat(background=selectionhighlight)))
+		
 		for edited in self.editors:
-			zone = self.interpreter.locations[edited]
+			zone = it.locations[edited]
 			cursor.setPosition(zone.position)
 			cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
 			extra.append(extraselection(cursor, charformat(background=editionhighlight)))
@@ -605,7 +608,7 @@ class MainWindow(QMainWindow):
 		# window setup
 		self.setWindowRole('madcad')
 		self.setWindowIcon(QIcon.fromTheme('madcad'))
-		self.setMinimumSize(500,300)
+		self.setMinimumSize(700,300)
 		self.setDockNestingEnabled(True)
 		
 		self.main = main
@@ -766,7 +769,7 @@ class MainWindow(QMainWindow):
 		menu.addAction(QIcon.fromTheme('edit-find'), 'find +', lambda: None, shortcut=QKeySequence('Ctrl+F'))
 		menu.addAction(QIcon.fromTheme('edit-find-replace'), 'replace +', lambda: None, shortcut=QKeySequence('Ctrl+R'))
 		
-		menu = menubar.addMenu('&Graphic')
+		menu = menubar.addMenu('&Plot')
 		menu.addAction(QAction('display curve labels +', main, checkable=True))
 		menu.addAction(QAction('display curve points +', main, checkable=True))
 		menu.addAction(QAction('display axis ticks +', main, checkable=True))
@@ -776,5 +779,18 @@ class MainWindow(QMainWindow):
 		menu.addAction('zoom on zone +')
 		menu.addAction('stick to zero +')
 		menu.addAction('set ratio to unit +')
+		
+		menu = menubar.addMenu('&Node')
+		menu.addAction(QAction('display defaults +', main, checkable=True))
+		menu.addAction(QAction('display borders +', main, checkable=True))
+		menu.addAction(QAction('display grid +', main, checkable=True))
+		menu.addAction(QAction('simplify with icons +', main, checkable=True))
+		link = menu.addMenu('link shape')
+		link.addAction('cubic +')
+		link.addAction('straight +')
+		link.addAction('bezier +')
+		menu.addSeparator()
+		menu.addAction('center on selection +')
+		menu.addAction('adapt to selection +')
 	
 	

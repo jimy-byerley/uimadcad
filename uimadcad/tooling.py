@@ -36,7 +36,7 @@ def satisfy(obj, req):
 	elif callable(req):			return req(obj)
 	else:						return False
 
-def toolrequest(main, args):
+def toolrequest(main, args, create=True):
 	match = [None] * len(args)	# matched objects
 	missing = []	# missing objects, the create on the fly
 	used = set()
@@ -64,32 +64,33 @@ def toolrequest(main, args):
 				rename(main, grp, newname)
 				match[i] = newname
 	
-	# create successive missing objects (if they are sufficiently simple objects)
-	for i,req,comment in missing:
-		main.assist.info(comment)
-		if req not in completition:
-			raise ToolError('missing {}'.format(comment))
-	
-		# run a selection in concurrence with the creation
-		def select(main):
-			while True:
-				evt = yield
-				if not (evt.type() == QEvent.MouseButtonPress and evt.button() == Qt.LeftButton):
-					continue
-				pos = main.active_sceneview.somenear(evt.pos(), 10)
-				if not pos:	
-					continue
-				grp,rdr,sub = main.active_sceneview.grpat(pos)
-				main.select((grp,sub), True)
-				if not satisfy(main.scene[grp], req):
-					continue
-				# create proper variables for temp objects reused
-				if istemp(main, grp):
-					newname = autoname(main, grp)
-					rename(main, grp, newname)
-					return newname
-				else:
-					return grp
+	if create:
+		# create successive missing objects (if they are sufficiently simple objects)
+		for i,req,comment in missing:
+			main.assist.info(comment)
+			if req not in completition:
+				raise ToolError('missing {}'.format(comment))
+		
+			# run a selection in concurrence with the creation
+			def select(main):
+				while True:
+					evt = yield
+					if not (evt.type() == QEvent.MouseButtonPress and evt.button() == Qt.LeftButton):
+						continue
+					pos = main.active_sceneview.somenear(evt.pos(), 10)
+					if not pos:	
+						continue
+					grp,rdr,sub = main.active_sceneview.grpat(pos)
+					main.select((grp,sub), True)
+					if not satisfy(main.scene[grp], req):
+						continue
+					# create proper variables for temp objects reused
+					if istemp(main, grp):
+						newname = autoname(main, grp)
+						rename(main, grp, newname)
+						return newname
+					else:
+						return grp
 	
 		# get the first returned value from the selector or the creation
 		iterator = race(select(main), completition[req](main))
@@ -173,14 +174,31 @@ def rename(main, oldname, newname=None):
 		cursor.endEditBlock()
 	
 def createpoint(main):
-	evt = yield
-	while evt.type() != QEvent.MouseButtonPress or evt.button() != Qt.LeftButton:
-		evt = yield
+	evt = yield from waitclick()
 	view = main.active_sceneview
 	p = view.ptfrom(evt.pos(), view.navigation.center)
 	main.addtemp(p)
-	main.active_sceneview.scene.add(p)
+	view.scene.add(p)
 	return p
+	
+def waitclick():
+	evt = yield
+	while evt.type() != QEvent.MouseButtonPress or evt.button() != Qt.LeftButton:
+		evt = yield
+	return evt
+
+def createaxis(main):
+	evt = yield from waitclick()
+	p0 = main.active_sceneview.ptfrom(evt.pos(), view.navigation.center)
+	view = view.active_sceneview
+	first = evt.pos()
+	evt = yield from waitclick()
+	if view == view.active_sceneview and (first-evt.pos()).manhattanLength() < 20:
+		return (p0, fvec3(view.navigation.matrix()[3]))
+	else:
+		p1 = main.active_sceneview.ptfrom(evt.pos(), view.navigation.center)
+		return (p0, normalize(p1-p0))
+	
 
 def autoname(main, oldname):
 	obj = main.interpreter.current[oldname]
@@ -328,8 +346,7 @@ def create_toolbars(main, widget):
 	
 
 def tool_rename(main):
-	if not main.selection:
-		raise ToolError('no object selected')
+	args = yield from toolrequest(main, [(object, 'object to rename')], create=False)
 	name,_ = next(iter(main.selection))
 	rename(main, name)
 
@@ -399,7 +416,7 @@ def tool_extrusion(main):
 	obj = yield from toolrequest(main, [
 				(lambda o: isinstance(o, (Web,Mesh)), 'first volume'),
 				])
-	displt = QInputDialog.getText(main, 'extrusion displacement', 'vector expression:')[0]
+	displt = QInputDialog.getText(main.mainwindow, 'extrusion displacement', 'vector expression:')[0]
 	if not displt:
 		raise ToolError('no displacement entered')
 	main.insertexpr('extrusion({}, {})'.format(dplt, obj))
@@ -409,7 +426,7 @@ def tool_distance(main):
 				(vec3, 'start point'),
 				(vec3, 'end point'),
 				])
-	target = QInputDialog.getText(main, 'distance constraint', 'target distance:')[0]
+	target = QInputDialog.getText(main.mainwindow, 'distance constraint', 'target distance:')[0]
 	if not target:
 		raise ToolError('no distance entered or invalid radius')
 	main.insertexpr('Distance({}, {}, {})'.format(*args, target))
@@ -418,7 +435,7 @@ def tool_radius(main):
 	arc, = yield from toolrequest(main, [
 				(lambda o: isinstance(o, (ArcThrough, ArcCentered, Circle)), 'arc'),
 				])
-	target = QInputDialog.getText(main, 'radius constraint', 'target radius:')[0]
+	target = QInputDialog.getText(main.mainwindow, 'radius constraint', 'target radius:')[0]
 	if not target:
 		raise ToolError('no radius entered')
 	main.insertexpr('Radius({}, {})'.format(arc, target))
@@ -428,18 +445,25 @@ def tool_angle(main):
 				(Segment, 'start segment (angle is oriented)'),
 				(Segment, 'second segment (angle is oriented)'),
 				])
-	target = QInputDialog.getText(main, 'angle constraint', 'target oriented angle:')[0]
+	target = QInputDialog.getText(main.mainwindow, 'angle constraint', 'target oriented angle:')[0]
 	if not target:
 		raise ToolError('no angle entered')
 	main.insertexpr('Angle({}, {}, {})'.format(*args, target))
 
-
+def tool_pivot(main):
+	args = yield from toolrequest(main, [
+				(Solid, 'solid 0'),
+				(Solid, 'solid 1'),
+				(Axis, 'axis of the pivot'),
+				])
+	main.insertexpr('Pivot({}, {}, {}')
 
 	
 
 # tools that will automatically used to create missing objects in request
 completition = {
 	vec3:	createpoint,
+	Axis:	createaxis,
 	}
 
 

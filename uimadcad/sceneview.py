@@ -62,19 +62,21 @@ class Scene(madcad.rendering.Scene, QObject):
 	def sync(self):
 		# objects selection in env, and already present objs
 		main = self.main
+		it = main.interpreter
+		self.places = {id(it.current[key]): place  for key, place in it.locations.items()}
 		newscene = {}
 		
 		# display objects that are requested by the user, or that are never been used (lastly generated)
-		for name,obj in main.interpreter.current.items():
+		for name,obj in it.current.items():
 			if displayable(obj) and (	name in self.forceddisplays 
 									or	name in main.neverused):
 				newscene[name] = obj
 		# display objects in the display zones
 		for zs,ze in main.displayzones:
-			for name,node in main.interpreter.locations.items():
+			for name,node in it.locations.items():
 				if name not in newscene:
 					ts,te = astinterval(node)
-					temp = main.interpreter.current[name]
+					temp = it.current[name]
 					if zs <= ts and te <= ze and displayable(temp):
 						newscene[name] = temp
 		# add scene own additions
@@ -84,7 +86,41 @@ class Scene(madcad.rendering.Scene, QObject):
 		super().sync(newscene)
 		# trigger the signal for dependent widgets
 		self.changed.emit()
+		
+	def display(self, obj):
+		disp = super().display(obj)
+		disp.source = obj
+		return disp
 
+	def items(self):
+		''' yield recursively all couples (key, display) in the scene, including subscenes '''
+		def recur(level, key):
+			for sub,disp in level:
+				yield (*key, sub), disp
+				if isinstance(disp, madcad.rendering.Group):	
+					yield from recur(disp.displays.items(), (*key, sub))
+		yield from recur(self.displays.items(), ())
+	
+	def unroll(self):
+		''' yield recursively all displays in the scene, including subscenes '''
+		def recur(level):
+			for disp in level:
+				yield disp
+				if isinstance(disp, madcad.rendering.Group):	
+					yield from recur(disp.displays.values())
+		yield from recur(self.displays.values())
+	
+	def selectionbox(self):
+		''' return the bounding box of the selection '''
+		def selbox(level):
+			box = Box(fvec3(inf), fvec3(-inf))
+			for disp in level:
+				if disp.selected:
+					box.union(disp.box)
+				elif isinstance(disp, madcad.rendering.Group):
+					box.union(selbox(disp.displays.values()).transform(disp.pose))
+			return box
+		return selbox(self.displays.values())
 	
 
 class SceneView(madcad.rendering.View):
@@ -141,7 +177,21 @@ class SceneView(madcad.rendering.View):
 		
 	def control(self, key, evt):
 		''' overwrite the Scene method, to implement the edition behaviors '''
-		super().control(key, evt)
+		disp = self.scene.displays
+		for i in range(1,len(key)):
+			disp = disp[key[i-1]]
+			disp.control(self, key[:i], key[i:], evt)
+			if evt.isAccepted(): return
+		
+		if evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton:
+			disp = self.scene.item(key)
+			if type(disp).__name__ in ('SolidDisplay', 'WebDisplay'):
+				disp.vertices.selectsub(key[-1])
+				disp.selected = any(disp.vertices.flags & 0x1)
+			else:
+				disp.selected = not disp.selected
+			self.update()
+			self.main.updatescript()
 	
 	# DEPRECATED
 	def objcontrol(self, rdri, subi, evt):
