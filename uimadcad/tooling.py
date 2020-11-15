@@ -8,222 +8,14 @@ from PyQt5.QtGui import QIcon, QKeySequence, QTextCursor
 import os.path
 import ast
 
-from madcad.mathutils import vec3
-from madcad.primitives import *
-from madcad.mesh import Mesh, Wire, Web
+from madcad import *
 
 from .interpreter import astatpos
 
 
-def race(*args):
-	if len(args) == 1 and hasattr(args[0], '__iter__'):
-		args = args[0]
-	while True:
-		obj = yield
-		for it in args:
-			try:
-				res = it.send(obj)
-			except StopIteration as err:
-				return err.value
-
 class ToolError(Exception):
 	''' exception used to indicate an error in the usage of a Scene tool '''
 	pass
-
-def satisfy(obj, req):
-	''' return True if obj satisfy the requirement req (type or funcion) '''
-	if isinstance(req, type):	return isinstance(obj, req)
-	elif callable(req):			return req(obj)
-	else:						return False
-
-def toolrequest(main, args, create=True):
-	match = [None] * len(args)	# matched objects
-	missing = []	# missing objects, the create on the fly
-	used = set()
-	
-	# search the selection for the required objects
-	for i,(req,comment) in enumerate(args):
-		for grp,sub in main.selection:
-			if grp in used or grp not in main.interpreter.current:	continue
-			used.add(grp)
-			if satisfy(main.interpreter.current[grp], req):
-				match[i] = grp
-				break
-		else:
-			missing.append((i, req, comment))
-	
-	
-	for i,grp in enumerate(match):
-		if grp:
-			# check that the used objects dont rely on an object that is in the modified area of the script
-			if not islive(main, grp):
-				raise ToolError('cannot use variable {} moved in the script'.format(repr(grp)))
-			# create proper variables for temp objects reused
-			if istemp(main, grp):
-				newname = autoname(main, grp)
-				rename(main, grp, newname)
-				match[i] = newname
-	
-	if create:
-		# create successive missing objects (if they are sufficiently simple objects)
-		for i,req,comment in missing:
-			main.assist.info(comment)
-			if req not in completition:
-				raise ToolError('missing {}'.format(comment))
-		
-			# run a selection in concurrence with the creation
-			def select(main):
-				while True:
-					evt = yield
-					if not (evt.type() == QEvent.MouseButtonPress and evt.button() == Qt.LeftButton):
-						continue
-					pos = main.active_sceneview.somenear(evt.pos(), 10)
-					if not pos:	
-						continue
-					grp,rdr,sub = main.active_sceneview.grpat(pos)
-					main.select((grp,sub), True)
-					if not satisfy(main.scene[grp], req):
-						continue
-					# create proper variables for temp objects reused
-					if istemp(main, grp):
-						newname = autoname(main, grp)
-						rename(main, grp, newname)
-						return newname
-					else:
-						return grp
-	
-		# get the first returned value from the selector or the creation
-		iterator = race(select(main), completition[req](main))
-		next(iterator)
-		match[i] = yield from iterator
-	
-	main.selection.clear()
-	return match
-
-	
-
-def islive(main, name):
-	''' return True if the variable using this name is in a text area that 
-		has never been modified since the last execution.
-		The AST informations and positions are then correct
-	'''
-	if name in main.interpreter.locations:
-		node = main.interpreter.locations[name]
-		return main.interpreter.ast_end >= node.end_position
-	return False
-
-def istemp(main, name):
-	''' return whether a variable name belongs to a temporary object (an expression) or has been assigned '''
-	node = main.interpreter.locations[name]
-	return not isinstance(node, ast.Assign)
-
-def rename(main, oldname, newname=None):
-	''' rename the object
-		if the object is a temporary value, its expression is moved into a new assignation statement
-		if the object is an existing variable, simply change the name the value is assigned to
-	'''
-	if not islive(main, oldname):
-		raise ToolError('cannot rename variable {} in a modified area'.format(repr(oldname)))
-	if not newname:
-		newname = QInputDialog.getText(main.mainwindow, 'choose variable name', 'new name:')[0]
-	if not newname:
-		raise ToolError('no new name entered')
-	
-	node = main.interpreter.locations[oldname]
-	# the renamed object already has a variable name
-	if isinstance(node, ast.Assign):
-		cursor = QTextCursor(main.script)
-		zone = node.targets[0]
-		cursor.setPosition(zone.position)
-		cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
-		cursor.insertText(newname)
-	
-	# the renamed object is a temporary variable
-	else:
-		stmt = main.interpreter.ast.body[astatpos(main.interpreter.ast, node.position)]
-		cursor = QTextCursor(main.script)
-		cursor.beginEditBlock()
-		
-		# the expression result is not used, just assign it
-		if isinstance(stmt, ast.Expr) and stmt.position == node.position and stmt.end_position == node.end_position:
-			# just insert the assignation
-			cursor.setPosition(node.position)
-			cursor.insertText('{} = '.format(newname))
-		# the expression result is used, move it and assign it
-		else:
-			# get and remove the expression
-			cursor.setPosition(node.position)
-			cursor.setPosition(node.end_position, QTextCursor.KeepAnchor)
-			expr = cursor.selectedText()	
-			cursor.insertText(newname)
-			# insert expression with assignation
-			cursor.setPosition(stmt.position)
-			cursor.insertText('{} = {}\n'.format(newname, expr))
-		
-		cursor.endEditBlock()
-		
-def deselectall(main):
-	for disp in main.active_sceneview.scene.unroll():
-		if disp.selected:	disp.selected = False
-		if type(disp).__name__ in ('MeshDisplay', 'WireDisplay'):
-			disp.vertices.flags &= ~0x1
-			disp.vertices.flags_updated = True
-	main.active_sceneview.update()
-	main.updatescript()
-	
-def createpoint(main):
-	evt = yield from waitclick()
-	view = main.active_sceneview
-	p = view.ptfrom(evt.pos(), view.navigation.center)
-	main.addtemp(p)
-	view.scene.add(p)
-	return p
-	
-def waitclick():
-	evt = yield
-	while evt.type() != QEvent.MouseButtonPress or evt.button() != Qt.LeftButton:
-		evt = yield
-	return evt
-
-def createaxis(main):
-	evt = yield from waitclick()
-	p0 = main.active_sceneview.ptfrom(evt.pos(), view.navigation.center)
-	view = view.active_sceneview
-	first = evt.pos()
-	evt = yield from waitclick()
-	if view == view.active_sceneview and (first-evt.pos()).manhattanLength() < 20:
-		return (p0, fvec3(view.navigation.matrix()[3]))
-	else:
-		p1 = main.active_sceneview.ptfrom(evt.pos(), view.navigation.center)
-		return (p0, normalize(p1-p0))
-	
-
-def autoname(main, oldname):
-	obj = main.interpreter.current[oldname]
-	if isinstance(obj, vec3):	basename = 'P'
-	elif isprimitive(obj):		basename = 'L'
-	elif isinstance(obj, Mesh):	basename = 'S'
-	elif isinstance(obj, Web):	basename = 'W'
-	elif isinstance(obj, Wire):	basename = 'C'
-	else:	basename = 'O'
-	i = 0
-	while True:
-		name = basename+str(i)
-		if name not in main.interpreter.current:	return name
-		i += 1
-	
-
-def toolcapsule(main, name, procedure):
-	main.assist.tool(name)
-	main.assist.info('')
-	try:
-		yield from procedure(main)
-	except ToolError as err:
-		main.assist.info('<b style="color:#ff5555">{}</b>'.format(err))
-	else:
-		main.assist.tool('')
-		main.assist.info('')
-
 
 class ToolAssist(QWidget):
 	''' assistant widget (or window) that pop up when a tool is enabled '''
@@ -293,7 +85,224 @@ class ToolAssist(QWidget):
 	def changeEvent(self, evt):
 		super().changeEvent(evt)
 		self.update_visibility()
+	
+
+def toolrequest(main, args, create=True):
+	match = [None] * len(args)	# matched objects
+	
+	# search the selection for the required objects
+	for disp in main.active_sceneview.scene.unroll():
+		if disp.selected:
+			name = dispname(main, disp)
+			if name:
+				for i,(req,comment) in enumerate(args):
+					if not match[i] and satisfy(main.interpreter.current[name], req):
+						match[i] = name
+						break
+	
+	for i,name in enumerate(match):
+		if not name:	continue
+		# check that the used objects dont rely on an object that is in the modified area of the script
+		if not islive(main, name):
+			raise ToolError('cannot use variable {} moved in the script'.format(repr(grp)))
+		# create proper variables for temp objects reused
+		if istemp(main, name):
+			newname = autoname(main, main.interpreter.current[name])
+			rename(main, name, newname)
+			match[i] = newname
+	
+	# create successive missing objects (if they are sufficiently simple objects)
+	for i,(req,comment) in enumerate(args):
+		if match[i]:	continue
 		
+		main.assist.info(comment)
+		if req not in completition or not create:
+			raise ToolError('missing {}'.format(comment))
+	
+		# run a selection in concurrence with the creation
+		def select(main):
+			while True:
+				evt = yield
+				if not (evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton):
+					continue
+				view = main.active_sceneview
+				pos = view.somenear(evt.pos(), 10)
+				if not pos:	
+					continue
+				key = view.itemat(pos)
+				disp = view.scene.item(key)
+				name = dispname(main, disp)
+				if not name or not satisfy(main.interpreter.current[name], req):
+					continue
+				disp.selected = True
+				# create proper variables for temp objects reused
+				if istemp(main, name):
+					newname = autoname(main, main.interpreter.current[name])
+					rename(main, name, newname)
+					return newname
+				else:
+					return name
+
+		# get the first returned value from the selector or the creation
+		iterator = race(select(main), completition[req](main))
+		next(iterator)
+		match[i] = yield from iterator
+	
+	deselectall(main)
+	return match
+
+
+
+def race(*args):
+	if len(args) == 1 and hasattr(args[0], '__iter__'):
+		args = args[0]
+	while True:
+		obj = yield
+		for it in args:
+			try:
+				res = it.send(obj)
+			except StopIteration as err:
+				return err.value
+
+def satisfy(obj, req):
+	''' return True if obj satisfy the requirement req (type or funcion) '''
+	if isinstance(req, type):	return isinstance(obj, req)
+	elif callable(req):			return req(obj)
+	else:						return False
+	
+def dispname(main, disp):
+	if hasattr(disp, 'source') and disp.source:
+		return main.interpreter.ids.get(id(disp.source))
+
+	
+
+def islive(main, name):
+	''' return True if the variable using this name is in a text area that 
+		has never been modified since the last execution.
+		The AST informations and positions are then correct
+	'''
+	if name in main.interpreter.locations:
+		node = main.interpreter.locations[name]
+		return main.interpreter.ast_end >= node.end_position
+	return False
+
+def istemp(main, name):
+	''' return whether a variable name belongs to a temporary object (an expression) or has been assigned '''
+	node = main.interpreter.locations[name]
+	return not isinstance(node, ast.Assign)
+
+def rename(main, oldname, newname=None):
+	''' rename the object
+		if the object is a temporary value, its expression is moved into a new assignation statement
+		if the object is an existing variable, simply change the name the value is assigned to
+	'''
+	if not islive(main, oldname):
+		raise ToolError('cannot rename variable {} in a modified area'.format(repr(oldname)))
+	if not newname:
+		newname = QInputDialog.getText(main.mainwindow, 'choose variable name', 'new name:')[0]
+	if not newname:
+		raise ToolError('no new name entered')
+	
+	node = main.interpreter.locations[oldname]
+	# the renamed object already has a variable name
+	if isinstance(node, ast.Assign):
+		cursor = QTextCursor(main.script)
+		zone = node.targets[0]
+		cursor.setPosition(zone.position)
+		cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
+		cursor.insertText(newname)
+	
+	# the renamed object is a temporary variable
+	else:
+		stmt = main.interpreter.ast.body[astatpos(main.interpreter.ast, node.position)]
+		cursor = QTextCursor(main.script)
+		cursor.beginEditBlock()
+		
+		# the expression result is not used, just assign it
+		if isinstance(stmt, ast.Expr) and stmt.position == node.position and stmt.end_position == node.end_position:
+			# just insert the assignation
+			cursor.setPosition(node.position)
+			cursor.insertText('{} = '.format(newname))
+		# the expression result is used, move it and assign it
+		else:
+			# get and remove the expression
+			cursor.setPosition(node.position)
+			cursor.setPosition(node.end_position, QTextCursor.KeepAnchor)
+			expr = cursor.selectedText()	
+			cursor.insertText(newname)
+			# insert expression with assignation
+			cursor.setPosition(stmt.position)
+			cursor.insertText('{} = {}\n'.format(newname, expr))
+		
+		cursor.endEditBlock()
+		
+def deselectall(main):
+	for disp in main.active_sceneview.scene.unroll():
+		if disp.selected:	disp.selected = False
+		if type(disp).__name__ in ('MeshDisplay', 'WebDisplay'):
+			disp.vertices.flags &= 0x11111110
+			disp.vertices.flags_updated = True
+	main.active_sceneview.update()
+	main.updatescript()
+	
+def createpoint(main):
+	evt = yield from waitclick()
+	view = main.active_sceneview
+	p = view.ptfrom(evt.pos(), view.navigation.center)
+	main.addtemp(p)
+	view.scene.add(p)
+	view.update()
+	return p
+	
+def waitclick():
+	evt = yield
+	while evt.type() != QEvent.MouseButtonRelease or evt.button() != Qt.LeftButton:
+		evt = yield
+	return evt
+
+def createaxis(main):
+	evt = yield from waitclick()
+	view = main.active_sceneview
+	p0 = view.ptfrom(evt.pos(), view.navigation.center)
+	first = evt.pos()
+	evt = yield from waitclick()
+	if view == main.active_sceneview and (first-evt.pos()).manhattanLength() < 20:
+		axis = (p0, vec3(fvec3(view.navigation.matrix()[2])))
+	else:
+		p1 = main.active_sceneview.ptfrom(evt.pos(), view.navigation.center)
+		axis = (p0, normalize(p1-p0))
+	view.scene.add(axis)
+	view.update()
+	return axis
+	
+
+def autoname(main, obj):
+	if isinstance(obj, vec3):		basename = 'P'
+	elif isprimitive(obj):			basename = 'L'
+	elif isinstance(obj, Mesh):		basename = 'M'
+	elif isinstance(obj, Web):		basename = 'W'
+	elif isinstance(obj, Wire):		basename = 'C'
+	elif isinstance(obj, Solid):	basename = 'M'
+	else:							basename = 'O'
+	i = 0
+	while True:
+		name = basename+str(i)
+		if name not in main.interpreter.current:	return name
+		i += 1
+	
+	
+
+
+def toolcapsule(main, name, procedure):
+	main.assist.tool(name)
+	main.assist.info('')
+	try:
+		yield from procedure(main)
+	except ToolError as err:
+		main.assist.info('<b style="color:#ff5555">{}</b>'.format(err))
+	else:
+		main.assist.tool('')
+		main.assist.info('')
 
 
 def create_toolbars(main, widget):
@@ -322,35 +331,40 @@ def create_toolbars(main, widget):
 	tools.addAction(QIcon.fromTheme('madcad-triangulation'), 'surface')
 	
 	tools = widget.addToolBar('amelioration')
-	tools.addAction(QIcon.fromTheme('madcad-mergeclose'), 'merge closes')
-	tools.addAction(QIcon.fromTheme('madcad-stripbuffer'), 'strip buffers')
+	tools.addAction(main.createtool('merge closes', tool_mergeclose, 'madcad-mergeclose'))
+	tools.addAction(main.createtool('strip buffers', tool_stripbuffers, 'madcad-stripbuffer'))
 	
 	tools = widget.addToolBar('constraints')
+	# primitive constraints
 	tools.addAction(main.createtool('hold distance', tool_distance, 'madcad-cst-distance'))
 	tools.addAction(main.createtool('hold radius', tool_radius, 'madcad-cst-radius'))
 	tools.addAction(main.createtool('hold angle', tool_angle, 'madcad-cst-angle'))
 	tools.addAction(QIcon.fromTheme('madcad-cst-tangent'), 'make tangent')
 	tools.addAction(QIcon.fromTheme('madcad-cst-onplane'), 'hold on plane')
 	tools.addAction(QIcon.fromTheme('madcad-cst-projection'), 'hold projection')
-	tools.addAction(QIcon.fromTheme('madcad-cst-ball'), 'ball')
-	tools.addAction(QIcon.fromTheme('madcad-cst-plane'), 'plane')
-	tools.addAction(QIcon.fromTheme('madcad-cst-pivot'), 'pivot')
-	tools.addAction(QIcon.fromTheme('madcad-cst-gliding'), 'gliding')
-	tools.addAction(QIcon.fromTheme('madcad-cst-helicoid'), 'helicoid')
-	tools.addAction(QIcon.fromTheme('madcad-cst-track'), 'track')
+	# kinematic constraints
+	tools.addAction(main.createtool('ball', tool_ball, 'madcad-cst-ball'))
+	tools.addAction(main.createtool('plane', tool_plane, 'madcad-cst-plane'))
+	tools.addAction(main.createtool('pivot', tool_pivot, 'madcad-cst-pivot'))
+	tools.addAction(main.createtool('gliding', tool_gliding, 'madcad-cst-gliding'))
+	tools.addAction(main.createtool('track', tool_track, 'madcad-cst-track'))
+	#tools.addAction(main.createtool('linear annular', tool_annular, 'madcad-cst-annular'))
 	tools.addAction(QIcon.fromTheme('madcad-cst-annular'), 'linear annular')
-	tools.addAction(QIcon.fromTheme('madcad-cst-punctiform'), 'punctiform')
+	tools.addAction(main.createtool('punctiform', tool_punctiform, 'madcad-cst-punctiform'))
+	tools.addAction(main.createtool('helicoid', tool_helicoid, 'madcad-cst-helicoid'))
+	#tools.addAction(main.createtool('gear', tool_gear, 'madcad-cst-gear'))
 	tools.addAction(QIcon.fromTheme('madcad-cst-gear'), 'gear')
 	
+	
 
-def tool_rename(main):
-	#args = yield from toolrequest(main, [(object, 'object to rename')], create=False)
+
+def act_rename(main):
 	for disp in main.active_sceneview.scene.unroll():
-		if not hasattr(disp, 'source'):	continue
-		i = id(disp.source)
-		if disp.selected and disp.source and i in main.interpreter.ids:
-			rename(main, main.interpreter.ids[i])
-			break
+		if disp.selected:
+			name = dispname(main, disp)
+			if name:
+				rename(main, name)
+				break
 
 def tool_import(main):
 	filename = QFileDialog.getOpenFileName(main.mainwindow, 'import file', 
@@ -362,6 +376,14 @@ def tool_import(main):
 	objname = os.path.splitext(os.path.basename(filename))[0]
 	if not objname.isidentifier():	objname = 'imported'
 	main.insertstmt('{} = read({})'.format(objname, repr(filename)))
+
+def tool_mergeclose(main):
+	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
+	main.insertstmt(args[0]+'.mergeclose()')
+	
+def tool_stripbuffers(main):
+	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
+	main.insertstmt(args[0]+'.finish()')
 
 def tool_point(main):
 	main.assist.tool('point')
@@ -421,7 +443,10 @@ def tool_extrusion(main):
 	displt = QInputDialog.getText(main.mainwindow, 'extrusion displacement', 'vector expression:')[0]
 	if not displt:
 		raise ToolError('no displacement entered')
-	main.insertexpr('extrusion({}, {})'.format(dplt, obj))
+	main.insertexpr('extrusion({}, {})'.format(displt, obj))
+
+
+
 
 def tool_distance(main):
 	args = yield from toolrequest(main, [
@@ -452,15 +477,69 @@ def tool_angle(main):
 		raise ToolError('no angle entered')
 	main.insertexpr('Angle({}, {}, {})'.format(*args, target))
 
+def tool_tangent(main):
+	args = yield from toolrequest(main, [
+				(object, 'primitive 1'),
+				(object, 'primitive 2'),
+				])
+	for v1 in args[0].slvvars:
+		for v2 in args[1].slvvars:
+			indev
+			
+def tool_planar(main):
+	args = yield from toolrequest(main, [
+				(Axis, 'axis normal to the plane'),
+				])
+	# let the user select or create the points to put on the plane
+	indev
+
+
 def tool_pivot(main):
 	args = yield from toolrequest(main, [
-				(Solid, 'solid 0'),
-				(Solid, 'solid 1'),
 				(Axis, 'axis of the pivot'),
 				])
-	main.insertexpr('Pivot({}, {}, {}')
+	main.insertexpr('Pivot(Solid(), Solid(), {})'.format(args[0]))
 
+def tool_gliding(main):
+	args = yield from toolrequest(main, [
+				(Axis, 'axis of the pivot'),
+				])
+	main.insertexpr('Gliding(Solid(), Solid(), {})'.format(args[0]))
 	
+def tool_plane(main):
+	args = yield from toolrequest(main, [
+				(Axis, 'normal axis to the plane'),
+				])
+	main.insertexpr('Plane(Solid(), Solid(), {})'.format(args[0]))
+	
+def tool_ball(main):
+	args = yield from toolrequest(main, [
+				(vec3, 'position of the ball'),
+				])
+	main.insertexpr('Ball(Solid(), Solid(), {})'.format(args[0]))
+	
+def tool_punctiform(main):
+	args = yield from toolrequest(main, [
+				(Axis, 'normal axis to the plane'),
+				])
+	main.insertexpr('Punctiform(Solid(), Solid(), {})'.format(args[0]))
+	
+def tool_track(main):
+	(o,x), = yield from toolrequest(main, [
+				(Axis, 'axis of the track'),
+				])
+	z = vec3(fvec3(main.active_sceneview.uniforms['view'][2]))
+	main.insertexpr('Track(Solid(), Solid(), {})'.format((o,x,z)))
+	
+def tool_helicoid(main):
+	axis, = yield from toolrequest(main, [
+				(Axis, 'axis of the helicoid'),
+				])
+	pitch = QInputDialog.getText(main.mainwindow, 'helicoid joint', 'screw pitch (/tr):')[0]
+	if not pitch:
+		raise ToolError('no pich entered')
+	main.insertexpr('Helicoid(Solid(), Solid(), {}, {})'.format(pitch, axis))
+
 
 # tools that will automatically used to create missing objects in request
 completition = {
@@ -482,60 +561,3 @@ toolButton->setPopupMode(QToolButton::MenuButtonPopup);
 toolBar->addWidget(toolButton);
 '''
 
-
-"""
-def tool_point(self):
-	def placepoint(scene, evt):
-		c = (evt.x(), evt.y())
-		p = scene.ptat(c) or scene.ptfrom(c, scene.manipulator.center)
-		self.insertexpr(repr(p))
-		self.activeview.tool = None
-	self.activeview.tool = placepoint
-
-def tool_arcthrough(self, cursor):
-	def create(*args):
-		self.insertexpr('ArchThrough({}, {}, {})'.format(*args))
-		self.activeview.tool = None
-	args = self.toolrequest([
-				(vec3, 'start point'), 
-				(vec3, 'pass point'), 
-				(vec3, 'end point'),
-			], create)
-
-def toolrequest(self, args, usage):
-	match = [None] * len(args)
-	missing = []
-	for i,(req,comment) in enumerate(args):
-		for grp,sub in self.selection:
-			obj = self.scene[grp]
-			if isinstance(req, type) and isinstance(obj, req) or callable(req) and req(obj):
-				match[i] = grp
-				break
-		else:
-			missing.append((i, req, comment))
-	def complete():
-		for i,(req,comment) in missing:
-			if req == vec3:		build = tool_point
-			elif req == isaxis:	build = tool_axis
-			build()
-
-class ChainedTool:
-	__slots__ = 'index', 'chain'
-	def __init__(self, chain, finish=None):
-		''' chain is a list of successive callables to put in scene.tool '''
-		self.index = 0
-		self.chain = chain
-		if finish:	self.finish = finish
-	def __call__(self, scene, evt):
-		''' method put in scene.tool '''
-		self.chain[self.index](scene, evt)
-		if not scene.tool:
-			self.index += 1
-			if self.index > len(self.chain):
-				self.finish()
-			else:
-				scene.tool = self
-	def finish(self):
-		''' called after all the chain tools have been executed '''
-		pass
-"""

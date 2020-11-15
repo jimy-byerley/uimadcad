@@ -51,7 +51,7 @@ class Interpreter:
 		
 		# rebuild AST to target
 		if target > self.ast_end:
-			part = self.text[self.ast_end:target]
+			part = self.text[self.ast_end:]
 			try:
 				addition = ast.parse(part, self.persistent.__name__)
 			except SyntaxError as err:
@@ -60,27 +60,35 @@ class Interpreter:
 			endloc = textloc(self.text, self.ast_end)
 			astshift(addition, (endloc[0]-1, endloc[1]), self.ast_end)
 			self.ast.body.extend(addition.body)
-			#nprint('code\n', ast.dump(self.ast))
 			self.ast_end += len(part)
 		
 		# get the code to execute from the last backup
 		backpos, backenv = self.backups[self.lastbackup(target)]
-		#print('ast interval', backpos, target, astatpos(self.ast, backpos), astatpos(self.ast, target))
-		part = ast.Module(body=self.ast.body[
-						 astatpos(self.ast, backpos)
-						:astatpos(self.ast, target)
-						], type_ignores=[])
+		ast_target = astatpos(self.ast, target)
+		# ast until target
+		part = self.ast.body[astatpos(self.ast, backpos):ast_target]
+		# remaining expressions before target in the AST
+		if ast_target < len(self.ast.body):
+			part += astexpruntil(self.ast.body[ast_target], target)
+		part = ast.Module(body=part, type_ignores=[])
+		
 		processed, locations = self.process(part, backenv.keys())
 		
 		if autobackup:
 			env = copyvars(backenv, locations.keys())
+			
 			starttime = time()
 			for stmt in processed.body:
-				code = compile(ast.Module(body=[stmt], type_ignores=[]), self.persistent.__name__, 'exec')
+				code = compile(ast.Module(
+									body=[stmt], 
+									type_ignores=[]), 
+								self.persistent.__name__, 
+								'exec')
 				
 				# execute the code
 				try:
-					exec(code, vars(self.persistent), env)
+					#exec(code, vars(self.persistent), env)
+					exec(code, env, env)
 				except Exception as err:
 					raise InterpreterError(err)
 				
@@ -181,7 +189,7 @@ class Interpreter:
 
 
 def copyvars(vars, deep=(), memo=None):
-	''' copy a dinctionnary of variables, with only the variables present in deep that are deepcopied '''
+	''' copy a dictionnary of variables, with only the variables present in deep that are deepcopied '''
 	if memo is None:	memo = {}
 	new = copy(vars)
 	for name in deep:
@@ -256,7 +264,7 @@ def astannotate(tree, text):
 				if hasattr(child, 'end_position'):
 					node.end_position = max(node.end_position, child.end_position)
 		
-		if isinstance(node, ast.Call):
+		if isinstance(node, (ast.Call,ast.Tuple)):
 			node.end_position = text.find(')', node.end_position)+1
 			#print(node, node.position, node.end_position, text[node.position:node.end_position])
 		elif isinstance(node, (ast.Subscript, ast.List)):
@@ -341,3 +349,19 @@ def textloc(text, pos, tab=1):
 			c += 1
 	raise IndexError('the given position is not in the string')
 	
+def astexpruntil(tree, pos):
+	remains = []
+	def recur(node):
+		if isinstance(node, ast.expr) and node.end_position <= pos:
+			if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):	return
+			remains.append(node)
+		else:
+			for child in ast.iter_child_nodes(node):
+				recur(child)
+	recur(tree)
+	return [ast.Expr(r, 
+				lineno=r.lineno, 
+				col_offset=r.col_offset,
+				position=r.position, 
+				end_position=r.end_position) 	
+			for r in remains]

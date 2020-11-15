@@ -30,11 +30,10 @@ from PyQt5.QtGui import (
 
 from madcad import *
 from madcad.rendering import Display, Group, Turntable, Orbit, Displayable
-from madcad.annotations import annotations
 import madcad.settings
 
 from .common import *
-from .interpreter import Interpreter, InterpreterError, astinterval
+from .interpreter import Interpreter, InterpreterError, astinterval, astatpos
 from .scriptview import ScriptView
 from .sceneview import Scene, SceneView, SceneList
 from .errorview import ErrorView
@@ -81,7 +80,7 @@ class Madcad(QObject):
 		self.editors = {}
 		self.details = {}
 		self.hiddens = set()
-		self.displayzones = []
+		self.displayzones = {}
 		self.neverused = set()
 		
 		# madcad ressources (and widgets)
@@ -146,9 +145,13 @@ class Madcad(QObject):
 			except Exception as err:
 				traceback.print_exception(type(err), err, err.__traceback__)
 				self.assist.info('<b style="color:#ff5555">internal error, check console</b>')
-			self.assist.tool('')
-			self.assist.info('')
-			self.active_sceneview.scene.sync()
+				self.assist.info('internal error')
+			else:
+				if self.exectrigger:	self.execute()
+				else:	self.active_sceneview.update()
+				self.assist.tool('')
+				self.assist.info('')
+		
 		# button callback
 		def callback():
 			gen = capsule()
@@ -160,13 +163,14 @@ class Madcad(QObject):
 			for view in self.views:
 				if not isinstance(view, SceneView) or view.scene is not scene:
 					continue
-				def tool(evt):
+				def tool(evt, view=view):
 					try:	gen.send(evt)
 					except StopIteration:	
 						view.tool.remove(tool)
 					else:
 						view.scene.touch()
 				view.tool.append(tool)
+		
 		action.triggered.connect(callback)
 		
 		return action
@@ -184,6 +188,9 @@ class Madcad(QObject):
 			except ToolError as err:	
 				self.assist.tool(name)
 				self.assist.info('<b style="color:#ff5555">{}</b>'.format(err))
+			else:
+				if self.exectrigger:	self.execute()
+				else:	self.active_sceneview.update()
 		action.triggered.connect(callback)
 		
 		return action
@@ -290,10 +297,10 @@ class Madcad(QObject):
 		if self.exectarget > position:
 			self.exectarget += added - removed
 		else:
-			self.exectarget = position + added
+			self.exectarget = position + added - removed
+		self.exectarget_changed.emit()
 		
 		if self.exectrigger == 2 or self.exectrigger == 1 and '\n' in newtext:
-			self.exectarget_changed.emit()
 			self.execute()
 		else:
 			self.execution_label('MODIFIED')
@@ -324,9 +331,10 @@ class Madcad(QObject):
 			self.currentenv = self.interpreter.current
 			self.neverused |= used
 			self.neverused -= reused
+			self.update_endzone()
 			self.updatescript()
 			self.hideerror()
-			self.executed.emit()
+			self.executed.emit()				
 	
 	def reexecute(self):
 		''' reexecute all the script '''
@@ -346,7 +354,8 @@ class Madcad(QObject):
 			self.active_errorview = ErrorView(self, err)
 			self.active_errorview.show()
 			self.views.append(self.active_errorview)
-		self.mainwindow.activateWindow()
+		if self.mainwindow:
+			self.mainwindow.activateWindow()
 	
 	def hideerror(self):
 		view = self.active_errorview
@@ -410,29 +419,48 @@ class Madcad(QObject):
 		return cursor
 		
 	def insertexpr(self, text, format=True):
-		cursor = self.targetcursor()
-		cursor.movePosition(QTextCursor.NextWord)
-		cursor.movePosition(QTextCursor.PreviousWord, QTextCursor.KeepAnchor)
-		prev = cursor.selectedText()
+		# indentation
+		cursor = self.active_scriptview.editor.textCursor()
+		cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
+		line = cursor.selectedText()
+		cursor.clearSelection()
+		cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
+		indent = cursor.selectedText()
+		if not indent.isspace():	indent = ''
+		newline = len(line) > 30 or line and not (line.endswith(',') or line.isspace())
 		
-		cursor.movePosition(QTextCursor.NextWord)
+		# put cursor to target line
+		cursor = self.active_scriptview.editor.textCursor()
 		cursor.setKeepPositionOnInsert(False)
-
-		if not re.match(r'.*[,\n+\-\*/\=]\s*$', prev):
-			cursor.insertText('\n')
-		cursor.insertText(nformat(text) if format else text)
-		self.exectarget = cursor.position()
-		if self.exectrigger:
-			self.execute()
+		cursor.beginEditBlock()
+		# integration
+		if newline:
+			cursor.insertText('\n'+indent)
+		# insertion
+		cursor.insertText((nformat(text.replace('dvec', 'vec')) if format else text).replace('\n', '\n'+indent))
+		cursor.endEditBlock()
 	
 	def insertstmt(self, text):
-		cursor = self.targetcursor()
-		cursor.atBlockEnd()
+		# check if there is already something on the line
+		cursor = self.active_scriptview.editor.textCursor()
+		cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
+		newline = not cursor.selectedText().isspace()
+		# indentation
+		cursor.clearSelection()
+		cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
+		indent = cursor.selectedText()
+		if not indent.isspace():	indent = ''
+		
+		# put cursor to target line
+		cursor = self.active_scriptview.editor.textCursor()
 		cursor.setKeepPositionOnInsert(False)
-		cursor.insertText(text+'\n')
-		self.exectarget = cursor.position()
-		if self.exectrigger:
-			self.execute()
+		cursor.beginEditBlock()
+		# integration
+		if newline:
+			cursor.insertText('\n'+indent)
+		# insertion
+		cursor.insertText((text.replace('dvec', 'vec')+'\n').replace('\n', '\n'+indent))
+		cursor.endEditBlock()
 		
 		
 	# END
@@ -478,35 +506,6 @@ class Madcad(QObject):
 			if isinstance(view, ScriptView):
 				view.label_execution.setText(label)
 	
-	def cursorat(self, position):
-		''' notice the main that the cursur is at the given (line,column) '''
-		#if not self.trytrick(position):
-		self.showtemps(position)
-		
-	def objattext(self, position):
-		mscore = inf
-		mname = None
-		for name,interval in self.interpreter.locations.items():
-			start,end = astinterval(interval)
-			if start <= position and position <= end:
-				score = end-start
-				if score < mscore:
-					mscore = score
-					mname = name
-		if mname:	
-			return mname
-	
-	def showtemps(self, position):
-		''' display temporary values for the given cursor location '''
-		name = self.objattext(position)
-		if name:
-			self.displayzones = [astinterval(self.interpreter.locations[name])]
-		else:
-			self.displayzones = []
-		for scene in self.scenes:
-			scene.sync()
-		self.updatescript()
-	
 	def addtemp(self, obj):	
 		''' add a variable to the scene, that will be removed at next execution
 			a new unused temp name is used and returned
@@ -519,6 +518,18 @@ class Madcad(QObject):
 			i += 1
 		env[name] = obj
 		return name
+		
+	def posvar(self, position):
+		mscore = inf
+		mname = None
+		for name,interval in self.interpreter.locations.items():
+			start,end = astinterval(interval)
+			if start <= position and position <= end:
+				score = end-start
+				if score < mscore:
+					mscore = score
+					mname = name
+		return mname
 	
 	def updatescript(self):
 		zonehighlight = QColor(40, 200, 240, 60)
@@ -528,7 +539,7 @@ class Madcad(QObject):
 	
 		cursor = QTextCursor(self.script)
 		extra = []
-		for zs,ze in self.displayzones:
+		for zs,ze in self.displayzones.values():
 			cursor.setPosition(zs)
 			cursor.setPosition(ze, QTextCursor.KeepAnchor)
 			extra.append(extraselection(cursor, charformat(background=zonehighlight)))
@@ -557,6 +568,13 @@ class Madcad(QObject):
 			if isinstance(view, ScriptView):
 				view.editor.setExtraSelections(extra)
 	
+	def update_endzone(self):
+		i = astatpos(self.interpreter.ast, self.exectarget)
+		if i < len(self.interpreter.ast.body):
+			around = self.interpreter.ast.body[i]
+			self.displayzones['aroundtarget'] = around.position, around.end_position
+		else:
+			self.displayzones.pop('aroundtarget', None)
 	
 	# END
 	
@@ -644,7 +662,7 @@ class MainWindow(QMainWindow):
 		menu.addAction('enable line +')
 		menu.addAction('disable line dependencies +')
 		menu.addSeparator()
-		menu.addAction(main.createaction('rename object', tooling.tool_rename, shortcut=QKeySequence('F2')))
+		menu.addAction(main.createaction('rename object', tooling.act_rename, shortcut=QKeySequence('F2')))
 		menu.addSeparator()
 		menu.addAction(main.createaction('deselect all', tooling.deselectall, 'edit-select-all', shortcut=QKeySequence('Ctrl+A')))
 		
@@ -695,11 +713,14 @@ class MainWindow(QMainWindow):
 		action.setChecked(madcad.settings.scene['display_faces'])
 		action.toggled.connect(main._display_faces)
 		menu.addAction(action)
-		action = QAction('display annotations +', main, checkable=True, shortcut=QKeySequence('Shift+T'))
-		menu.addAction(action)
 		action = QAction('display grid', main, checkable=True, shortcut=QKeySequence('Shift+B'))
 		action.setChecked(madcad.settings.scene['display_grid'])
 		action.toggled.connect(main._display_grid)
+		menu.addAction(action)
+		action = QAction('display annotations +', main, checkable=True, shortcut=QKeySequence('Shift+D'))
+		action.setChecked(madcad.settings.scene['display_annotations'])
+		menu.addAction(action)
+		action = QAction('display all variables +', main, checkable=True, shortcut=QKeySequence('Shift+V'))
 		menu.addAction(action)
 		menu.addSeparator()
 		menu.addAction('center on object', main._viewcenter, shortcut=QKeySequence('Shift+C'))
