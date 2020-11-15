@@ -16,6 +16,7 @@ from PyQt5.QtGui import (
 		QPainter, QPainterPath,
 		)
 from .common import *
+from .interpreter import astinterval
 from nprint import nprint
 
 
@@ -96,7 +97,7 @@ class ScriptView(QWidget):
 		self.editor.blockCountChanged.connect(self._blockCountChanged)
 		self.editor.updateRequest.connect(self.update_linenumbers)
 		main.exectarget_changed.connect(self.targetcursor.update)
-		main.executed.connect(self._executed)
+		main.executed.connect(self._updatezone)
 		
 		main.views.append(self)
 		if not main.active_scriptview:	main.active_scriptview = self
@@ -122,14 +123,21 @@ class ScriptView(QWidget):
 	
 	def _cursorPositionChanged(self):
 		# update location label
-		cursor = self.editor.textCursor()
-		line, column = cursor_location(cursor)
+		line, column = cursor_location(self.editor.textCursor())
 		self.label_location.setText('line {}, column {}'.format(line+1, column+1))
 		# interaction with the results
-		self.main.cursorat(cursor.position())
-	
-	def _executed(self):
-		self.main.cursorat(self.editor.textCursor().position())
+		self._updatezone()
+		
+	def _updatezone(self):
+		main = self.main
+		below = main.posvar(self.editor.textCursor().position())
+		if below:
+			main.displayzones[id(self)] = astinterval(main.interpreter.locations[below])
+		else:
+			main.displayzones.pop(id(self), None)
+		main.updatescript()
+		if main.active_sceneview:
+			main.active_sceneview.scene.sync()
 	
 	def _blockCountChanged(self):
 		self.update_linenumbers()
