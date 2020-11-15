@@ -63,23 +63,30 @@ class Scene(madcad.rendering.Scene, QObject):
 		# objects selection in env, and already present objs
 		main = self.main
 		it = main.interpreter
-		self.places = {id(it.current[key]): place  for key, place in it.locations.items()}
 		newscene = {}
 		
 		# display objects that are requested by the user, or that are never been used (lastly generated)
 		for name,obj in it.current.items():
-			if displayable(obj) and (	name in self.forceddisplays 
-									or	name in main.neverused):
-				newscene[name] = obj
+			if name in newscene:	continue
+			if name in self.forceddisplays or name in main.neverused:
+				if displayable(obj):
+					newscene[name] = obj
+				# some exceptional behaviors
+				elif isjoint(obj):
+					for s in obj.solids:
+						i = id(s)
+						if i in it.ids and it.ids[i] not in newscene:
+							newscene[it.ids[i]] = s
+		
 		# display objects in the display zones
-		for zs,ze in main.displayzones:
+		for zs,ze in main.displayzones.values():
 			for name,node in it.locations.items():
 				if name not in newscene:
 					ts,te = astinterval(node)
 					temp = it.current[name]
 					if zs <= ts and te <= ze and displayable(temp):
 						newscene[name] = temp
-		# add scene own additions
+		# add scene's own additions
 		newscene.update(self.additions)
 		
 		# update the scene
