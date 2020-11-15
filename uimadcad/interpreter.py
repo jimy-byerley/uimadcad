@@ -13,8 +13,8 @@ class Interpreter:
 	# TODO: make this class thread-safe
 	backupstep = 0.2
 
-	def __init__(self, text='', env=None, title='custom-interpreter'):
-		self.persistent = ModuleType(title)	# persistent datas (the global module used)
+	def __init__(self, text='', env=None, name='custom-interpreter'):
+		self.name = title
 		self.backups = [(0,env or {})]	# local variables used
 		self.text = text
 		self.ast = ast.Module(body=[], type_ignores=[])
@@ -53,7 +53,7 @@ class Interpreter:
 		if target > self.ast_end:
 			part = self.text[self.ast_end:]
 			try:
-				addition = ast.parse(part, self.persistent.__name__)
+				addition = ast.parse(part, self.name)
 			except SyntaxError as err:
 				raise InterpreterError(err)
 			astannotate(addition, part)
@@ -82,13 +82,12 @@ class Interpreter:
 				code = compile(ast.Module(
 									body=[stmt], 
 									type_ignores=[]), 
-								self.persistent.__name__, 
+								self.name, 
 								'exec')
 				
 				# execute the code
 				try:
-					#exec(code, vars(self.persistent), env)
-					exec(code, env, env)
+					exec(code, env)
 				except Exception as err:
 					raise InterpreterError(err)
 				
@@ -100,12 +99,12 @@ class Interpreter:
 					starttime = time()
 				
 		else:
-			code = compile(processed, self.persistent.__name__, 'exec')
+			code = compile(processed, self.name, 'exec')
 			env = copyvars(backenv, locations.keys())
 			
 			# execute the code
 			try:
-				exec(code, vars(self.persistent), env)
+				exec(code, env)
 			except Exception as err:
 				raise InterpreterError(err)
 		

@@ -81,7 +81,7 @@ class ErrorView(QWidget):
 			cursor.insertText(exception.text[offset:], fmt_error)
 		else:
 			tb = traceback.extract_tb(exception.__traceback__)
-			i = next((i for i in range(len(tb)) if tb[i].filename == self.main.interpreter.persistent.__name__), 0)
+			i = next((i for i in range(len(tb)) if tb[i].filename == self.main.interpreter.name), 0)
 			for line in traceback.format_list(tb)[i:]:
 				if line.startswith('    '):
 					cursor.insertText(line, fmt_code)
