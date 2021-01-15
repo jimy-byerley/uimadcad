@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy,
 							)
 from PyQt5.QtGui import QColor, QPalette, QFont, QFontMetrics, QTextOption, QIcon
 import traceback
+import textwrap
 from .common import *
 
 class ErrorView(QWidget):
@@ -18,6 +19,8 @@ class ErrorView(QWidget):
 		self._sourcebtn = QPushButton('source +')
 		self.main = main
 		self.exception = exception
+		
+		self._keepchk.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
 		
 		# ui layout
 		lower = QWidget()
@@ -46,6 +49,8 @@ class ErrorView(QWidget):
 		self._text.setCurrentCharFormat(charformat(font=self.font))
 		# configure the label
 		self._label.setFont(self.font)
+		self._label.setWordWrap(True)
+		self._label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
 		# configure the button
 		self._sourcebtn.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Minimum))
 		#self._sourcebtn.clicked.connect(self.showsource)	# TODO: retreive find the stack frame for the execution module, then we would have the line number
@@ -59,6 +64,7 @@ class ErrorView(QWidget):
 		self.setWindowTitle(type(exception).__name__)
 		self._label.setText('<b style="color:#ff5555">{}:</b> {}'.format(
 								type(exception).__name__, str(exception)))
+		#'\n'.join(textwrap.wrap(str(exception), 24))) 
 		# set text
 		doc = self._text.document()
 		doc.clear()
