@@ -1,0 +1,28 @@
+[package]
+name = "launcher"
+version = "0.1.0"
+authors = ["jimy byerley <jimy.byerley@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+cryptostream = "^0.3"
+openssl = "^0.10"
+base64 = "^0.11"
+zip = "^0.5"
+rand = "^0.7.3"
+
+[dependencies.pyo3]
+version = "^0.13.1"
+features = ["auto-initialize"]
+
+[[bin]]
+name = "madcad"
+path = "src/launcher.rs"
+
+[[bin]]
+name = "pack"
+path = "src/pack.rs"
+
+[profile.release]
+lto = true
+opt-level = 3
