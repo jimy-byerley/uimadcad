@@ -17,7 +17,7 @@ from PyQt5.QtGui import (
 		)
 
 from madcad import *
-from madcad.rendering import Display, displayable, Displayable
+from madcad.rendering import Display, displayable, Displayable, Step
 from madcad.displays import SolidDisplay, WebDisplay, GridDisplay
 import madcad
 
@@ -26,6 +26,7 @@ from .detailview import DetailView
 from .interpreter import Interpreter, InterpreterError, astinterval
 from . import tricks
 
+import ast
 from copy import deepcopy, copy
 from nprint import nprint
 
@@ -48,12 +49,14 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.composition = QTextDocument()
 		self.composition.setDocumentLayout(QPlainTextDocumentLayout(self.composition))
 		
-		self.active_solid = None
 		self.forceddisplays = set()
 		self.additions = {
 			'__grid__': Displayable(Grid),
+			'__updateposes__': Step('screen', -1, self._updateposes),
 			}
 		self.editors = {}
+		self.poses = {}
+		self.active_solid = None
 	
 	def __del__(self):
 		try:	self.main.scenes.remove(self)
@@ -91,9 +94,70 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 		# update the scene
 		super().sync(newscene)
+		# perform other actions on sync
+		self.dequeue()
+		self.update_solidsets()
 		# trigger the signal for dependent widgets
 		self.changed.emit()
 		
+	def update_solidsets(self):
+		''' update the association of variables to solids '''
+		self.poses = {}
+		
+		sets = []
+		# process statements executed in the main flow
+		def search_statements(node):
+			for stmt in reversed(node.body):
+				if isinstance(stmt, (ast.Expr, ast.Assign)):
+					search_expr(stmt)
+				elif isinstance(stmt, (ast.If, ast.With)):
+					search_statements(stmt)
+		# all variables trapped into the same expr are put into the same set
+		def search_expr(node):
+			used = set()
+			wrote = []
+			for child in ast.walk(node):
+				if isinstance(child, (ast.Name, ast.NamedExpr)):
+					used.add(child.id)
+					if isinstance(child.ctx, ast.Store):
+						wrote.append(child.id)
+			assigned = False
+			for s in sets:
+				if not s.isdisjoint(wrote):
+					s.update(used)
+					assigned = True
+			if not assigned:
+				sets.append(used)
+		search_statements(self.main.interpreter.altered_ast)
+		
+		# process SolidDisplays all across the scene
+		def recur(level):
+			for disp in level:
+				if isinstance(disp, Solid.display):
+					process(disp)
+				# recursion
+				elif isinstance(disp, madcad.rendering.Group):	
+					recur(disp.displays.values())
+		# find sub displays representing existing variables
+		def process(disp):
+			for sub in scene_unroll(disp):
+				if not hasattr(sub, 'source'):	continue
+				bound = self.main.interpreter.ids.get(id(sub.source))
+				if not bound:	continue
+				# find a solidset that provides that value
+				try:	s = next(u for u in sets	if bound in u)
+				except StopIteration:	continue
+				# change its variables world matrices
+				for name in s:
+					self.poses[name] = disp
+		recur(self.displays.values())
+		
+	def _updateposes(self, _):
+		for name,disp in self.displays.items():
+			obj = self.poses.get(name, self.active_solid)
+			if obj:
+				disp.world = obj.world * obj.pose
+	
 	def display(self, obj):
 		disp = super().display(obj)
 		disp.source = obj
@@ -108,15 +172,6 @@ class Scene(madcad.rendering.Scene, QObject):
 					yield from recur(disp.displays.items(), (*key, sub))
 		yield from recur(self.displays.items(), ())
 	
-	def unroll(self):
-		''' yield recursively all displays in the scene, including subscenes '''
-		def recur(level):
-			for disp in level:
-				yield disp
-				if isinstance(disp, madcad.rendering.Group):	
-					yield from recur(disp.displays.values())
-		yield from recur(self.displays.values())
-	
 	def selectionbox(self):
 		''' return the bounding box of the selection '''
 		def selbox(level):
@@ -128,7 +183,16 @@ class Scene(madcad.rendering.Scene, QObject):
 					box.union(selbox(disp.displays.values()).transform(disp.pose))
 			return box
 		return selbox(self.displays.values())
-	
+
+def scene_unroll(scene):
+	''' yield recursively all displays in the scene, including subscenes '''
+	def recur(level):
+		for disp in level:
+			yield disp
+			if isinstance(disp, madcad.rendering.Group):	
+				yield from recur(disp.displays.values())
+	yield from recur(scene.displays.values())		
+
 
 class SceneView(madcad.rendering.View):
 	''' dockable and reparentable scene view widget, bases on madcad.Scene '''
@@ -162,6 +226,8 @@ class SceneView(madcad.rendering.View):
 		for i,view in enumerate(self.main.views):
 			if view is self:
 				self.main.views.pop(i)
+		if self.main.active_sceneview is self:
+			self.main.active_sceneview = None
 		if isinstance(self.parent(), QDockWidget):
 			self.main.mainwindow.removeDockWidget(self.parent())
 		else:
@@ -284,11 +350,17 @@ class SceneViewBar(QWidget):
 				b.clicked.connect(callback)
 			return b
 			
-		def callback():
+		def separate_scene():
 			self.sceneview.separate_scene()
 			self.sceneview.update()
 			self.composition.scene = self.sceneview.scene
 			scenes.setCurrentIndex(len(sceneview.main.scenes)-1)
+			
+		def viewadapt(self):
+			scene = sceneview.scene
+			box = scene.selectionbox() or scene.box()
+			sceneview.center(box.center)
+			sceneview.adjust(box)
 		
 		btn_compose = btn('madcad-compose')
 		self.composition = SceneComposition(sceneview.scene, parent=btn_compose)
@@ -296,8 +368,9 @@ class SceneViewBar(QWidget):
 		
 		layout = QHBoxLayout()
 		layout.addWidget(self.scenes)
-		layout.addWidget(btn('list-add', callback))
+		layout.addWidget(btn('list-add', separate_scene))
 		layout.addWidget(QWidget())
+		layout.addWidget(btn('view-fullscreen', viewadapt))
 		layout.addWidget(btn_compose)
 		layout.addWidget(btn('dialog-close-icon', sceneview.close))
 		self.setLayout(layout)

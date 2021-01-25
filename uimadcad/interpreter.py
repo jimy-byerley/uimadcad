@@ -14,11 +14,12 @@ class Interpreter:
 	backupstep = 0.2
 
 	def __init__(self, text='', env=None, name='custom-interpreter'):
-		self.name = title
+		self.name = name
 		self.backups = [(0,env or {})]	# local variables used
 		self.text = text
 		self.ast = ast.Module(body=[], type_ignores=[])
 		self.ast_end = 0
+		self.altered_ast = None
 		
 		self.target = 0
 		self.current = {}	# current env (after last execution)
@@ -109,6 +110,7 @@ class Interpreter:
 				raise InterpreterError(err)
 		
 		# publish results
+		self.altered_ast = processed
 		self.current = env
 		for name,obj in self.locations.items():
 			if name not in locations and name in env:

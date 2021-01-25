@@ -11,6 +11,7 @@ import ast
 from madcad import *
 
 from .interpreter import astatpos
+from .sceneview import scene_unroll
 
 
 class ToolError(Exception):
@@ -91,7 +92,7 @@ def toolrequest(main, args, create=True):
 	match = [None] * len(args)	# matched objects
 	
 	# search the selection for the required objects
-	for disp in main.active_sceneview.scene.unroll():
+	for disp in scene_unroll(main.active_sceneview.scene):
 		if disp.selected:
 			name = dispname(main, disp)
 			if name:
@@ -237,13 +238,20 @@ def rename(main, oldname, newname=None):
 		cursor.endEditBlock()
 		
 def deselectall(main):
-	for disp in main.active_sceneview.scene.unroll():
+	for disp in scene_unroll(main.active_sceneview.scene):
 		if disp.selected:	disp.selected = False
 		if type(disp).__name__ in ('MeshDisplay', 'WebDisplay'):
 			disp.vertices.flags &= 0x11111110
 			disp.vertices.flags_updated = True
 	main.active_sceneview.update()
 	main.updatescript()
+	
+def set_active_solid(main):
+	for disp in scene_unroll(main.active_sceneview.scene):
+		if isinstance(disp, Solid.display):
+			if disp.selected:	
+				main.active_sceneview.scene.active_solid = disp
+				break
 	
 def createpoint(main):
 	evt = yield from waitclick()
@@ -359,7 +367,7 @@ def create_toolbars(main, widget):
 
 
 def act_rename(main):
-	for disp in main.active_sceneview.scene.unroll():
+	for disp in scene_unroll(main.active_sceneview.scene):
 		if disp.selected:
 			name = dispname(main, disp)
 			if name:

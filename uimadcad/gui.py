@@ -35,7 +35,7 @@ import madcad.settings
 from .common import *
 from .interpreter import Interpreter, InterpreterError, astinterval, astatpos
 from .scriptview import ScriptView
-from .sceneview import Scene, SceneView, SceneList
+from .sceneview import Scene, SceneView, SceneList, scene_unroll
 from .errorview import ErrorView
 from .detailview import DetailView
 from .tricks import PointEditor, EditionError
@@ -398,20 +398,6 @@ class Madcad(QObject):
 		scene = self.active_sceneview.scene
 		box = scene.selectionbox() or scene.box()
 		self.active_sceneview.look(box.center)
-		
-	def _set_current_solid(self):
-		#self.active_solid = first(
-				#iter_scenetree(self.active_sceneview.scene), 
-				#lambda disp: isinstance(disp, Solid.display) and disp.selected,
-				#)
-		self.active_solid = None
-		print()
-		for disp in iter_scenetree(self.active_sceneview.scene):
-			if disp.selected:	print(disp)
-			if isinstance(disp, Solid.display) and disp.selected:
-				self.active_solid = disp
-				break
-		print('current solid', self.active_solid)
 	
 	def targetcursor(self):
 		cursor = self.active_scriptview.editor.textCursor()
@@ -546,7 +532,7 @@ class Madcad(QObject):
 		
 		if self.active_sceneview:
 			seen = set()
-			for obj in self.active_sceneview.scene.unroll():
+			for obj in scene_unroll(self.active_sceneview.scene):
 				if not hasattr(obj, 'source'):	continue
 				i = id(obj.source)
 				if (obj.selected and obj.source 
@@ -579,11 +565,11 @@ class Madcad(QObject):
 	# END
 	
 
-def iter_scenetree(obj):
+def scene_unroll(obj):
 	for disp in obj.displays.values():
 		yield disp
 		if isinstance(disp, Group):
-			yield from iter_scenetree(disp)		
+			yield from scene_unroll(disp)		
 
 def open_file_external(file):
 	if 'linux' in sys.platform:
@@ -658,8 +644,8 @@ class MainWindow(QMainWindow):
 		menu.addAction(QIcon.fromTheme('view-refresh'), 'reexecute all', main.reexecute, QKeySequence('Ctrl+Shift+Return'))
 		menu.addAction(QIcon.fromTheme('go-bottom'), 'target to cursor', main._targettocursor, QKeySequence('Ctrl+T'))
 		menu.addSeparator()
-		menu.addAction('disable line +')
-		menu.addAction('enable line +')
+		menu.addAction(QIcon.fromTheme('format-indent-more'), 'disable line +')
+		menu.addAction(QIcon.fromTheme('format-indent-less'), 'enable line +')
 		menu.addAction('disable line dependencies +')
 		menu.addSeparator()
 		menu.addAction(main.createaction('rename object', tooling.act_rename, shortcut=QKeySequence('F2')))
@@ -673,8 +659,6 @@ class MainWindow(QMainWindow):
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(main), 'scene view')))
 		menu.addAction(QIcon.fromTheme('text-x-script'), 'new text view', 
 			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(main), 'build script')))
-		menu.addSeparator()
-		menu.addAction('set as current solid', main._set_current_solid)
 		menu.addSeparator()
 		
 		themes = menu.addMenu('theme preset')
@@ -757,6 +741,7 @@ class MainWindow(QMainWindow):
 		
 		menu.addSeparator()
 		
+		menu.addAction(main.createaction('set active solid', tooling.set_active_solid, shortcut=QKeySequence('Shift+S')))
 		menu.addAction('explode objects +')
 		
 		
