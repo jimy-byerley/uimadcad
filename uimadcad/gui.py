@@ -449,6 +449,25 @@ class Madcad(QObject):
 		cursor.endEditBlock()
 		
 		
+	def deselectall(self):
+		for disp in scene_unroll(self.active_sceneview.scene):
+			if disp.selected:	disp.selected = False
+			if type(disp).__name__ in ('MeshDisplay', 'WebDisplay'):
+				disp.vertices.flags &= 0x11111110
+				disp.vertices.flags_updated = True
+		self.active_sceneview.update()
+		self.updatescript()
+		
+	def set_active_solid(self):
+		found = None
+		for disp in scene_unroll(self.active_sceneview.scene):
+			if isinstance(disp, Solid.display):
+				if disp.selected:	
+					found = disp
+					break
+		self.active_sceneview.scene.active_solid = found
+		self.active_sceneview.update()
+		
 	# END
 	# BEGIN --- display system ---
 	
@@ -650,7 +669,7 @@ class MainWindow(QMainWindow):
 		menu.addSeparator()
 		menu.addAction(main.createaction('rename object', tooling.act_rename, shortcut=QKeySequence('F2')))
 		menu.addSeparator()
-		menu.addAction(main.createaction('deselect all', tooling.deselectall, 'edit-select-all', shortcut=QKeySequence('Ctrl+A')))
+		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main.deselectall, shortcut=QKeySequence('Ctrl+A'))
 		
 		menu = menubar.addMenu('&View')
 		menu.addAction(QAction('display navigation controls +', main, checkable=True))
@@ -741,7 +760,7 @@ class MainWindow(QMainWindow):
 		
 		menu.addSeparator()
 		
-		menu.addAction(main.createaction('set active solid', tooling.set_active_solid, shortcut=QKeySequence('Shift+S')))
+		menu.addAction('set active solid', main.set_active_solid, shortcut=QKeySequence('Shift+S'))
 		menu.addAction('explode objects +')
 		
 		
