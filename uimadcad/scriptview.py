@@ -45,6 +45,7 @@ class ScriptView(QWidget):
 		self.editor.setDocument(main.script)
 		self.editor.setWordWrapMode(self.wordwrap)
 		self.editor.setTabStopDistance(self.tabsize * QFontMetrics(self.font).maxWidth())
+		self.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Expanding))
 		# default widget colors
 		palette = self.editor.palette()
 		palette.setColor(QPalette.Base, self.background)
@@ -57,7 +58,7 @@ class ScriptView(QWidget):
 		
 		# set cursor position on openning
 		if main.active_scriptview:
-			self.editor.setTextCursor(self.active_scriptview.editor.textCursor())
+			self.editor.setTextCursor(main.active_scriptview.editor.textCursor())
 		else:
 			self.editor.moveCursor(QTextCursor.End)
 		
@@ -120,6 +121,8 @@ class ScriptView(QWidget):
 	
 	def closeEvent(self, event):
 		self.main.views.remove(self)
+		if self.main.active_scriptview is self:
+			self.main.active_scriptview = None
 	
 	def _cursorPositionChanged(self):
 		# update location label
@@ -141,6 +144,9 @@ class ScriptView(QWidget):
 	
 	def _blockCountChanged(self):
 		self.update_linenumbers()
+		
+	def sizeHint(self):
+		return QSize(500,200)
 	
 	def resizeEvent(self, event):
 		super().resizeEvent(event)
