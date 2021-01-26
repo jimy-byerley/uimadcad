@@ -171,16 +171,16 @@ class Scene(madcad.rendering.Scene, QObject):
 				if isinstance(disp, madcad.rendering.Group):	
 					yield from recur(disp.displays.items(), (*key, sub))
 		yield from recur(self.displays.items(), ())
-	
+		
 	def selectionbox(self):
 		''' return the bounding box of the selection '''
 		def selbox(level):
 			box = Box(fvec3(inf), fvec3(-inf))
 			for disp in level:
 				if disp.selected:
-					box.union(disp.box)
+					box.union(disp.box.transform(disp.world))
 				elif isinstance(disp, madcad.rendering.Group):
-					box.union(selbox(disp.displays.values()).transform(disp.pose))
+					box.union(selbox(disp.displays.values()))
 			return box
 		return selbox(self.displays.values())
 
