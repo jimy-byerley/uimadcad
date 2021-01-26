@@ -154,6 +154,8 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 	def _updateposes(self, _):
 		for name,disp in self.displays.items():
+			if hasattr(disp, 'source') and isinstance(disp.source, (Solid,Kinematic)):	
+				continue
 			obj = self.poses.get(name, self.active_solid)
 			if obj:
 				disp.world = obj.world * obj.pose
@@ -221,11 +223,7 @@ class SceneView(madcad.rendering.View):
 		self.scene.changed.connect(self.update)
 	
 	def closeEvent(self, event):
-		# WARNING: due to some Qt bugs, a removed Scene can be closed multiple times, and the added scenes are never closed nor displayed
-		#self.main.views.remove(self)
-		for i,view in enumerate(self.main.views):
-			if view is self:
-				self.main.views.pop(i)
+		self.main.views.remove(self)
 		if self.main.active_sceneview is self:
 			self.main.active_sceneview = None
 		if isinstance(self.parent(), QDockWidget):

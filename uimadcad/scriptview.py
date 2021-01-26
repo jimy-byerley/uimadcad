@@ -123,6 +123,11 @@ class ScriptView(QWidget):
 		self.main.views.remove(self)
 		if self.main.active_scriptview is self:
 			self.main.active_scriptview = None
+		if isinstance(self.parent(), QDockWidget):
+			self.main.mainwindow.removeDockWidget(self.parent())
+		else:
+			super().close()
+	
 	
 	def _cursorPositionChanged(self):
 		# update location label
@@ -174,13 +179,6 @@ class ScriptView(QWidget):
 			self.wlinenumbers.setVisible(False)
 			self.editor.setViewportMargins(0, 0, 0, 0)
 		self.editor.update()
-	
-	def close(self):
-		self.main.views.remove(self)
-		if isinstance(self.parent(), QDockWidget):
-			self.main.mainwindow.removeDockWidget(self.parent())
-		else:
-			super().close()
 
 class LineNumbers(QWidget):
 	''' line number display for the text view '''
