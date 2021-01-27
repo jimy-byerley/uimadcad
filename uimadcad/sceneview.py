@@ -104,6 +104,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		''' update the association of variables to solids '''
 		self.poses = {}
 		
+		ast_name = (ast.Name, ast.NamedExpr) if hasattr(ast, 'NamedExpr') else ast.Name
 		sets = []
 		# process statements executed in the main flow
 		def search_statements(node):
@@ -117,7 +118,7 @@ class Scene(madcad.rendering.Scene, QObject):
 			used = set()
 			wrote = []
 			for child in ast.walk(node):
-				if isinstance(child, (ast.Name, ast.NamedExpr)):
+				if isinstance(child, ast_name):
 					used.add(child.id)
 					if isinstance(child.ctx, ast.Store):
 						wrote.append(child.id)
