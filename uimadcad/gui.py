@@ -81,7 +81,6 @@ class Madcad(QObject):
 		self.details = {}
 		self.hiddens = set()
 		self.displayzones = {}
-		self.neverused = set()
 		
 		# madcad ressources (and widgets)
 		self.standardcameras = {
@@ -327,10 +326,7 @@ class Madcad(QObject):
 			self.execution_label('<p style="color:#ff5555">FAILED</p>')
 		else:
 			self.execution_label('<p style="color:#55ff22">COMPUTED</p>')
-			used, reused = res
 			self.currentenv = self.interpreter.current
-			self.neverused |= used
-			self.neverused -= reused
 			self.update_endzone()
 			self.updatescript()
 			self.hideerror()

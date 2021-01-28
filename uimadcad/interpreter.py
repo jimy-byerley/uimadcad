@@ -23,6 +23,8 @@ class Interpreter:
 		
 		self.target = 0
 		self.current = {}	# current env (after last execution)
+		self.reused = set()
+		self.neverused = set()
 		self.locations = {}	# objects location intervals
 	
 	def change(self, position, oldsize, newcontent):
@@ -118,7 +120,10 @@ class Interpreter:
 		self.locations = locations
 		self.ids = {id(obj): name	for name,obj in env.items()}
 		
-		return varusage(part)
+		used, reused = varusage(part)
+		self.used = used
+		self.neverused |= used
+		self.neverused -= reused
 	
 	def process(self, tree, oldvars):
 		''' process an AST to retreive its temporary values 

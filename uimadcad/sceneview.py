@@ -42,7 +42,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		QObject.__init__(self)
 		self.main = main
 		main.scenes.append(self)
-		main.executed.connect(self.sync)
+		main.executed.connect(self._executed)
 		main.scenesmenu.layoutChanged.emit()
 		
 		# scene data
@@ -57,10 +57,16 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.editors = {}
 		self.poses = {}
 		self.active_solid = None
+		
+		self.executed = True
 	
 	def __del__(self):
 		try:	self.main.scenes.remove(self)
 		except ValueError:	pass
+		
+	def _executed(self):
+		self.executed = True
+		self.sync()
 	
 	def sync(self):
 		# objects selection in env, and already present objs
@@ -71,7 +77,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		# display objects that are requested by the user, or that are never been used (lastly generated)
 		for name,obj in it.current.items():
 			if name in newscene:	continue
-			if name in self.forceddisplays or name in main.neverused:
+			if name in self.forceddisplays or name in it.neverused:
 				if displayable(obj):
 					newscene[name] = obj
 				# some exceptional behaviors
@@ -99,6 +105,16 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.update_solidsets()
 		# trigger the signal for dependent widgets
 		self.changed.emit()
+	
+	def update(self, objs):
+		if not objs:	return
+		for k,v in objs.items():
+			disp = self.displays.get(k)
+			if self.executed or not disp or id(getattr(disp,'source',None)) != id(v):
+				self.queue[k] = v
+		self.executed = False
+		self.touch()
+			
 		
 	def update_solidsets(self):
 		''' update the association of variables to solids '''
