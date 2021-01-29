@@ -49,16 +49,15 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.composition = QTextDocument()
 		self.composition.setDocumentLayout(QPlainTextDocumentLayout(self.composition))
 		
-		self.forceddisplays = set()
-		self.additions = {
+		self.forceddisplays = set()		# variable names to always display
+		self.additions = {		# systematic scene additions
 			'__grid__': Displayable(Grid),
 			'__updateposes__': Step('screen', -1, self._updateposes),
 			}
-		self.editors = {}
-		self.poses = {}
-		self.active_solid = None
-		
-		self.executed = True
+		self.editors = {}		# displays replacing variable displays for editions
+		self.poses = {}			# solid per variable for poses, non associated solids are not in that dict
+		self.active_solid = None	# current solid for current space
+		self.executed = True	# flag set to True to enable a full relead of the scene
 	
 	def __del__(self):
 		try:	self.main.scenes.remove(self)
@@ -171,7 +170,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 	def _updateposes(self, _):
 		for name,disp in self.displays.items():
-			if hasattr(disp, 'source') and isinstance(disp.source, (Solid,Kinematic)):	
+			if name in self.additions or hasattr(disp, 'source') and isinstance(disp.source, (Solid,Kinematic)):	
 				continue
 			obj = self.poses.get(name, self.active_solid)
 			if obj:
