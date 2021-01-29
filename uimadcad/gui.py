@@ -119,8 +119,8 @@ class Madcad(QObject):
 			madcad.settings.use_qt_colors()
 		settings.install()
 		madcad.settings.install()
-		try:	settings.load()
-		except:	settings.clean()
+		settings.load()
+		#settings.clean()
 		# load startup file
 		cursor = QTextCursor(self.script)
 		cursor.insertText(open(settings.locations['startup'], 'r').read())
