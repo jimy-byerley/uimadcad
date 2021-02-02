@@ -14,13 +14,11 @@
    id="svg8"
    inkscape:version="1.0.1 (1.0.1+r73)"
    sodipodi:docname="madcad-cst-gear.svg">
-  <style
-     id="current-color-scheme">
-      .ColorScheme-Text { color:#232629; }
+  
+  <style id="current-color-scheme" type="text/css">
+	  .ColorScheme-Text { color:#232629; }
       .ColorScheme-Highlight { color:#93cee9; }
-</style>
-  <defs
-     id="defs2" />
+    </style>
   <sodipodi:namedview
      id="base"
      pagecolor="#2d2d2d"

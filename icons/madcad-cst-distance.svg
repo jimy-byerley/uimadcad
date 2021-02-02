@@ -16,94 +16,11 @@
    id="svg8"
    inkscape:version="1.0.1 (1.0.1+r73)"
    sodipodi:docname="madcad-cst-distance.svg">
-  <style
-     id="current-color-scheme">.id { color:#232629; }
-.ColorScheme-Highlight { color:#93cee9; }
-</style>
-  <defs
-     id="defs2">
-    <linearGradient
-       id="user"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#3a8bb0;stop-opacity:1;"
-         offset="0"
-         id="stop2275" />
-    </linearGradient>
-    <linearGradient
-       id="linearGradient2269"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#ffffff;stop-opacity:1;"
-         offset="0"
-         id="stop2267" />
-    </linearGradient>
-    <linearGradient
-       id="linearGradient2263"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#fbfbfb;stop-opacity:1;"
-         offset="0"
-         id="stop2261" />
-    </linearGradient>
-    <linearGradient
-       id="second"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#959595;stop-opacity:1;"
-         offset="0"
-         id="stop2255" />
-    </linearGradient>
-    <linearGradient
-       id="linearGradient2251"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#808080;stop-opacity:1;"
-         offset="0"
-         id="stop2249" />
-    </linearGradient>
-    <linearGradient
-       id="linearGradient2245"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#808080;stop-opacity:1;"
-         offset="0"
-         id="stop2243" />
-    </linearGradient>
-    <linearGradient
-       id="main"
-       osb:paint="solid">
-      <stop
-         style="stop-color:#ffffff;stop-opacity:1;"
-         offset="0"
-         id="stop2237" />
-    </linearGradient>
-    <inkscape:perspective
-       sodipodi:type="inkscape:persp3d"
-       inkscape:vp_x="0 : 8.4666667 : 1"
-       inkscape:vp_y="0 : 999.99996 : 0"
-       inkscape:vp_z="16.933333 : 8.4666667 : 1"
-       inkscape:persp3d-origin="8.4666667 : 5.6444445 : 1"
-       id="perspective817" />
-    <linearGradient
-       inkscape:collect="always"
-       xlink:href="#second"
-       id="linearGradient2265"
-       x1="0.42153955"
-       y1="295.81161"
-       x2="2.0090394"
-       y2="295.81161"
-       gradientUnits="userSpaceOnUse" />
-    <linearGradient
-       inkscape:collect="always"
-       xlink:href="#second"
-       id="linearGradient2271"
-       x1="10.583333"
-       y1="285.62289"
-       x2="12.170833"
-       y2="285.62289"
-       gradientUnits="userSpaceOnUse" />
-  </defs>
+  
+  <style id="current-color-scheme" type="text/css">
+	  .ColorScheme-Text { color:#232629; }
+      .ColorScheme-Highlight { color:#93cee9; }
+    </style>
   <sodipodi:namedview
      id="base"
      pagecolor="#2d2d2d"

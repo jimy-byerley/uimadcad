@@ -14,13 +14,11 @@
    id="svg6592"
    inkscape:version="1.0.1 (1.0.1+r73)"
    sodipodi:docname="madcad-segment-symbolic.svg">
-  <style
-     id="current-color-scheme">
+  
+  <style id="current-color-scheme" type="text/css">
 	  .ColorScheme-Text { color:#232629; }
       .ColorScheme-Highlight { color:#93cee9; }
-  </style>
-  <defs
-     id="defs6586" />
+    </style>
   <sodipodi:namedview
      id="base"
      pagecolor="#9a9a9a"
