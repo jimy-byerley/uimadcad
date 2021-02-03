@@ -770,8 +770,14 @@ class MainWindow(QMainWindow):
 		action = QAction('scroll on selected object +', main, checkable=True)
 		#action.toggled.connect(main._enable_center_on_select)	# TODO when settings will be added
 		menu.addAction(action)
+		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('edit-find'), 'find +', lambda: None, shortcut=QKeySequence('Ctrl+F'))
 		menu.addAction(QIcon.fromTheme('edit-find-replace'), 'replace +', lambda: None, shortcut=QKeySequence('Ctrl+R'))
+		menu.addAction(QIcon.fromTheme('format-indent-more'), 'increase indendation', lambda: main.active_scriptview.editor.indent_increase(), shortcut=QKeySequence('Tab'))
+		menu.addAction(QIcon.fromTheme('format-indent-less'), 'decrease indentation', lambda: main.active_scriptview.editor.indent_decrease(), shortcut=QKeySequence('Shift+Tab'))
+		menu.addSeparator()
+		menu.addAction(QIcon.fromTheme('zoom-in'), 'increase font size +', lambda: None, shortcut=QKeySequence('Ctrl++'))
+		menu.addAction(QIcon.fromTheme('zoom-out'), 'decrease font size +', lambda: None, shortcut=QKeySequence('Ctrl+-'))
 		
 		menu = menubar.addMenu('&Plot')
 		menu.addAction(QAction('display curve labels +', main, checkable=True))

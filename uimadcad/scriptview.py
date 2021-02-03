@@ -3,7 +3,7 @@ from PyQt5.QtCore import (
 		QEvent, pyqtSignal,
 		)
 from PyQt5.QtWidgets import (
-		QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction,
+		QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction, 
 		QTextEdit, QPlainTextEdit, QPlainTextDocumentLayout, 
 		QPushButton, QLabel, QComboBox,
 		QMainWindow, QDockWidget,
@@ -21,10 +21,34 @@ from nprint import nprint
 
 
 class TextEdit(QPlainTextEdit):
-	''' text editor widget for ScriptView, only here to change some QPlainTextEdit behaviors '''		
+	''' text editor widget for ScriptView, only here to change some QPlainTextEdit behaviors '''
+	
 	def focusInEvent(self, event):
 		self.parent().focused()
 		super().focusInEvent(event)
+		
+	def keyPressEvent(self, event):
+		cursor = self.textCursor()
+		if cursor.hasSelection():
+			if event.key() == Qt.Key.Key_Tab:		self.indent_increase(cursor)
+			elif event.key() == Qt.Key.Key_Backtab:	self.indent_decrease(cursor)
+			return
+		super().keyPressEvent(event)
+	
+	def indent_increase(self, cursor=None):
+		if not cursor:	cursor = self.textCursor()
+		anchor = min(cursor.position(), cursor.anchor())
+		cursor.insertText(cursor.selectedText().replace('\u2029', '\u2029\t'))
+		cursor.setPosition(anchor, cursor.KeepAnchor)
+		self.setTextCursor(cursor)
+	
+	def indent_decrease(self, cursor=None):
+		if not cursor:	cursor = self.textCursor()
+		anchor = min(cursor.position(), cursor.anchor())
+		cursor.insertText(cursor.selectedText().replace('\u2029\t', '\u2029'))
+		cursor.setPosition(anchor, cursor.KeepAnchor)
+		self.setTextCursor(cursor)
+	
 
 class ScriptView(QWidget):
 	''' text editor part of the main frame '''
@@ -179,6 +203,7 @@ class ScriptView(QWidget):
 			self.wlinenumbers.setVisible(False)
 			self.editor.setViewportMargins(0, 0, 0, 0)
 		self.editor.update()
+
 
 class LineNumbers(QWidget):
 	''' line number display for the text view '''
