@@ -114,14 +114,14 @@ class Madcad(QObject):
 
 	def startup(self):
 		''' set madcad in the startup state (software openning state) '''
-		# create or load config
-		if madcad.settings.display['system_theme']:
-			madcad.settings.use_qt_colors()
-			settings.use_qt_colors()
 		settings.install()
 		madcad.settings.install()
 		settings.load()
-		#settings.clean()
+		# create or load config
+		if madcad.settings.display['system_theme']:
+			madcad.settings.use_qt_colors()
+		if settings.scriptview['system_theme']:
+			settings.use_qt_colors()
 		# load startup file
 		cursor = QTextCursor(self.script)
 		cursor.insertText(open(settings.locations['startup'], 'r').read())

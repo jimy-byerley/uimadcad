@@ -78,10 +78,7 @@ class ScriptView(QWidget):
 		self.editor.setTabStopDistance(settings.scriptview['tabsize'] * QFontMetrics(self.font).maxWidth())
 		
 		# text coloring
-		palette = self.editor.palette()
-		palette.setColor(QPalette.Base, ctq(settings.scriptview['background']))
-		self.editor.setPalette(palette)
-		self.highlighter = Highlighter(self.editor.document(), self.font)
+		self.update_colors()
 		
 		# visual options
 		self.linenumbers = settings.scriptview['linenumbers']
@@ -150,6 +147,10 @@ class ScriptView(QWidget):
 				self.layout().removeWidget(self.statusbar)
 			else:
 				self.layout().addWidget(self.statusbar)
+		# detect theme change
+		if event.type() == QEvent.PaletteChange and settings.scriptview['system_theme']:
+			settings.use_qt_colors()
+			self.update_colors()
 		return super().changeEvent(event)
 	
 	def closeEvent(self, event):
@@ -212,6 +213,13 @@ class ScriptView(QWidget):
 			self.wlinenumbers.setVisible(False)
 			self.editor.setViewportMargins(0, 0, 0, 0)
 		self.editor.update()
+		
+	def update_colors(self):
+		palette = self.editor.palette()
+		palette.setColor(QPalette.Base, ctq(settings.scriptview['background']))
+		self.editor.setPalette(palette)
+		self.highlighter = Highlighter(self.editor.document(), self.font)
+		
 		
 	def fontsize_increase(self):
 		self.font.setPointSize(self.font.pointSize() + 1)
