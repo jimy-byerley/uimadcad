@@ -78,16 +78,32 @@ def load(file=None):
 	''' load the settings directly in this module, from the specified file or the default one '''
 	if not file:	file = locations['uisettings']
 	if isinstance(file, str):	file = open(file, 'r')
+	#yaml.add_constructor(u'!vec3', lambda loader, node: fvec3(loader.construct_list(node)))
+	#yaml.add_constructor(u'!vec4', lambda loader, node: fvec4(loader.construct_list(node)))
 	changes = yaml.safe_load(file)
-	for group in settings:
-		if group in changes:
-			settings[group].update(changes[group])
+	#for group in settings:
+		#if group in changes:
+			#settings[group].update(changes[group])
+	def update(dst, src):
+		for key in dst:
+			if key in src:
+				if isinstance(dst[key], dict) and isinstance(src[key], dict):	
+					update(dst[key], src[key])
+				elif isinstance(dst[key], fvec3):	dst[key] = fvec3(src[key])
+				elif isinstance(dst[key], fvec4):	dst[key] = fvec4(src[key])
+				else:
+					dst[key] = src[key]
+	update(settings, changes)
+
 
 def dump(file=None):
 	''' load the current settings into the specified file or to the default one '''
 	if not file:	file = locations['uisettings']
 	if isinstance(file, str):	file = open(file, 'w')
+	#yaml.add_representer(fvec3, lambda dumper, data: dumper.represent_scalar(u'!vec3', str(tuple(round(f,3) for f in data)) ))
+	#yaml.add_representer(fvec4, lambda dumper, data: dumper.represent_scalar(u'!vec4', str(tuple(round(f,3) for f in data)) ))
 	yaml.add_representer(fvec3, lambda dumper, data: dumper.represent_list(round(f,3) for f in data))
+	yaml.add_representer(fvec4, lambda dumper, data: dumper.represent_list(round(f,3) for f in data))
 	file.write(yaml.dump(settings, default_flow_style=None, width=60, indent=4))
 	
 
