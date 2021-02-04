@@ -17,6 +17,8 @@ from PyQt5.QtGui import (
 		)
 from .common import *
 from .interpreter import astinterval
+from .settings import ctq
+from . import settings
 from nprint import nprint
 
 
@@ -32,8 +34,8 @@ class TextEdit(QPlainTextEdit):
 		if cursor.hasSelection():
 			if event.key() == Qt.Key.Key_Tab:		self.indent_increase(cursor)
 			elif event.key() == Qt.Key.Key_Backtab:	self.indent_decrease(cursor)
-			return
-		super().keyPressEvent(event)
+			else:	super().keyPressEvent(event)
+		else:		super().keyPressEvent(event)
 	
 	def indent_increase(self, cursor=None):
 		if not cursor:	cursor = self.textCursor()
@@ -52,32 +54,40 @@ class TextEdit(QPlainTextEdit):
 
 class ScriptView(QWidget):
 	''' text editor part of the main frame '''
-	tabsize = 4
-	wordwrap = QTextOption.WrapMode.NoWrap
-	font = QFont('NotoMono', 7)
-	currenthighlight = QColor(128,128,128)
-	zonehighlight = QColor(50, 50, 0)
-	edithighlight = QColor(20, 80, 0)
-	background = QColor(0,0,0)
+	#currenthighlight = QColor(128,128,128)
+	#zonehighlight = QColor(50, 50, 0)
+	#edithighlight = QColor(20, 80, 0)
+	#background = QColor(0,0,0)
+	
+	# NOTE:	for unknow reasons, a widget created as child of QPlainTextEdit is rendered only if created in the __init__
 	
 	def __init__(self, main, parent=None):
-		# NOTE:	for unknow reasons, a widget created as child of QPlainTextEdit is rendered only if created in the __init__
-
+		# current widget aspects
 		super().__init__(parent)
+		self.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Expanding))
+		
 		self.main = main
+		self.font = QFont(*settings.scriptview['font'])
+		
+		# text editor widget
 		self.editor = TextEdit()
 		self.editor.setDocument(main.script)
-		self.editor.setWordWrapMode(self.wordwrap)
-		self.editor.setTabStopDistance(self.tabsize * QFontMetrics(self.font).maxWidth())
-		self.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Expanding))
-		# default widget colors
+		self.editor.setWordWrapMode(QTextOption.WrapMode.WordWrap 
+									if settings.scriptview['linewrap'] else 
+									QTextOption.WrapMode.NoWrap)
+		self.editor.setTabStopDistance(settings.scriptview['tabsize'] * QFontMetrics(self.font).maxWidth())
+		
+		# text coloring
 		palette = self.editor.palette()
-		palette.setColor(QPalette.Base, self.background)
+		palette.setColor(QPalette.Base, ctq(settings.scriptview['background']))
 		self.editor.setPalette(palette)
 		self.highlighter = Highlighter(self.editor.document(), self.font)
-		self.linenumbers = False
+		
+		# visual options
+		self.linenumbers = settings.scriptview['linenumbers']
 		self.wlinenumbers = LineNumbers(self.font, self.editor)
-		#self.enable_linenumbers(True)
+		
+		# execution target
 		self.targetcursor = TargetCursor(main, self.editor)
 		
 		# set cursor position on openning
@@ -104,7 +114,6 @@ class ScriptView(QWidget):
 }''')
 		button_close.clicked.connect(self.close)
 		layout = QHBoxLayout()
-		#layout.addWidget(QLabel('<b>Script</b>'))
 		layout.addWidget(self.label_location)
 		layout.addWidget(self.label_execution)
 		layout.addWidget(self.trigger_mode)
@@ -203,6 +212,14 @@ class ScriptView(QWidget):
 			self.wlinenumbers.setVisible(False)
 			self.editor.setViewportMargins(0, 0, 0, 0)
 		self.editor.update()
+		
+	def fontsize_increase(self):
+		self.font.setPointSize(self.font.pointSize() + 1)
+		self.highlighter = Highlighter(self.editor.document(), self.font)
+	
+	def fontsize_decrease(self):
+		self.font.setPointSize(self.font.pointSize() - 1)
+		self.highlighter = Highlighter(self.editor.document(), self.font)
 
 
 class LineNumbers(QWidget):
@@ -340,15 +357,14 @@ class Highlighter(QSyntaxHighlighter):
 	''' python syntax highlighter for QTextDocument '''
 	def __init__(self, document, font):
 		super().__init__(document)
-		self.format = QTextCharFormat()
-		self.format.setForeground(QColor(255,100,0))
-		self.fmt_default = charformat(foreground=QColor(255,255,255), font=font)
-		self.fmt_keyword = charformat(foreground=QColor(50,210,150), font=font)
-		self.fmt_call = charformat(foreground=QColor(200,255,150), font=font)
-		self.fmt_constant = charformat(foreground=QColor(50,100,255), font=font)
-		self.fmt_string = charformat(foreground=QColor(100,200,255), font=font)
-		self.fmt_comment = charformat(foreground=QColor(150,150,150), font=font, italic=True)
-		self.fmt_operator = charformat(foreground=QColor(50,100,150), font=font)
+		s = settings.scriptview
+		self.fmt_default = charformat(foreground=ctq(s['normal_color']), font=font)
+		self.fmt_keyword = charformat(foreground=ctq(s['keyword_color']), font=font, weight=QFont.ExtraBold)
+		self.fmt_call = charformat(foreground=ctq(s['call_color']), font=font)
+		self.fmt_constant = charformat(foreground=ctq(s['number_color']), font=font)
+		self.fmt_string = charformat(foreground=ctq(s['string_color']), font=font)
+		self.fmt_comment = charformat(foreground=ctq(s['comment_color']), font=font, italic=True, weight=QFont.Thin)
+		self.fmt_operator = charformat(foreground=ctq(s['operator_color']), font=font)
 		self.states = {
 			# normal context
 			-1: [self.fmt_default,
@@ -379,7 +395,7 @@ class Highlighter(QSyntaxHighlighter):
 			7: [self.fmt_comment, (re.compile('"'),   self.match_commentend)],
 			}
 			
-	keywords = {'and', 'or', 'if', 'elif', 'else', 'for', 'while', 'in', 'not', 'def', 'class', 'yield', 'with', 'try', 'except', 'raise', 'return', 'from', 'import', 'as'}
+	keywords = {'and', 'or', 'if', 'elif', 'else', 'for', 'while', 'in', 'not', 'def', 'class', 'yield', 'with', 'try', 'except', 'raise', 'return', 'from', 'import', 'as', 'pass', 'with', 'return'}
 	constants = {'None', 'True', 'False'}
 	def match_word(self, match):
 		word = match.group(1)

@@ -117,6 +117,7 @@ class Madcad(QObject):
 		# create or load config
 		if madcad.settings.display['system_theme']:
 			madcad.settings.use_qt_colors()
+			settings.use_qt_colors()
 		settings.install()
 		madcad.settings.install()
 		settings.load()
@@ -776,8 +777,8 @@ class MainWindow(QMainWindow):
 		menu.addAction(QIcon.fromTheme('format-indent-more'), 'increase indendation', lambda: main.active_scriptview.editor.indent_increase(), shortcut=QKeySequence('Tab'))
 		menu.addAction(QIcon.fromTheme('format-indent-less'), 'decrease indentation', lambda: main.active_scriptview.editor.indent_decrease(), shortcut=QKeySequence('Shift+Tab'))
 		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('zoom-in'), 'increase font size +', lambda: None, shortcut=QKeySequence('Ctrl++'))
-		menu.addAction(QIcon.fromTheme('zoom-out'), 'decrease font size +', lambda: None, shortcut=QKeySequence('Ctrl+-'))
+		menu.addAction(QIcon.fromTheme('zoom-in'), 'increase font size', lambda: main.active_scriptview.fontsize_increase(), shortcut=QKeySequence(QKeySequence.ZoomIn))
+		menu.addAction(QIcon.fromTheme('zoom-out'), 'decrease font size', lambda: main.active_scriptview.fontsize_decrease(), shortcut=QKeySequence(QKeySequence.ZoomOut))
 		
 		menu = menubar.addMenu('&Plot')
 		menu.addAction(QAction('display curve labels +', main, checkable=True))
