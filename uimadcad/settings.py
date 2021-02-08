@@ -115,7 +115,7 @@ def use_qt_colors():
 	
 	second = qtc(palette.Highlight)
 	second = clamp(second / norminf(second) * darken, fvec3(0), fvec3(1)) **2
-	accent = mix(second, fvec3(1, 1, 0)*norminf(second), 0.7)
+	accent = mix(second, fvec3(1, 1, 0)*norminf(second), 0.65)
 	accent = clamp(accent, fvec3(0), fvec3(1))
 	
 	rare = mix(accent, second, 0.3)

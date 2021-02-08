@@ -97,18 +97,22 @@ class ScriptView(QWidget):
 		statusbar = QWidget()
 		self.label_location = QLabel('line 1, column 1')
 		self.label_execution = QLabel('READY')
+		self.label_execution.setToolTip('executed state')
 		self.trigger_mode = QComboBox()
 		self.trigger_mode.addItem('manual')
 		self.trigger_mode.addItem('on line change')
 		self.trigger_mode.addItem('on each type')
 		self.trigger_mode.setFrame(False)
 		self.trigger_mode.setCurrentIndex(main.exectrigger)
+		self.trigger_mode.setToolTip('execution trigger')
 		button_close = QPushButton(QIcon.fromTheme('dialog-close-icon'), '')
+		button_close.setToolTip('close view')
+		button_close.setFlat(True)
 		button_close.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
 		button_close.setStyleSheet('''QPushButton {
-    border-style: outset;
-    border-width: 0px;
-}''')
+			border-style: outset;
+			border-width: 0px;
+			}''')
 		button_close.clicked.connect(self.close)
 		layout = QHBoxLayout()
 		layout.addWidget(self.label_location)

@@ -355,11 +355,13 @@ class SceneViewBar(QWidget):
 		scenes.activated.connect(callback)
 		scenes.setModel(sceneview.main.scenesmenu)
 		scenes.setCurrentIndex(sceneview.main.scenes.index(sceneview.scene))
+		scenes.setToolTip('scene to display')
 		
-		def btn(icon, callback=None):
+		def btn(icon, callback=None, help=''):
 			b = QPushButton(QIcon.fromTheme(icon), '')
 			b.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
 			b.setFlat(True)
+			b.setToolTip(help)
 			if callback:
 				b.clicked.connect(callback)
 			return b
@@ -376,17 +378,17 @@ class SceneViewBar(QWidget):
 			sceneview.center(box.center)
 			sceneview.adjust(box)
 		
-		btn_compose = btn('madcad-compose')
+		btn_compose = btn('madcad-compose', help='force some objects to display')
 		self.composition = SceneComposition(sceneview.scene, parent=btn_compose)
 		btn_compose.clicked.connect(self.show_composition)
 		
 		layout = QHBoxLayout()
 		layout.addWidget(self.scenes)
-		layout.addWidget(btn('list-add', separate_scene))
+		layout.addWidget(btn('list-add', separate_scene, 'duplicate scene'))
 		layout.addWidget(QWidget())
-		layout.addWidget(btn('view-fullscreen', viewadapt))
+		layout.addWidget(btn('view-fullscreen', viewadapt, 'adapt view to centent'))
 		layout.addWidget(btn_compose)
-		layout.addWidget(btn('dialog-close-icon', sceneview.close))
+		layout.addWidget(btn('dialog-close-icon', sceneview.close, 'close view'))
 		self.setLayout(layout)
 	
 	def show_composition(self):
