@@ -1,4 +1,4 @@
-import ast
+import ast, inspect
 from types import ModuleType
 from copy import copy, deepcopy
 from time import time
@@ -13,23 +13,32 @@ class Interpreter:
 	# TODO: make this class thread-safe
 	backupstep = 0.2
 
-	def __init__(self, text='', env=None, name='custom-interpreter'):
+	def __init__(self, text='', env=None, zone=None, name='custom-interpreter'):
 		self.name = name
 		self.backups = [(0,env or {})]	# local variables used
 		self.text = text
+		self.zone = zone or [0, len(text)]
 		self.ast = ast.Module(body=[], type_ignores=[])
-		self.ast_end = 0
+		self.ast_end = self.zone[0]
 		self.altered_ast = None
 		
 		self.target = 0
 		self.current = {}	# current env (after last execution)
 		self.reused = set()
 		self.neverused = set()
-		self.locations = {}	# objects location intervals
+		self.ids = {}	# object names indexed by their id
+		self.locations = {}	# objects location intervals indexed by object name
 	
 	def change(self, position, oldsize, newcontent):
 		''' change a part of the text, invalidating all backups and AST statements after position '''
+		if position < self.zone[0] or self.zone[1] < position:
+			raise IndexError('the given position is not editable')
+		
+		oldsize = min(oldsize, len(self.text))
+		self.zone[1] += len(newcontent) - oldsize
+		print('change', self.zone, oldsize, len(newcontent))
 		self.text = self.text[:position] + newcontent + self.text[position+oldsize:]
+		
 		# get the position in the AST (the position of the line beginning, because change occuring on an existing line can change its semantic)
 		i = astatpos(self.ast, self.text.rfind('\n', 0, position)+1)
 		if i < len(self.ast.body):
@@ -49,12 +58,12 @@ class Interpreter:
 	
 	def execute(self, target=-1, autobackup=False):
 		''' execute the code from last backups to the target string position '''
-		if target < 0:	target += len(self.text)
+		if target < 0:	target += self.zone[1]
 		self.target = target
 		
 		# rebuild AST to target
 		if target > self.ast_end:
-			part = self.text[self.ast_end:]
+			part = normalizeindent(self.text[self.ast_end:self.zone[1]])
 			try:
 				addition = ast.parse(part, self.name)
 			except SyntaxError as err:
@@ -120,7 +129,7 @@ class Interpreter:
 		self.locations = locations
 		self.ids = {id(obj): name	for name,obj in env.items()}
 		
-		used, reused = varusage(part)
+		used, reused = varusage(processed)
 		self.used = used
 		self.neverused |= used
 		self.neverused -= reused
@@ -144,6 +153,21 @@ class Interpreter:
 			statement = tree.body[i]
 			begin = []
 			
+			if isinstance(statement, ast.Return):
+				statement = tree.body[i] = ast.Assign(
+										[ast.Name(
+											'__return__', 
+											ast.Store(),
+											lineno=statement.lineno,
+											col_offset=statement.col_offset,
+											)], 
+										statement.value,
+										lineno=statement.lineno,
+										col_offset=statement.col_offset,
+										position=statement.position,
+										end_position=statement.end_position,
+										)
+			
 			# recursive replacement procedure
 			def capture(node):
 				# capture the whole assignment (name included)
@@ -152,6 +176,8 @@ class Interpreter:
 					for target in node.targets:
 						if isinstance(target, ast.Name):
 							knownvars[target.id] = node
+				elif isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+					knownvars[node.name] = node
 				# capture expressions
 				elif isinstance(node, (ast.BoolOp, ast.BinOp, ast.Call, ast.Tuple, ast.List)):
 					# capture sub expressions only if there is no controlflow structure at our level
@@ -192,6 +218,53 @@ class Interpreter:
 			i += len(begin)+1
 		
 		return tree, knownvars
+		
+	def enter(self, position):
+		''' return a new interpreter to edit the inside of a function defined in this scope '''
+		# find the function call node under the cursor (if there is)
+		callnode = None
+		for node in ast.walk(self.ast):
+			if (	isinstance(node, ast.Call) 
+				and	isinstance(node.func, ast.Name) 
+				and	node.func.id in self.locations
+				):
+				if node.position <= position and position <= node.end_position and (	
+						not callnode
+					or	callnode.position <= node.position and node.end_position <= callnode.position
+					):
+					callnode = node
+		# return if no matching function node under cursor
+		if not callnode:
+			raise ValueError('no function to enter')
+		else:
+			nprint('found', ast.dump(callnode))
+		
+		# get function definition
+		funcname = callnode.func.id
+		defnode = self.locations[funcname]
+		
+		# create the start state for the function scope
+		self.execute(callnode.position)
+		env = copy(self.current)
+		
+		# pass arguments
+		f = env[funcname]
+		env[funcname] = lambda *args, **kwargs: (args, kwargs)
+		args, kwargs = eval(compile(
+								ast.Expression(callnode), 
+								self.name, 'eval'), env, {})
+		env[funcname] = f
+		env.update(inspect.signature(f).bind(*args, **kwargs).arguments)
+		
+		# change the current context
+		it = Interpreter(
+					text=self.text, 
+					env=env, 
+					zone=[self.text.rfind('\n', 0, defnode.body[0].position)+1, defnode.end_position],
+					name=funcname,
+					)
+		it.locations = copy(self.locations)
+		return it
 
 
 def copyvars(vars, deep=(), memo=None):
@@ -339,12 +412,14 @@ def textpos(text, loc, tab=1):
 		i += 1
 	return i
 
-def textloc(text, pos, tab=1):
+def textloc(text, pos, tab=1, start=(1,0)):
 	''' text location for the given string index '''
 	if pos < 0:	pos += len(text)
-	l, c = 1, 0
+	l, c = start
+	if pos > len(text):	
+		raise IndexError('the given position is not in the string')
 	for i,char in enumerate(text):
-		if i >= pos:	return (l,c)
+		if i >= pos:	break
 		if char == '\n':
 			l += 1
 			c = 1
@@ -353,7 +428,21 @@ def textloc(text, pos, tab=1):
 			c -= c%tab
 		else:
 			c += 1
-	raise IndexError('the given position is not in the string')
+	return (l,c)
+	
+def normalizeindent(text):
+	''' remove the indentation level of the first line from all lines '''
+	indent = None
+	for i,c in enumerate(text):
+		if not c.isspace():
+			indent = text[:i]
+			break
+	if indent:
+		return text[len(indent):].replace('\n'+indent, '\n')
+	elif indent is not None:
+		return text
+	else:
+		return ''
 	
 def astexpruntil(tree, pos):
 	remains = []

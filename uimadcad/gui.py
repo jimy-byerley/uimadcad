@@ -45,7 +45,7 @@ from . import settings
 
 from copy import deepcopy, copy
 from nprint import nprint, nformat
-import ast, traceback
+import ast, traceback, inspect
 import os, sys
 import re
 
@@ -60,6 +60,7 @@ class Madcad(QObject):
 	# madcad signals
 	executed = pyqtSignal()
 	exectarget_changed = pyqtSignal()
+	execcontext_changed = pyqtSignal()
 	file_changed = pyqtSignal()
 	active_changed = pyqtSignal()
 	
@@ -81,6 +82,7 @@ class Madcad(QObject):
 		self.details = {}
 		self.hiddens = set()
 		self.displayzones = {}
+		#self.editzone = [0,1]
 		
 		# madcad ressources (and widgets)
 		self.standardcameras = {
@@ -98,6 +100,7 @@ class Madcad(QObject):
 		self.script.contentsChange.connect(self._contentsChange)
 		self.scenesmenu = SceneList(self)
 		self.interpreter = Interpreter()
+		self.contexts = []
 		
 		self.scenes = []	# objets a afficher sur les View
 		self.views = []		# widgets d'affichage (textview, sceneview, graphicview, ...)
@@ -231,6 +234,7 @@ class Madcad(QObject):
 			QTextCursor(self.script).insertText(open(filename, 'r').read())
 		
 		self.script.setModified(False)
+		self.script.clearUndoRedoStacks()
 		self.file_changed.emit()
 		return True
 				
@@ -285,6 +289,10 @@ class Madcad(QObject):
 	# BEGIN --- editing tools ----
 				
 	def _contentsChange(self, position, removed, added):
+		if position < self.interpreter.zone[0] or self.interpreter.zone[1] < position:
+			print('refuse', position, self.interpreter.zone)
+			self.script.undo()
+			return
 		# get the added text
 		cursor = QTextCursor(self.script)
 		cursor.setPosition(position+added)
@@ -335,7 +343,7 @@ class Madcad(QObject):
 	
 	def reexecute(self):
 		''' reexecute all the script '''
-		self.interpreter.change(0, 0, '')
+		self.interpreter.change(self.interpreter.zone[0], 0, '')
 		self.execute()
 		
 	def _targettocursor(self):
@@ -379,6 +387,74 @@ class Madcad(QObject):
 			del self.editors[name]
 			self.updatescene([name])
 			self.updatescript()
+			
+	def _editfunction(self):
+		it = self.interpreter
+		cursor = self.active_scriptview.editor.textCursor().position()
+		
+		# find the function call node under the cursor (if there is)
+		callnode = None
+		for node in ast.walk(it.ast):
+			if (	isinstance(node, ast.Call) 
+				and	isinstance(node.func, ast.Name) 
+				and	node.func.id in it.locations
+				):
+				nprint('correct', node, node.position, node.end_position, cursor)
+				if node.position <= cursor and cursor <= node.end_position and (	
+						not callnode
+					or	callnode.position <= node.position and node.end_position <= callnode.position
+					):
+					callnode = node
+		# return if no matching function node under cursor
+		if not callnode:
+			print('no function to enter')
+			return
+		else:
+			nprint('found', ast.dump(callnode))
+		
+		# get function definition
+		funcname = callnode.func.id
+		defnode = it.locations[funcname]
+		
+		# create the start state for the function scope
+		it.execute(callnode.position)
+		env = copy(it.current)
+		
+		# pass arguments
+		f = env[funcname]
+		env[funcname] = lambda *args, **kwargs: (args, kwargs)
+		args, kwargs = eval(compile(
+								ast.Expression(callnode), 
+								it.name, 'eval'), env, {})
+		env[funcname] = f
+		env.update(inspect.signature(f).bind(*args, **kwargs).arguments)
+		
+		# change the current context
+		self.contexts.append((it, self.editzone, funcname))
+		self.editzone = [it.text.rfind('\n', 0, defnode.body[0].position)+1, defnode.end_position]
+		zone = QTextCursor(self.script)
+		zone.setPosition(self.editzone[0])
+		zone.setPosition(self.editzone[1], QTextCursor.KeepAnchor)
+		#self.interpreter = Interpreter(zone.selectedText().replace('\u2029', '\n'), env)
+		self.interpreter = Interpreter(it.text[:self.editzone[1]], env)
+		self.interpreter.ast_end = self.editzone[0]
+		self.interpreter.locations = it.locations
+		print('-- text ---------\n', self.interpreter.text)
+		self.exectarget = self.editzone[1]
+		self.execute()
+		
+	def _editfunction(self):
+		cursor = self.active_scriptview.editor.textCursor()
+		try:	it = self.interpreter.enter(cursor.position())
+		except ValueError:	return
+		
+		self.contexts.append(it)
+		self.interpreter = it
+		self.exectarget = it.zone[1]
+		self.execute()
+		cursor.setPosition(self.exectarget)
+		self.active_scriptview.editor.setTextCursor(cursor)
+		
 			
 	
 	def _viewcenter(self):
@@ -537,8 +613,10 @@ class Madcad(QObject):
 		zonehighlight = QColor(40, 200, 240, 60)
 		selectionhighlight = QColor(100, 200, 40, 80)
 		editionhighlight = QColor(255, 200, 50, 60)
+		frozenhighlight = QColor(150, 150, 150)
 		it = self.interpreter
 	
+		# highlight expression under cursor
 		cursor = QTextCursor(self.script)
 		extra = []
 		for zs,ze in self.displayzones.values():
@@ -546,6 +624,7 @@ class Madcad(QObject):
 			cursor.setPosition(ze, QTextCursor.KeepAnchor)
 			extra.append(extraselection(cursor, charformat(background=zonehighlight)))
 		
+		# highlight view selections
 		if self.active_sceneview:
 			seen = set()
 			for obj in scene_unroll(self.active_sceneview.scene):
@@ -560,12 +639,24 @@ class Madcad(QObject):
 					cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
 					extra.append(extraselection(cursor, charformat(background=selectionhighlight)))
 		
+		# highlight zones edited by a view editor
 		for edited in self.editors:
 			zone = it.locations[edited]
 			cursor.setPosition(zone.position)
 			cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
 			extra.append(extraselection(cursor, charformat(background=editionhighlight)))
 		
+		# highlight text edition zone
+		if self.interpreter.zone[0]:
+			cursor.movePosition(cursor.Start)
+			cursor.setPosition(self.interpreter.zone[0], QTextCursor.KeepAnchor)
+			extra.append(extraselection(cursor, charformat(foreground=frozenhighlight)))
+		if self.interpreter.zone[1]:
+			cursor.setPosition(self.interpreter.zone[1]-1)
+			cursor.movePosition(cursor.End, QTextCursor.KeepAnchor)
+			extra.append(extraselection(cursor, charformat(foreground=frozenhighlight)))
+		
+		# commit all zones
 		for view in self.views:
 			if isinstance(view, ScriptView):
 				view.editor.setExtraSelections(extra)
@@ -659,6 +750,8 @@ class MainWindow(QMainWindow):
 		menu.addAction(QIcon.fromTheme('media-playback-start'), 'execute', main.execute, QKeySequence('Ctrl+Return'))
 		menu.addAction(QIcon.fromTheme('view-refresh'), 'reexecute all', main.reexecute, QKeySequence('Ctrl+Shift+Return'))
 		menu.addAction(QIcon.fromTheme('go-bottom'), 'target to cursor', main._targettocursor, QKeySequence('Ctrl+T'))
+		menu.addAction(QIcon.fromTheme('go-jump'), 'edit function', main._editfunction, QKeySequence('Ctrl+G'))
+		menu.addAction(QIcon.fromTheme('draw-arrow-back'), 'return to upper context', lambda: None, QKeySequence('Ctrl+Shift+G'))
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('format-indent-more'), 'disable line +')
 		menu.addAction(QIcon.fromTheme('format-indent-less'), 'enable line +')

@@ -22,6 +22,7 @@ from . import settings
 from nprint import nprint
 
 
+
 class TextEdit(QPlainTextEdit):
 	''' text editor widget for ScriptView, only here to change some QPlainTextEdit behaviors '''
 	
@@ -54,10 +55,6 @@ class TextEdit(QPlainTextEdit):
 
 class ScriptView(QWidget):
 	''' text editor part of the main frame '''
-	#currenthighlight = QColor(128,128,128)
-	#zonehighlight = QColor(50, 50, 0)
-	#edithighlight = QColor(20, 80, 0)
-	#background = QColor(0,0,0)
 	
 	# NOTE:	for unknow reasons, a widget created as child of QPlainTextEdit is rendered only if created in the __init__
 	
@@ -93,11 +90,11 @@ class ScriptView(QWidget):
 		else:
 			self.editor.moveCursor(QTextCursor.End)
 		
-		# statusbar
-		statusbar = QWidget()
+		# toolbar
+		self.toolbar = toolbar = QWidget()
 		self.label_location = QLabel('line 1, column 1')
 		self.label_execution = QLabel('READY')
-		self.label_execution.setToolTip('executed state')
+		self.label_execution.setToolTip('execution state')
 		self.trigger_mode = QComboBox()
 		self.trigger_mode.addItem('manual')
 		self.trigger_mode.addItem('on line change')
@@ -109,22 +106,19 @@ class ScriptView(QWidget):
 		button_close.setToolTip('close view')
 		button_close.setFlat(True)
 		button_close.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
-		button_close.setStyleSheet('''QPushButton {
-			border-style: outset;
-			border-width: 0px;
-			}''')
 		button_close.clicked.connect(self.close)
 		layout = QHBoxLayout()
 		layout.addWidget(self.label_location)
 		layout.addWidget(self.label_execution)
 		layout.addWidget(self.trigger_mode)
 		layout.addWidget(button_close)
-		statusbar.setLayout(layout)
-		self.statusbar = statusbar
+		toolbar.setLayout(layout)
 		
 		# global layout
-		layout = QVBoxLayout()
+		layout = QVBoxLayout(spacing=0)
+		layout.addWidget(PathBar(['truc', 'machin', 'chose', 'MUCHE']))
 		layout.addWidget(self.editor)
+		layout.setContentsMargins(QMargins(0,0,0,0))
 		self.setLayout(layout)
 				
 		# setup editor
@@ -147,10 +141,10 @@ class ScriptView(QWidget):
 		# detect QDockWidget integration
 		if event.type() == event.ParentChange:
 			if isinstance(self.parent(), QDockWidget):
-				self.parent().setTitleBarWidget(self.statusbar)
-				self.layout().removeWidget(self.statusbar)
+				self.parent().setTitleBarWidget(self.toolbar)
+				self.layout().removeWidget(self.toolbar)
 			else:
-				self.layout().addWidget(self.statusbar)
+				self.layout().addWidget(self.toolbar)
 		# detect theme change
 		if event.type() == QEvent.PaletteChange and settings.scriptview['system_theme']:
 			settings.use_qt_colors()
@@ -256,6 +250,76 @@ class LineNumbers(QWidget):
 				painter.drawText(0, top, self.width-2*charwidth, height, Qt.AlignRight, str(block.blockNumber()+1))
 				top += height
 			block = block.next()
+			
+from PyQt5.QtCore import QMargins
+from PyQt5.QtGui import QPen
+from math import ceil, floor
+class PathBar(QWidget):
+	def __init__(self, path=None, parent=None):
+		super().__init__(parent)
+		self.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed))
+		layout = QHBoxLayout(spacing=0)
+		layout.setContentsMargins(QMargins(6,0,6,0))
+		
+		layout.addSpacing(16)
+		#lbl = QLabel()
+		#lbl.setPixmap(QIcon.fromTheme('code-function').pixmap(16,16))
+		#layout.addWidget(lbl)
+		#layout.addSpacing(5)
+		
+		self.wpath = path = PathWidget(path)
+		#path.setFont(QFont(*settings.scriptview['font']))
+		layout.addWidget(path)
+		
+		btn = QPushButton(QIcon.fromTheme('draw-arrow-back'), '')
+		btn.setToolTip('return to upper context')
+		#btn.setFlat(True)
+		btn.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
+		btn.setContentsMargins(QMargins(0,0,0,0))
+		btn.resize(QSize(10,10))
+		layout.addWidget(btn)
+		
+		self.setLayout(layout)
+		
+		
+class PathWidget(QWidget):
+	def __init__(self, path=None, parent=None):
+		super().__init__(parent)
+		self.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed))
+		self.path = path
+		
+		self.metric = QFontMetrics(self.font())
+		self.separator = sep = QPainterPath()
+		h = self.metric.height()
+		sep.moveTo(0, 0.25*h)
+		sep.lineTo(0.25*h, 0.55*h)
+		sep.lineTo(0.25*h, 0.55*h)
+		sep.lineTo(0, 0.85*h)
+		sep.translate(0.4,0)
+		
+	def sizeHint(self):
+		return QSize(100,self.metric.height())
+		
+		
+	def paintEvent(self, event):
+		painter = QPainter(self)
+		painter.setRenderHint(painter.Antialiasing)
+		font = QFontMetrics(self.font())
+		palette = self.palette()
+		h = font.height()
+		
+		pen = painter.pen()
+		pen.setJoinStyle(Qt.BevelJoin)
+		pen.setWidth(0.1*h)
+		pen.setColor(palette.color(QPalette.ButtonText))
+		painter.setPen(pen)
+		x = 2
+		for e in self.path:
+			painter.drawPath(self.separator.translated(QPoint(x,0)))
+			x += h*0.8
+			painter.drawText(x, font.height() - font.descent(), e)
+			x += font.horizontalAdvance(e) + h*0.6
+
 
 class TargetCursor(QWidget):
 	''' target cursor display for the text view 
@@ -306,6 +370,7 @@ class TargetCursor(QWidget):
 				)
 		if event.rect().contains(pos.toPoint()):
 			painter = QPainter(self)
+			painter.setRenderHint(painter.Antialiasing)
 			painter.fillPath(self.shape.translated(pos), self.targetcolor)
 			painter.setPen(self.background)
 			painter.setFont(self.font)
@@ -361,6 +426,60 @@ class TargetCursor2(QWidget):
 		painter.setPen(self.background)
 		painter.drawText(self.textstart, self.text)
 
+class FunctionCursor(QWidget):
+	''' target cursor display for the text view 
+		version fixed to text
+	'''
+	background = QColor(10,10,10)
+	targetcolor = QColor(40,100,40)
+	font = QFont('NotoMono', 7)
+	text = 'function'
+	
+	def __init__(self, main, parent):
+		super().__init__(parent)
+		self.setAttribute(Qt.WA_TransparentForMouseEvents)	# keep all the mouse events for the text view, (none will reach this widget :-/)
+		self.main = main
+		fontmetrics = QFontMetrics(self.font)
+		h = fontmetrics.height()
+		w = fontmetrics.horizontalAdvance(self.text)
+		self.shape = s = QPainterPath()
+		s.moveTo(0.5*h, 0)
+		s.lineTo(0, 0.5*h)
+		s.lineTo(0.5*h, h)
+		s.lineTo(h+w+h, h)
+		s.lineTo(h+w+h, 0)
+		s.lineTo(0.5*h, 0)
+		self.textstart = QPointF(h, 0.8*h)
+		self.cursoroffset = QPointF(0.5*h, 0)
+	
+	def sizeHint(self):
+		return self.parent().size()
+	
+	def update(self):
+		self.setGeometry(self.parent().contentsRect())
+		super().update()
+	
+	#def mouseMoveEvent(self, event):
+		#print('coucou')
+		#cursor = self.parent().cursorForPosition(event.pos() + self.pos())
+		#self.main.exectarget = cursor.blockNumber()
+		#self.update()
+		#event.ignore()
+	
+	def paintEvent(self, event):
+		cursor = QTextCursor(self.main.script)
+		cursor.setPosition(self.main.exectarget)
+		pos = (		self.parent().cursorRect(cursor).topRight()
+				+	QPointF(self.parent().viewportMargins().left(), 0) 
+				+	self.cursoroffset
+				)
+		if event.rect().contains(pos.toPoint()):
+			painter = QPainter(self)
+			painter.setRenderHint(painter.Antialiasing)
+			painter.fillPath(self.shape.translated(pos), self.targetcolor)
+			painter.setPen(self.background)
+			painter.setFont(self.font)
+			painter.drawText(self.textstart + pos, self.text)
 
 from PyQt5.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor
 import re

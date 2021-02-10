@@ -14,13 +14,14 @@ def propertywrite(func):
 		func(self, value)
 	return property(getter, setter)
 
-def charformat(background=None, foreground=None, italic=None, overline=None, weight=None, font=None):
+def charformat(background=None, foreground=None, italic=None, overline=None, strikeout=None, weight=None, font=None):
 	''' create a QTextCharFormat '''
 	fmt = QTextCharFormat()
 	if background:	fmt.setBackground(background)
 	if foreground:	fmt.setForeground(foreground)
 	if italic is not None:		fmt.setFontItalic(italic)
 	if overline is not None:	fmt.setFontOverline(overline)
+	if strikeout is not None:	fmt.setFontStrikeOut(strikeout)
 	if weight:					fmt.setFontWeight(weight)
 	if font:	fmt.setFont(font)
 	return fmt
