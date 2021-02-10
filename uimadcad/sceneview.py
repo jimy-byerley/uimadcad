@@ -144,7 +144,7 @@ class Scene(madcad.rendering.Scene, QObject):
 					assigned = True
 			if not assigned:
 				sets.append(used)
-		search_statements(self.main.interpreter.altered_ast)
+		search_statements(self.main.interpreter.part_altered)
 		
 		# process SolidDisplays all across the scene
 		def recur(level):

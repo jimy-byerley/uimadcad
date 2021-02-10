@@ -13,30 +13,27 @@ class Interpreter:
 	# TODO: make this class thread-safe
 	backupstep = 0.2
 
-	def __init__(self, text='', env=None, zone=None, name='custom-interpreter'):
-		self.name = name
-		self.backups = [(0,env or {})]	# local variables used
-		self.text = text
-		self.zone = zone or [0, len(text)]
-		self.ast = ast.Module(body=[], type_ignores=[])
-		self.ast_end = self.zone[0]
-		self.altered_ast = None
+	def __init__(self, text='', env=None, extract=None, name='custom-interpreter'):
+		self.name = name	# module name of the interpreter
+		self.text = text	# complete text edited
+		self.extract = extract or (lambda p: p)	# extractor of the ast part to execute
+		
+		self.backups = [(0,env or {})]						# local variables used
+		self.ast = ast.Module(body=[], type_ignores=[])		# last complete ast compiled
+		self.ast_end = 0							# end position of the last ast in the text
+		
+		self.part = None			# last ast parts executed
+		self.part_altered = None	# last ast actually executed, with all alterations meant to retrieve data
 		
 		self.target = 0
-		self.current = {}	# current env (after last execution)
+		self.current = {}		# current env (after last execution)
 		self.reused = set()
 		self.neverused = set()
-		self.ids = {}	# object names indexed by their id
-		self.locations = {}	# objects location intervals indexed by object name
+		self.ids = {}			# object names indexed by their id
+		self.locations = {}		# objects location intervals indexed by object name
 	
 	def change(self, position, oldsize, newcontent):
 		''' change a part of the text, invalidating all backups and AST statements after position '''
-		if position < self.zone[0] or self.zone[1] < position:
-			raise IndexError('the given position is not editable')
-		
-		oldsize = min(oldsize, len(self.text))
-		self.zone[1] += len(newcontent) - oldsize
-		print('change', self.zone, oldsize, len(newcontent))
 		self.text = self.text[:position] + newcontent + self.text[position+oldsize:]
 		
 		# get the position in the AST (the position of the line beginning, because change occuring on an existing line can change its semantic)
@@ -58,12 +55,12 @@ class Interpreter:
 	
 	def execute(self, target=-1, autobackup=False):
 		''' execute the code from last backups to the target string position '''
-		if target < 0:	target += self.zone[1]
+		if target < 0:	target += len(self.text)
 		self.target = target
 		
 		# rebuild AST to target
 		if target > self.ast_end:
-			part = normalizeindent(self.text[self.ast_end:self.zone[1]])
+			part = self.text[self.ast_end:]
 			try:
 				addition = ast.parse(part, self.name)
 			except SyntaxError as err:
@@ -74,16 +71,21 @@ class Interpreter:
 			self.ast.body.extend(addition.body)
 			self.ast_end += len(part)
 		
+		# get ast subnode if an extractor is defined
+		scope = self.extract(self.ast)
+		if not scope:	raise ValueError('unable to extract the current scope from the ast')
+		
 		# get the code to execute from the last backup
 		backpos, backenv = self.backups[self.lastbackup(target)]
-		ast_target = astatpos(self.ast, target)
+		ast_current = astatpos(scope, backpos)
+		ast_target = astatpos(scope, target)
 		# ast until target
-		part = self.ast.body[astatpos(self.ast, backpos):ast_target]
+		part = scope.body[ast_current:ast_target]
 		# remaining expressions before target in the AST
-		if ast_target < len(self.ast.body):
-			part += astexpruntil(self.ast.body[ast_target], target)
-		part = ast.Module(body=part, type_ignores=[])
+		if ast_target < len(scope.body):
+			part += astexpruntil(scope.body[ast_target], target)
 		
+		self.part = part = ast.Module(body=part, type_ignores=[])
 		processed, locations = self.process(part, backenv.keys())
 		
 		if autobackup:
@@ -121,7 +123,7 @@ class Interpreter:
 				raise InterpreterError(err)
 		
 		# publish results
-		self.altered_ast = processed
+		self.part_altered = processed
 		self.current = env
 		for name,obj in self.locations.items():
 			if name not in locations and name in env:
@@ -129,7 +131,7 @@ class Interpreter:
 		self.locations = locations
 		self.ids = {id(obj): name	for name,obj in env.items()}
 		
-		used, reused = varusage(processed)
+		used, reused = varusage(part)
 		self.used = used
 		self.neverused |= used
 		self.neverused -= reused
@@ -223,7 +225,7 @@ class Interpreter:
 		''' return a new interpreter to edit the inside of a function defined in this scope '''
 		# find the function call node under the cursor (if there is)
 		callnode = None
-		for node in ast.walk(self.ast):
+		for node in ast.walk(self.ast):		# TODO: utiliser un parcours conditionnel pour eviter d'entrer dans les sections de definitions (classes fonctions)
 			if (	isinstance(node, ast.Call) 
 				and	isinstance(node.func, ast.Name) 
 				and	node.func.id in self.locations
@@ -236,8 +238,6 @@ class Interpreter:
 		# return if no matching function node under cursor
 		if not callnode:
 			raise ValueError('no function to enter')
-		else:
-			nprint('found', ast.dump(callnode))
 		
 		# get function definition
 		funcname = callnode.func.id
@@ -247,24 +247,39 @@ class Interpreter:
 		self.execute(callnode.position)
 		env = copy(self.current)
 		
-		# pass arguments
+		# pass arguments to a replacement function
 		f = env[funcname]
 		env[funcname] = lambda *args, **kwargs: (args, kwargs)
-		args, kwargs = eval(compile(
-								ast.Expression(callnode), 
-								self.name, 'eval'), env, {})
+		code = compile(ast.Expression(callnode), self.name, 'eval')
+		try:
+			args, kwargs = eval(code, env, {})
+		except Exception as err:
+			raise InterpreterError(err)
 		env[funcname] = f
+		# put arguments in env
 		env.update(inspect.signature(f).bind(*args, **kwargs).arguments)
+		
+		def extract(part):
+			current = self.extract(part)
+			for node in reversed(current.body):
+				if isinstance(node, ast.FunctionDef) and node.name == funcname:
+					return node
+			if current is not part:
+				for node in reversed(part.body):
+					if isinstance(node, ast.FunctionDef) and node.name == funcname:	
+						return node
 		
 		# change the current context
 		it = Interpreter(
 					text=self.text, 
 					env=env, 
-					zone=[self.text.rfind('\n', 0, defnode.body[0].position)+1, defnode.end_position],
+					#zone=[self.text.rfind('\n', 0, defnode.body[0].position)+1, defnode.end_position],
 					name=funcname,
+					extract=extract,
 					)
 		it.locations = copy(self.locations)
-		return it
+		it.ast = self.ast
+		return it, callnode, defnode
 
 
 def copyvars(vars, deep=(), memo=None):
@@ -345,12 +360,9 @@ def astannotate(tree, text):
 		
 		if isinstance(node, (ast.Call,ast.Tuple)):
 			node.end_position = text.find(')', node.end_position)+1
-			#print(node, node.position, node.end_position, text[node.position:node.end_position])
 		elif isinstance(node, (ast.Subscript, ast.List)):
 			node.end_position = text.find(']', node.end_position)+1
-		
-		#if isinstance(node, ast.expr) or isinstance(node, ast.stmt):
-			#nprint('annotated', ast.dump(node), repr(text[node.position:node.end_position]))
+	
 	recursive(tree)
 				
 def astshift(tree, loc, pos):

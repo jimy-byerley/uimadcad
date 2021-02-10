@@ -116,7 +116,7 @@ class ScriptView(QWidget):
 		
 		# global layout
 		layout = QVBoxLayout(spacing=0)
-		layout.addWidget(PathBar(['truc', 'machin', 'chose', 'MUCHE']))
+		layout.addWidget(PathBar(main))
 		layout.addWidget(self.editor)
 		layout.setContentsMargins(QMargins(0,0,0,0))
 		self.setLayout(layout)
@@ -255,38 +255,61 @@ from PyQt5.QtCore import QMargins
 from PyQt5.QtGui import QPen
 from math import ceil, floor
 class PathBar(QWidget):
-	def __init__(self, path=None, parent=None):
+	def __init__(self, main, parent=None):
 		super().__init__(parent)
-		self.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed))
-		layout = QHBoxLayout(spacing=0)
-		layout.setContentsMargins(QMargins(6,0,6,0))
+		self.main = main
 		
-		layout.addSpacing(16)
-		#lbl = QLabel()
-		#lbl.setPixmap(QIcon.fromTheme('code-function').pixmap(16,16))
-		#layout.addWidget(lbl)
-		#layout.addSpacing(5)
+		# path widget
+		self.wpath = PathWidget()
+		#self.wpath.setFont(QFont(*settings.scriptview['font']))
+		main.scope_changed.connect(self.update_path)
+		self.wpath.clicked.connect(self.move_cursor)
 		
-		self.wpath = path = PathWidget(path)
-		#path.setFont(QFont(*settings.scriptview['font']))
-		layout.addWidget(path)
-		
+		# return button
 		btn = QPushButton(QIcon.fromTheme('draw-arrow-back'), '')
 		btn.setToolTip('return to upper context')
 		#btn.setFlat(True)
 		btn.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
 		btn.setContentsMargins(QMargins(0,0,0,0))
 		btn.resize(QSize(10,10))
-		layout.addWidget(btn)
+		btn.clicked.connect(main._returnfunction)
 		
+		layout = QHBoxLayout(spacing=0)
+		layout.setContentsMargins(QMargins(6,0,6,0))
+		layout.addSpacing(16)
+		#lbl = QLabel()
+		#lbl.setPixmap(QIcon.fromTheme('code-function').pixmap(16,16))
+		#layout.addWidget(lbl)
+		#layout.addSpacing(5)
+		layout.addWidget(self.wpath)
+		layout.addWidget(btn)
 		self.setLayout(layout)
+		self.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed))
+		
+		self.update_path()
+		
+	def update_path(self):
+		self.wpath.path = [scope[4]	for scope in self.main.scopes]
+		if self.wpath.path:
+			self.show()
+			self.wpath.update()
+		else:
+			self.hide()
+		
+	def move_cursor(self, index):
+		editor = self.main.active_sceneview.editor
+		cursor = editor.textCursor()
+		cursor.setPosition(self.main.scopes[i][5])
+		editor.setTextCursor(cursor)
 		
 		
 class PathWidget(QWidget):
+	clicked = pyqtSignal()
+	
 	def __init__(self, path=None, parent=None):
 		super().__init__(parent)
 		self.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed))
-		self.path = path
+		self.path = path or ()
 		
 		self.metric = QFontMetrics(self.font())
 		self.separator = sep = QPainterPath()

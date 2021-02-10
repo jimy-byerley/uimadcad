@@ -60,7 +60,7 @@ class Madcad(QObject):
 	# madcad signals
 	executed = pyqtSignal()
 	exectarget_changed = pyqtSignal()
-	execcontext_changed = pyqtSignal()
+	scope_changed = pyqtSignal()
 	file_changed = pyqtSignal()
 	active_changed = pyqtSignal()
 	
@@ -78,6 +78,7 @@ class Madcad(QObject):
 		
 		self.exectrigger = 1
 		self.exectarget = 0
+		self.editzone = [0,1]
 		self.editors = {}
 		self.details = {}
 		self.hiddens = set()
@@ -100,7 +101,7 @@ class Madcad(QObject):
 		self.script.contentsChange.connect(self._contentsChange)
 		self.scenesmenu = SceneList(self)
 		self.interpreter = Interpreter()
-		self.contexts = []
+		self.scopes = []
 		
 		self.scenes = []	# objets a afficher sur les View
 		self.views = []		# widgets d'affichage (textview, sceneview, graphicview, ...)
@@ -289,10 +290,10 @@ class Madcad(QObject):
 	# BEGIN --- editing tools ----
 				
 	def _contentsChange(self, position, removed, added):
-		if position < self.interpreter.zone[0] or self.interpreter.zone[1] < position:
-			print('refuse', position, self.interpreter.zone)
+		if position < self.editzone[0] or self.editzone[1] < position:
 			self.script.undo()
 			return
+		self.editzone[1] += added - removed
 		# get the added text
 		cursor = QTextCursor(self.script)
 		cursor.setPosition(position+added)
@@ -324,7 +325,7 @@ class Madcad(QObject):
 		self.exectarget = cursor.position()
 		
 		self.execution_label('RUNNING')
-		#print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text))
+		print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text))
 		try:
 			res = self.interpreter.execute(self.exectarget, autobackup=True)
 		except InterpreterError as report:
@@ -343,7 +344,7 @@ class Madcad(QObject):
 	
 	def reexecute(self):
 		''' reexecute all the script '''
-		self.interpreter.change(self.interpreter.zone[0], 0, '')
+		self.interpreter.change(self.editzone[0], 0, '')
 		self.execute()
 		
 	def _targettocursor(self):
@@ -387,74 +388,58 @@ class Madcad(QObject):
 			del self.editors[name]
 			self.updatescene([name])
 			self.updatescript()
-			
-	def _editfunction(self):
-		it = self.interpreter
-		cursor = self.active_scriptview.editor.textCursor().position()
-		
-		# find the function call node under the cursor (if there is)
-		callnode = None
-		for node in ast.walk(it.ast):
-			if (	isinstance(node, ast.Call) 
-				and	isinstance(node.func, ast.Name) 
-				and	node.func.id in it.locations
-				):
-				nprint('correct', node, node.position, node.end_position, cursor)
-				if node.position <= cursor and cursor <= node.end_position and (	
-						not callnode
-					or	callnode.position <= node.position and node.end_position <= callnode.position
-					):
-					callnode = node
-		# return if no matching function node under cursor
-		if not callnode:
-			print('no function to enter')
-			return
-		else:
-			nprint('found', ast.dump(callnode))
-		
-		# get function definition
-		funcname = callnode.func.id
-		defnode = it.locations[funcname]
-		
-		# create the start state for the function scope
-		it.execute(callnode.position)
-		env = copy(it.current)
-		
-		# pass arguments
-		f = env[funcname]
-		env[funcname] = lambda *args, **kwargs: (args, kwargs)
-		args, kwargs = eval(compile(
-								ast.Expression(callnode), 
-								it.name, 'eval'), env, {})
-		env[funcname] = f
-		env.update(inspect.signature(f).bind(*args, **kwargs).arguments)
-		
-		# change the current context
-		self.contexts.append((it, self.editzone, funcname))
-		self.editzone = [it.text.rfind('\n', 0, defnode.body[0].position)+1, defnode.end_position]
-		zone = QTextCursor(self.script)
-		zone.setPosition(self.editzone[0])
-		zone.setPosition(self.editzone[1], QTextCursor.KeepAnchor)
-		#self.interpreter = Interpreter(zone.selectedText().replace('\u2029', '\n'), env)
-		self.interpreter = Interpreter(it.text[:self.editzone[1]], env)
-		self.interpreter.ast_end = self.editzone[0]
-		self.interpreter.locations = it.locations
-		print('-- text ---------\n', self.interpreter.text)
-		self.exectarget = self.editzone[1]
-		self.execute()
+
 		
 	def _editfunction(self):
+		''' start editing definition of function used under cursor '''
 		cursor = self.active_scriptview.editor.textCursor()
-		try:	it = self.interpreter.enter(cursor.position())
-		except ValueError:	return
+		try:	it, callnode, defnode = self.interpreter.enter(cursor.position())
+		except ValueError:	
+			return
+		except InterpreterError:
+			print('invalid context for this function')
+			return
 		
-		self.contexts.append(it)
+		newzone = [defnode.body[0].position-2, defnode.end_position]
+		self.scopes.append((
+						self.interpreter, 		# former it
+						self.editzone, 			# former editzone
+						newzone[1]-newzone[0], 	# initial size
+						self.exectarget,		# former target
+						callnode.func.id,		# callee name
+						callnode.end_position,	# cursor on call
+						))
+		self.editzone = newzone
 		self.interpreter = it
-		self.exectarget = it.zone[1]
+		self.exectarget = defnode.end_position
 		self.execute()
+		
 		cursor.setPosition(self.exectarget)
 		self.active_scriptview.editor.setTextCursor(cursor)
 		
+		self.scope_changed.emit()
+		
+	def _returnfunction(self):
+		''' stop editing the current function definition, returning to the higher scope '''
+		if not self.scopes:
+			return
+		cursor = self.active_scriptview.editor.textCursor()
+		(	it, 
+			newzone, 
+			initsize,  
+			self.exectarget,
+			callee,
+			call,
+			) = self.scopes.pop()
+		it.change(self.editzone[0], initsize, self.interpreter.text[self.editzone[0]:self.editzone[1]])
+		self.interpreter = it
+		self.editzone = [newzone[0], newzone[1] + self.editzone[1]-self.editzone[0] - initsize]
+		self.execute()
+		
+		cursor.setPosition(self.exectarget)
+		self.active_scriptview.editor.setTextCursor(cursor)
+		
+		self.scope_changed.emit()
 			
 	
 	def _viewcenter(self):
@@ -647,14 +632,13 @@ class Madcad(QObject):
 			extra.append(extraselection(cursor, charformat(background=editionhighlight)))
 		
 		# highlight text edition zone
-		if self.interpreter.zone[0]:
-			cursor.movePosition(cursor.Start)
-			cursor.setPosition(self.interpreter.zone[0], QTextCursor.KeepAnchor)
-			extra.append(extraselection(cursor, charformat(foreground=frozenhighlight)))
-		if self.interpreter.zone[1]:
-			cursor.setPosition(self.interpreter.zone[1]-1)
-			cursor.movePosition(cursor.End, QTextCursor.KeepAnchor)
-			extra.append(extraselection(cursor, charformat(foreground=frozenhighlight)))
+		cursor.movePosition(cursor.Start)
+		cursor.setPosition(self.editzone[0], QTextCursor.KeepAnchor)
+		extra.append(extraselection(cursor, charformat(foreground=frozenhighlight)))
+		
+		cursor.setPosition(self.editzone[1]-1)
+		cursor.movePosition(cursor.End, QTextCursor.KeepAnchor)
+		extra.append(extraselection(cursor, charformat(foreground=frozenhighlight)))
 		
 		# commit all zones
 		for view in self.views:
