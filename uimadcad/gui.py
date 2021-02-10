@@ -45,7 +45,7 @@ from . import settings
 
 from copy import deepcopy, copy
 from nprint import nprint, nformat
-import ast, traceback, inspect
+import ast, traceback
 import os, sys
 import re
 
@@ -416,6 +416,7 @@ class Madcad(QObject):
 		
 		cursor.setPosition(self.exectarget)
 		self.active_scriptview.editor.setTextCursor(cursor)
+		self.active_scriptview.editor.ensureCursorVisible()
 		
 		self.scope_changed.emit()
 		
@@ -438,6 +439,7 @@ class Madcad(QObject):
 		
 		cursor.setPosition(self.exectarget)
 		self.active_scriptview.editor.setTextCursor(cursor)
+		self.active_scriptview.editor.ensureCursorVisible()
 		
 		self.scope_changed.emit()
 			

@@ -1,5 +1,5 @@
 from PyQt5.QtCore import (
-		Qt, QSize, QRect, QPoint, QPointF,
+		Qt, QSize, QRect, QPoint, QPointF, QMargins,
 		QEvent, pyqtSignal,
 		)
 from PyQt5.QtWidgets import (
@@ -10,7 +10,8 @@ from PyQt5.QtWidgets import (
 		)
 from PyQt5.QtGui import (
 		QFont, QFontMetrics, 
-		QColor, QPalette,
+		QColor, QPalette, 
+		QSyntaxHighlighter, QTextCharFormat,
 		QIcon, QKeySequence, 
 		QTextOption, QTextDocument, QTextCursor,
 		QPainter, QPainterPath,
@@ -20,6 +21,8 @@ from .interpreter import astinterval
 from .settings import ctq
 from . import settings
 from nprint import nprint
+from bisect import bisect_left
+import re
 
 
 
@@ -250,10 +253,7 @@ class LineNumbers(QWidget):
 				painter.drawText(0, top, self.width-2*charwidth, height, Qt.AlignRight, str(block.blockNumber()+1))
 				top += height
 			block = block.next()
-			
-from PyQt5.QtCore import QMargins
-from PyQt5.QtGui import QPen
-from math import ceil, floor
+
 class PathBar(QWidget):
 	def __init__(self, main, parent=None):
 		super().__init__(parent)
@@ -297,14 +297,15 @@ class PathBar(QWidget):
 			self.hide()
 		
 	def move_cursor(self, index):
-		editor = self.main.active_sceneview.editor
+		editor = self.main.active_scriptview.editor
 		cursor = editor.textCursor()
-		cursor.setPosition(self.main.scopes[i][5])
+		cursor.setPosition(self.main.scopes[index][5])
 		editor.setTextCursor(cursor)
+		editor.ensureCursorVisible()
 		
 		
 class PathWidget(QWidget):
-	clicked = pyqtSignal()
+	clicked = pyqtSignal(int)
 	
 	def __init__(self, path=None, parent=None):
 		super().__init__(parent)
@@ -320,9 +321,10 @@ class PathWidget(QWidget):
 		sep.lineTo(0, 0.85*h)
 		sep.translate(0.4,0)
 		
+		self.zones = []
+		
 	def sizeHint(self):
 		return QSize(100,self.metric.height())
-		
 		
 	def paintEvent(self, event):
 		painter = QPainter(self)
@@ -336,12 +338,20 @@ class PathWidget(QWidget):
 		pen.setWidth(0.1*h)
 		pen.setColor(palette.color(QPalette.ButtonText))
 		painter.setPen(pen)
+		self.zones = []
 		x = 2
 		for e in self.path:
 			painter.drawPath(self.separator.translated(QPoint(x,0)))
 			x += h*0.8
 			painter.drawText(x, font.height() - font.descent(), e)
 			x += font.horizontalAdvance(e) + h*0.6
+			self.zones.append(x)
+			
+	def mouseReleaseEvent(self, evt):
+		if evt.button() == Qt.LeftButton:
+			x = evt.pos().x()
+			self.clicked.emit(bisect_left(self.zones, x))
+			evt.accept()
 
 
 class TargetCursor(QWidget):
@@ -504,8 +514,6 @@ class FunctionCursor(QWidget):
 			painter.setFont(self.font)
 			painter.drawText(self.textstart + pos, self.text)
 
-from PyQt5.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor
-import re
 
 class Highlighter(QSyntaxHighlighter):
 	''' python syntax highlighter for QTextDocument '''
