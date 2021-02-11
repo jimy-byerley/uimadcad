@@ -401,14 +401,14 @@ class Madcad(QObject):
 			return
 		
 		newzone = [defnode.body[0].position-2, defnode.end_position]
-		self.scopes.append((
+		self.scopes.append([
 						self.interpreter, 		# former it
 						self.editzone, 			# former editzone
 						newzone[1]-newzone[0], 	# initial size
 						self.exectarget,		# former target
 						callnode.func.id,		# callee name
 						callnode.end_position,	# cursor on call
-						))
+						])
 		self.editzone = newzone
 		self.interpreter = it
 		self.exectarget = defnode.end_position
@@ -424,19 +424,22 @@ class Madcad(QObject):
 		''' stop editing the current function definition, returning to the higher scope '''
 		if not self.scopes:
 			return
-		cursor = self.active_scriptview.editor.textCursor()
-		(	it, 
-			newzone, 
-			initsize,  
-			self.exectarget,
-			callee,
-			call,
-			) = self.scopes.pop()
-		it.change(self.editzone[0], initsize, self.interpreter.text[self.editzone[0]:self.editzone[1]])
-		self.interpreter = it
-		self.editzone = [newzone[0], newzone[1] + self.editzone[1]-self.editzone[0] - initsize]
+		for scope in reversed(self.scopes):
+			it, newzone, *_ = scope
+			initsize = self.scopes[-1][2]
+			it.change(self.editzone[0], initsize, self.interpreter.text[self.editzone[0]:self.editzone[1]])
+			
+			shift = self.editzone[1]-self.editzone[0] - initsize
+			if self.editzone[0] < newzone[0]:
+				scope[1] = [newzone[0]+shift, newzone[1]+shift]
+			else:
+				scope[1] = [newzone[0], newzone[1]+shift]
+			scope[3] += shift
+		
+		self.interpreter, self.editzone, _, self.exectarget, *_ = self.scopes.pop()
 		self.execute()
 		
+		cursor = self.active_scriptview.editor.textCursor()
 		cursor.setPosition(self.exectarget)
 		self.active_scriptview.editor.setTextCursor(cursor)
 		self.active_scriptview.editor.ensureCursorVisible()
