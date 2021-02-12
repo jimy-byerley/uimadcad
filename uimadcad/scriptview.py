@@ -75,7 +75,7 @@ class ScriptView(QWidget):
 		self.editor.setWordWrapMode(QTextOption.WrapMode.WordWrap 
 									if settings.scriptview['linewrap'] else 
 									QTextOption.WrapMode.NoWrap)
-		self.editor.setTabStopDistance(settings.scriptview['tabsize'] * QFontMetrics(self.font).maxWidth())
+		self.editor.setTabStopDistance(settings.scriptview['tabsize'] * QFontMetrics(self.font).averageCharWidth()+1.5)
 		
 		# text coloring
 		self.update_colors()
