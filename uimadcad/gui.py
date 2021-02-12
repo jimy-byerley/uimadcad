@@ -99,6 +99,7 @@ class Madcad(QObject):
 		self.script = QTextDocument(self)
 		self.script.setDocumentLayout(QPlainTextDocumentLayout(self.script))
 		self.script.contentsChange.connect(self._contentsChange)
+		self.mod = Modification()
 		self.scenesmenu = SceneList(self)
 		self.interpreter = Interpreter()
 		self.scopes = []
@@ -151,6 +152,7 @@ class Madcad(QObject):
 				self.assist.info('<b style="color:#ff5555">internal error, check console</b>')
 				self.assist.info('internal error')
 			else:
+				self.mod.commit()
 				if self.exectrigger:	self.execute()
 				else:	self.active_sceneview.update()
 				self.assist.tool('')
@@ -325,7 +327,7 @@ class Madcad(QObject):
 		self.exectarget = cursor.position()
 		
 		self.execution_label('RUNNING')
-		print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text))
+		#print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text))
 		try:
 			res = self.interpreter.execute(self.exectarget, autobackup=True)
 		except InterpreterError as report:
@@ -466,27 +468,41 @@ class Madcad(QObject):
 		cursor = self.active_scriptview.editor.textCursor()
 		cursor.setPosition(self.exectarget)
 		return cursor
-		
+	
 	def insertexpr(self, text, format=True):
-		# indentation
+		# get line before cursor
 		cursor = self.active_scriptview.editor.textCursor()
 		cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
 		line = cursor.selectedText()
+		# get line indendation
 		cursor.clearSelection()
 		cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
 		indent = cursor.selectedText()
 		if not indent.isspace():	indent = ''
-		newline = len(line) > 30 or line and not (line.endswith(',') or line.isspace())
+		# get end of text
+		cursor = self.active_scriptview.editor.textCursor()
+		cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
+		cursor.movePosition(QTextCursor.PreviousCharacter, QTextCursor.KeepAnchor)
+		cursor.movePosition(QTextCursor.PreviousWord, QTextCursor.KeepAnchor)
+		previous = cursor.selectedText().replace('\u2029', '\n').rstrip()
 		
 		# put cursor to target line
 		cursor = self.active_scriptview.editor.textCursor()
 		cursor.setKeepPositionOnInsert(False)
 		cursor.beginEditBlock()
-		# integration
-		if newline:
+		
+		if previous and previous[-1] in '[(':
+			indent += '\t'
+		if line and not line.isspace() and (	len(line) > 30 
+											or '\n' in text
+											or	previous and previous[-1] not in ',=+-*/(['	):
 			cursor.insertText('\n'+indent)
-		# insertion
-		cursor.insertText((nformat(text.replace('dvec', 'vec')) if format else text).replace('\n', '\n'+indent))
+		cursor.insertText(text.replace('\n', '\n'+indent))
+		if previous and previous[-1] in '([,':
+			cursor.insertText(',')
+		if '\n' in text:
+			cursor.insertText('\n'+indent)
+		
 		cursor.endEditBlock()
 	
 	def insertstmt(self, text):
@@ -508,7 +524,7 @@ class Madcad(QObject):
 		if newline:
 			cursor.insertText('\n'+indent)
 		# insertion
-		cursor.insertText((text.replace('dvec', 'vec')+'\n').replace('\n', '\n'+indent))
+		cursor.insertText((text+'\n').replace('\n', '\n'+indent))
 		cursor.endEditBlock()
 		
 		
@@ -568,6 +584,13 @@ class Madcad(QObject):
 		self.active_sceneview.scene.options['display_grid'] = enable
 		self.active_sceneview.scene.touch()
 		self.active_sceneview.update()
+	def _display_annotations(self, enable):
+		self.active_sceneview.scene.options['display_annotations'] = enable
+		self.active_sceneview.scene.touch()
+		self.active_sceneview.update()
+	def _display_all(self, enable):
+		self.active_sceneview.scene.displayall = enable
+		self.active_sceneview.scene.sync()
 	
 	def execution_label(self, label):
 		for view in self.views:
@@ -799,10 +822,12 @@ class MainWindow(QMainWindow):
 		action.setChecked(madcad.settings.scene['display_grid'])
 		action.toggled.connect(main._display_grid)
 		menu.addAction(action)
-		action = QAction('display annotations +', main, checkable=True, shortcut=QKeySequence('Shift+D'))
+		action = QAction('display annotations', main, checkable=True, shortcut=QKeySequence('Shift+D'))
 		action.setChecked(madcad.settings.scene['display_annotations'])
+		action.toggled.connect(main._display_annotations)
 		menu.addAction(action)
-		action = QAction('display all variables +', main, checkable=True, shortcut=QKeySequence('Shift+V'))
+		action = QAction('display all variables', main, checkable=True, shortcut=QKeySequence('Shift+V'))
+		action.toggled.connect(main._display_all)
 		menu.addAction(action)
 		menu.addSeparator()
 		menu.addAction('center on object', main._viewcenter, shortcut=QKeySequence('Shift+C'))
