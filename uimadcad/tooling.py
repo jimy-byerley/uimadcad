@@ -7,6 +7,8 @@ from PyQt5.QtGui import QIcon, QKeySequence, QTextCursor
 
 import os.path
 import ast
+from collections import namedtuple
+from nprint import nformat
 
 from madcad import *
 
@@ -86,6 +88,10 @@ class ToolAssist(QWidget):
 	def changeEvent(self, evt):
 		super().changeEvent(evt)
 		self.update_visibility()
+		
+
+		
+Var = namedtuple('Var', ['value', 'name'], defaults=[None])
 	
 
 def toolrequest(main, args, create=True):
@@ -114,7 +120,9 @@ def toolrequest(main, args, create=True):
 	
 	# create successive missing objects (if they are sufficiently simple objects)
 	for i,(req,comment) in enumerate(args):
-		if match[i]:	continue
+		if match[i]:
+			match[i] = Var(main.interpreter.current[match[i]], match[i])
+			continue
 		
 		main.assist.info(comment)
 		if req not in completition or not create:
@@ -137,12 +145,13 @@ def toolrequest(main, args, create=True):
 					continue
 				disp.selected = True
 				# create proper variables for temp objects reused
+				obj = main.interpreter.current[name]
 				if istemp(main, name):
-					newname = autoname(main, main.interpreter.current[name])
+					newname = autoname(main, obj)
 					rename(main, name, newname)
-					return newname
+					return Var(obj, newname)
 				else:
-					return name
+					return Var(obj, name)
 
 		# get the first returned value from the selector or the creation
 		iterator = race(select(main), completition[req](main))
@@ -243,10 +252,13 @@ def createpoint(main):
 	evt = yield from waitclick()
 	view = main.active_sceneview
 	p = view.ptfrom(evt.pos(), view.navigation.center)
+	solid = view.scene.active_solid
+	if solid:
+		p = vec3(mat4(affineInverse(solid.world * solid.pose)) * vec4(p,1))
 	main.addtemp(p)
 	view.scene.add(p)
 	view.update()
-	return p
+	return Var(p)
 	
 def waitclick():
 	evt = yield
@@ -267,10 +279,11 @@ def createaxis(main):
 		axis = (p0, normalize(p1-p0))
 	view.scene.add(axis)
 	view.update()
-	return axis
+	return Var(axis)
 	
 
 def autoname(main, obj):
+	''' suggest an unused name for the given object '''
 	if isinstance(obj, vec3):		basename = 'P'
 	elif isprimitive(obj):			basename = 'L'
 	elif isinstance(obj, Mesh):		basename = 'M'
@@ -285,18 +298,26 @@ def autoname(main, obj):
 		i += 1
 	
 	
-
-
-def toolcapsule(main, name, procedure):
-	main.assist.tool(name)
-	main.assist.info('')
-	try:
-		yield from procedure(main)
-	except ToolError as err:
-		main.assist.info('<b style="color:#ff5555">{}</b>'.format(err))
+def dump(o):
+	''' dump object into script '''
+	if isinstance(o, Var):
+		if o.name:	return o.name
+		else:		o = o.value
+	if isinstance(o, vec3):
+		return 'vec3({:.4g},\t{:.4g},\t{:.4g})'.format(*o)
 	else:
-		main.assist.tool('')
-		main.assist.info('')
+		return repr(o)
+		
+def format(pattern, *args, **kwargs):
+	''' format the given string using dump() instead of str()
+		also applies nformat to split long resulting script
+	'''
+	return nformat(pattern.format(
+				*[dump(o) for o in args], 
+				**{k:dump(o) for k,o in kwargs.items()},
+				),
+				width=40)
+
 
 
 def create_toolbars(main, widget):
@@ -349,7 +370,7 @@ def create_toolbars(main, widget):
 	#tools.addAction(main.createtool('gear', tool_gear, 'madcad-cst-gear'))
 	tools.addAction(QIcon.fromTheme('madcad-cst-gear'), 'gear')
 	
-	
+
 
 
 def act_rename(main):
@@ -383,14 +404,14 @@ def tool_point(main):
 	main.assist.tool('point')
 	main.assist.info('click to place the point')
 	p = yield from createpoint(main)
-	main.insertexpr(repr(p))
+	main.insertexpr(dump(p))
 	
 def tool_segment(main):
 	args = yield from toolrequest(main, [
 				(vec3, 'start point'),
 				(vec3, 'end point'),
 			])
-	main.insertexpr('Segment({}, {})'.format(*args))
+	main.insertexpr(format('Segment({}, {})', *args))
 
 def tool_arcthrough(main):
 	args = yield from toolrequest(main, [
@@ -398,14 +419,14 @@ def tool_arcthrough(main):
 				(vec3, 'pass point'), 
 				(vec3, 'end point'),
 			])
-	main.insertexpr('ArcThrough({}, {}, {})'.format(*args))
+	main.insertexpr(format('ArcThrough({}, {}, {})', *args))
 
 def tool_boolean(main):
 	args = yield from toolrequest(main, [
 				(Mesh, 'first volume'),
 				(Mesh, 'second volume'),
 				])
-	main.insertexpr('difference({}, {})'.format(*args))
+	main.insertexpr(format('difference({}, {})', *args))
 	#main.assist.ui(BooleanChoice(args))
 """
 class BooleanChoice(QWidget):
@@ -437,7 +458,7 @@ def tool_extrusion(main):
 	displt = QInputDialog.getText(main.mainwindow, 'extrusion displacement', 'vector expression:')[0]
 	if not displt:
 		raise ToolError('no displacement entered')
-	main.insertexpr('extrusion({}, {})'.format(displt, obj))
+	main.insertexpr(format('extrusion({}, {})', displt, obj))
 
 
 
@@ -450,7 +471,7 @@ def tool_distance(main):
 	target = QInputDialog.getText(main.mainwindow, 'distance constraint', 'target distance:')[0]
 	if not target:
 		raise ToolError('no distance entered or invalid radius')
-	main.insertexpr('Distance({}, {}, {})'.format(*args, target))
+	main.insertexpr(format('Distance({}, {}, {})', *args, target))
 
 def tool_radius(main):
 	arc, = yield from toolrequest(main, [
@@ -459,17 +480,17 @@ def tool_radius(main):
 	target = QInputDialog.getText(main.mainwindow, 'radius constraint', 'target radius:')[0]
 	if not target:
 		raise ToolError('no radius entered')
-	main.insertexpr('Radius({}, {})'.format(arc, target))
+	main.insertexpr(format('Radius({}, {})', arc, target))
 
 def tool_angle(main):
 	args = yield from toolrequest(main, [
-				(Segment, 'start segment (angle is oriented)'),
-				(Segment, 'second segment (angle is oriented)'),
+				(Segment, 'start segment'),
+				(Segment, 'second segment'),
 				])
 	target = QInputDialog.getText(main.mainwindow, 'angle constraint', 'target oriented angle:')[0]
 	if not target:
 		raise ToolError('no angle entered')
-	main.insertexpr('Angle({}, {}, {})'.format(*args, target))
+	main.insertexpr(format('Angle({}, {}, {})', *args, target))
 
 def tool_tangent(main):
 	args = yield from toolrequest(main, [
@@ -492,25 +513,25 @@ def tool_pivot(main):
 	args = yield from toolrequest(main, [
 				(Axis, 'axis of the pivot'),
 				])
-	main.insertexpr('Pivot(Solid(), Solid(), {})'.format(args[0]))
+	main.insertexpr(format('Pivot(Solid(), Solid(), {})', args[0]))
 
 def tool_gliding(main):
 	args = yield from toolrequest(main, [
 				(Axis, 'axis of the pivot'),
 				])
-	main.insertexpr('Gliding(Solid(), Solid(), {})'.format(args[0]))
+	main.insertexpr(format('Gliding(Solid(), Solid(), {})', args[0]))
 	
 def tool_plane(main):
 	args = yield from toolrequest(main, [
 				(Axis, 'normal axis to the plane'),
 				])
-	main.insertexpr('Plane(Solid(), Solid(), {})'.format(args[0]))
+	main.insertexpr(format('Plane(Solid(), Solid(), {})',  args[0]))
 	
 def tool_ball(main):
 	args = yield from toolrequest(main, [
 				(vec3, 'position of the ball'),
 				])
-	main.insertexpr('Ball(Solid(), Solid(), {})'.format(args[0]))
+	main.insertexpr(format('Ball(Solid(), Solid(), {})', args[0]))
 	
 def tool_punctiform(main):
 	args = yield from toolrequest(main, [
@@ -523,7 +544,7 @@ def tool_track(main):
 				(Axis, 'axis of the track'),
 				])
 	z = vec3(fvec3(main.active_sceneview.uniforms['view'][2]))
-	main.insertexpr('Track(Solid(), Solid(), {})'.format((o,x,z)))
+	main.insertexpr(format('Track(Solid(), Solid(), {})', (o,x,z)))
 	
 def tool_helicoid(main):
 	axis, = yield from toolrequest(main, [
@@ -532,7 +553,7 @@ def tool_helicoid(main):
 	pitch = QInputDialog.getText(main.mainwindow, 'helicoid joint', 'screw pitch (/tr):')[0]
 	if not pitch:
 		raise ToolError('no pich entered')
-	main.insertexpr('Helicoid(Solid(), Solid(), {}, {})'.format(pitch, axis))
+	main.insertexpr(format('Helicoid(Solid(), Solid(), {}, {})', pitch, axis))
 
 
 # tools that will automatically used to create missing objects in request
