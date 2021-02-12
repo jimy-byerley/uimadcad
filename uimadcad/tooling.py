@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QSizePolicy, QShortcut,
 							QLabel, QPushButton, QAction, 
 							QDockWidget, QFileDialog, QInputDialog
 							)
-from PyQt5.QtGui import QIcon, QKeySequence, QTextCursor
+from PyQt5.QtGui import QIcon, QKeySequence, QTextCursor, QTextDocument
 
 import os.path
 import ast
@@ -99,21 +99,23 @@ class Modification(object):
 	
 	def commit(self, document):
 		if isinstance(document, QTextDocument):
-			cursor = QTextCursor(document)
+			document = QTextCursor(document)
 		if isinstance(document, QTextCursor):
-			cursor.beginEditBlock()
-			for zone,change in reversed(self.changes):
-				cursor.setPosition(zone[0])
-				cursor.setPosition(zone[1], QTextCursor.KeepAnchor)
-				cursor.setSelectedText(change)
-			cursor.endEditBlock()
+			document.beginEditBlock()
+			for start,stop,change in reversed(self.changes):
+				document.setPosition(start)
+				document.setPosition(stop, QTextCursor.KeepAnchor)
+				document.insertText(change)
+			document.endEditBlock()
 		elif isinstance(document, str):
 			mod = ''
 			last = 0
-			for zone,change in self.changes:
-				mod += document[last:zone[0]] + change
-				last = zone[1]
+			for start,stop,change in self.changes:
+				mod += document[last:start] + change
+				last = stop
 			return mod
+		else:
+			raise TypeError('commit expect a str, QTextCursor or QTextDocument')
 	
 	def clear(self):
 		self.changes.clear()
@@ -123,11 +125,11 @@ class Modification(object):
 			start,stop = index,index
 		elif isinstance(index, slice):
 			start,stop = index.start, index.stop
-			if slice.stop != 1:
+			if index.step and index.step != 1:
 				raise ValueError('only slices with step 1 are supported')
 		
 		l = len(self.changes)
-		i = bisect(self.changes, start, lambda c: z[0])
+		i = bisect(self.changes, start, lambda c: c[0])
 		while i < l and self.changes[i][0] == start and self.changes[i][1] == start:
 			i += 1
 			
@@ -138,17 +140,20 @@ class Modification(object):
 	def __iadd__(self, other):
 		if not isinstance(other, Modification):
 			return NotImplemented
-		for zone,block in other.changes:	# NOTE this loop should be replaced by a dual merge for better efficiency
-			self[zone[0]:zone[1]] = block
+		for start,stop,block in other.changes:	# NOTE this loop should be replaced by a dual merge for better efficiency
+			self[start:stop] = block
 		return self
-		
-		
-		
-Var = namedtuple('Var', ['value', 'name'], defaults=[None])
+
+
+class Var(object):
+	__slots__ = 'value', 'name'
+	def __init__(self, value, name=None):
+		self.value, self.name = value, name
 	
 
 def toolrequest(main, args, create=True):
 	match = [None] * len(args)	# matched objects
+	env = main.interpreter.current
 	
 	# search the selection for the required objects
 	for disp in scene_unroll(main.active_sceneview.scene):
@@ -156,26 +161,24 @@ def toolrequest(main, args, create=True):
 			name = dispname(main, disp)
 			if name:
 				for i,(req,comment) in enumerate(args):
-					if not match[i] and satisfy(main.interpreter.current[name], req):
-						match[i] = name
+					if not match[i] and satisfy(env[name], req):
+						match[i] = Var(env[name], name)
 						break
 	
-	for i,name in enumerate(match):
-		if not name:	continue
+	for i,var in enumerate(match):
+		if not var:	continue
 		# check that the used objects dont rely on an object that is in the modified area of the script
-		if not islive(main, name):
+		if not islive(main, var.name):
 			raise ToolError('cannot use variable {} moved in the script'.format(repr(grp)))
 		# create proper variables for temp objects reused
-		if istemp(main, name):
-			newname = autoname(main, main.interpreter.current[name])
-			rename(main, name, newname)
-			match[i] = newname
+		if istemp(main, var.name):
+			newname = autoname(main, var.value)
+			rename(main, var.name, newname)
+			var.name = newname
 	
 	# create successive missing objects (if they are sufficiently simple objects)
 	for i,(req,comment) in enumerate(args):
-		if match[i]:
-			match[i] = Var(main.interpreter.current[match[i]], match[i])
-			continue
+		if match[i]:	continue
 		
 		main.assist.info(comment)
 		if req not in completition or not create:
@@ -194,11 +197,11 @@ def toolrequest(main, args, create=True):
 				key = view.itemat(pos)
 				disp = view.scene.item(key)
 				name = dispname(main, disp)
-				if not name or not satisfy(main.interpreter.current[name], req):
+				if not name or not satisfy(env[name], req):
 					continue
 				disp.selected = True
 				# create proper variables for temp objects reused
-				obj = main.interpreter.current[name]
+				obj = env[name]
 				if istemp(main, name):
 					newname = autoname(main, obj)
 					rename(main, name, newname)
@@ -269,35 +272,29 @@ def rename(main, oldname, newname=None):
 	node = main.interpreter.locations[oldname]
 	# the renamed object already has a variable name
 	if isinstance(node, ast.Assign):
-		cursor = QTextCursor(main.script)
 		zone = node.targets[0]
-		cursor.setPosition(zone.position)
-		cursor.setPosition(zone.end_position, QTextCursor.KeepAnchor)
-		cursor.insertText(newname)
+		main.mod[zone.position:zone.end_position] = newname
 	
 	# the renamed object is a temporary variable
 	else:
 		stmt = main.interpreter.ast.body[astatpos(main.interpreter.ast, node.position)]
-		cursor = QTextCursor(main.script)
-		cursor.beginEditBlock()
 		
 		# the expression result is not used, just assign it
 		if isinstance(stmt, ast.Expr) and stmt.position == node.position and stmt.end_position == node.end_position:
 			# just insert the assignation
-			cursor.setPosition(node.position)
-			cursor.insertText('{} = '.format(newname))
+			main.mod[node.position] = '{} = '.format(newname)
 		# the expression result is used, move it and assign it
 		else:
 			# get and remove the expression
+			cursor = QTextCursor(main.script)
 			cursor.setPosition(node.position)
 			cursor.setPosition(node.end_position, QTextCursor.KeepAnchor)
-			expr = cursor.selectedText()	
-			cursor.insertText(newname)
+			expr = cursor.selectedText()
+			main.mod[node.position:node.end_position] = newname
 			# insert expression with assignation
-			cursor.setPosition(stmt.position)
-			cursor.insertText('{} = {}\n'.format(newname, expr))
+			main.mod[stmt.position] = '{} = {}\n'.format(newname, expr)
+			main.interpreter.current[newname] = main.interpreter.current.get(oldname)
 		
-		cursor.endEditBlock()
 
 		
 	

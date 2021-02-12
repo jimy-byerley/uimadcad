@@ -39,7 +39,7 @@ from .sceneview import Scene, SceneView, SceneList, scene_unroll
 from .errorview import ErrorView
 from .detailview import DetailView
 from .tricks import PointEditor, EditionError
-from .tooling import ToolAssist, ToolError
+from .tooling import ToolAssist, ToolError, Modification
 from . import tooling
 from . import settings
 
@@ -152,7 +152,8 @@ class Madcad(QObject):
 				self.assist.info('<b style="color:#ff5555">internal error, check console</b>')
 				self.assist.info('internal error')
 			else:
-				self.mod.commit()
+				self.mod.commit(self.script)
+				self.mod.clear()
 				if self.exectrigger:	self.execute()
 				else:	self.active_sceneview.update()
 				self.assist.tool('')
@@ -195,6 +196,8 @@ class Madcad(QObject):
 				self.assist.tool(name)
 				self.assist.info('<b style="color:#ff5555">{}</b>'.format(err))
 			else:
+				self.mod.commit(self.script)
+				self.mod.clear()
 				if self.exectrigger:	self.execute()
 				else:	self.active_sceneview.update()
 		action.triggered.connect(callback)
@@ -486,24 +489,21 @@ class Madcad(QObject):
 		cursor.movePosition(QTextCursor.PreviousWord, QTextCursor.KeepAnchor)
 		previous = cursor.selectedText().replace('\u2029', '\n').rstrip()
 		
-		# put cursor to target line
-		cursor = self.active_scriptview.editor.textCursor()
-		cursor.setKeepPositionOnInsert(False)
-		cursor.beginEditBlock()
-		
 		if previous and previous[-1] in '[(':
 			indent += '\t'
+		block = ''
 		if line and not line.isspace() and (	len(line) > 30 
 											or '\n' in text
 											or	previous and previous[-1] not in ',=+-*/(['	):
-			cursor.insertText('\n'+indent)
-		cursor.insertText(text.replace('\n', '\n'+indent))
+			block += '\n'+indent
+		block += text.replace('\n', '\n'+indent)
 		if previous and previous[-1] in '([,':
-			cursor.insertText(',')
+			block += ','
 		if '\n' in text:
-			cursor.insertText('\n'+indent)
+			block += '\n'+indent
 		
-		cursor.endEditBlock()
+		# report changes
+		self.mod[self.active_scriptview.editor.textCursor().position()] = block
 	
 	def insertstmt(self, text):
 		# check if there is already something on the line
@@ -517,15 +517,14 @@ class Madcad(QObject):
 		if not indent.isspace():	indent = ''
 		
 		# put cursor to target line
-		cursor = self.active_scriptview.editor.textCursor()
-		cursor.setKeepPositionOnInsert(False)
-		cursor.beginEditBlock()
+		
+		block = ''
 		# integration
 		if newline:
-			cursor.insertText('\n'+indent)
+			block += '\n'+indent
 		# insertion
-		cursor.insertText((text+'\n').replace('\n', '\n'+indent))
-		cursor.endEditBlock()
+		block += (text+'\n').replace('\n', '\n'+indent)
+		self.mod[self.active_scriptview.editor.textCursor().position()] = block
 		
 		
 	def deselectall(self):
