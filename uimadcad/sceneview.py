@@ -58,6 +58,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.poses = {}			# solid per variable for poses, non associated solids are not in that dict
 		self.active_solid = None	# current solid for current space
 		self.executed = True	# flag set to True to enable a full relead of the scene
+		self.displayall = False
 	
 	def __del__(self):
 		try:	self.main.scenes.remove(self)
@@ -76,7 +77,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		# display objects that are requested by the user, or that are never been used (lastly generated)
 		for name,obj in it.current.items():
 			if name in newscene:	continue
-			if name in self.forceddisplays or name in it.neverused:
+			if name in self.forceddisplays or name in it.neverused or self.displayall and name in it.locations:
 				if displayable(obj):
 					newscene[name] = obj
 				# some exceptional behaviors
@@ -117,10 +118,10 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 	def update_solidsets(self):
 		''' update the association of variables to solids '''
-		self.poses = {}
+		self.poses = {}	# pose for each variable name
 		
 		ast_name = (ast.Name, ast.NamedExpr) if hasattr(ast, 'NamedExpr') else ast.Name
-		sets = []
+		sets = []	# sets of variables going together
 		# process statements executed in the main flow
 		def search_statements(node):
 			for stmt in reversed(node.body):
