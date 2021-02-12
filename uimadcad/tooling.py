@@ -89,7 +89,60 @@ class ToolAssist(QWidget):
 		super().changeEvent(evt)
 		self.update_visibility()
 		
-
+		
+class Modification(object):
+	''' proxy for modification to QTextDocument '''
+	__slots__ = 'changes', 'conflict'
+	def __init__(self, conflict=False):
+		self.changes = []			# sorted list of couples ((start,end), text)
+		self.conflict = conflict
+	
+	def commit(self, document):
+		if isinstance(document, QTextDocument):
+			cursor = QTextCursor(document)
+		if isinstance(document, QTextCursor):
+			cursor.beginEditBlock()
+			for zone,change in reversed(self.changes):
+				cursor.setPosition(zone[0])
+				cursor.setPosition(zone[1], QTextCursor.KeepAnchor)
+				cursor.setSelectedText(change)
+			cursor.endEditBlock()
+		elif isinstance(document, str):
+			mod = ''
+			last = 0
+			for zone,change in self.changes:
+				mod += document[last:zone[0]] + change
+				last = zone[1]
+			return mod
+	
+	def clear(self):
+		self.changes.clear()
+	
+	def __setitem__(self, index, text):
+		if isinstance(index, int):	
+			start,stop = index,index
+		elif isinstance(index, slice):
+			start,stop = index.start, index.stop
+			if slice.stop != 1:
+				raise ValueError('only slices with step 1 are supported')
+		
+		l = len(self.changes)
+		i = bisect(self.changes, start, lambda c: z[0])
+		while i < l and self.changes[i][0] == start and self.changes[i][1] == start:
+			i += 1
+			
+		if not self.conflict and i < l and stop > self.changes[i][1]:
+			raise IndexError('{} conflict with previous modification {}'.format((start,stop), self.changes[i][:2]))
+		self.changes.insert(i, (start,stop,text)) 
+		
+	def __iadd__(self, other):
+		if not isinstance(other, Modification):
+			return NotImplemented
+		for zone,block in other.changes:	# NOTE this loop should be replaced by a dual merge for better efficiency
+			self[zone[0]:zone[1]] = block
+		return self
+		
+		
 		
 Var = namedtuple('Var', ['value', 'name'], defaults=[None])
 	
