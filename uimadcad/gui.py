@@ -244,7 +244,7 @@ class Madcad(QObject):
 		self.file_changed.emit()
 		return True
 				
-	
+	"""
 	def _save(self):
 		''' callback for the button 'save'
 			save to the file specified in self.currentfile, using its extension
@@ -278,8 +278,46 @@ class Madcad(QObject):
 		if dialog.result() == QDialog.Accepted:
 			self.currentfile = dialog.selectedFiles()[0]
 			self._save()
+	"""
+	def _prompt_file(self):
+		dialog = QFileDialog(self.mainwindow, 'save madcad file', self.currentfile or os.curdir)
+		dialog.setAcceptMode(QFileDialog.AcceptSave)
+		dialog.exec()
+		if dialog.result() == QDialog.Accepted:
+			choice = dialog.selectedFiles()[0]
+			extension = choice[choice.find('.')+1:]
+			if extension not in ('py', 'txt'):
+				box = QMessageBox(
+					QMessageBox.Warning, 'bad file type', 
+					"The file extension '{}' is not a standard madcad file extension and may result in problems to open the file from a browser\n\nSave anyway ?".format(extension),
+					QMessageBox.Yes | QMessageBox.Discard,
+					)
+				if box.exec() == QMessageBox.Discard:	return
+			
+			return choice
 	
-	def _export(self):	pass
+	def save(self, file=None):
+		if not file:	file = self.currentfile
+		if not file:	raise ValueError('no file is given and no current file')
+		open(file, 'w').write(self.script.toPlainText())
+		
+	def _save(self):
+		if not self.currentfile:
+			self.current_file = self._prompt_file()
+		if self.currentfile:
+			self.save()
+	
+	def _save_as(self):
+		file = self._prompt_file()
+		if file:
+			self.current_file = file
+			self.save()
+			
+	def _save_copy(self):
+		file = self._prompt_file()
+		if file:
+			self.save(file)
+	
 	def _screenshot(self):	pass
 	
 	def _open_uimadcad_settings(self):
@@ -290,6 +328,7 @@ class Madcad(QObject):
 	
 	def _open_startup_file(self):
 		open_file_external(settings.locations['startup'])
+
 	
 	# END
 	# BEGIN --- editing tools ----
@@ -726,12 +765,16 @@ class MainWindow(QMainWindow):
 		self._file_changed()
 		
 		# insert components to docker
+		#center = QWidget()
+		#center.resize(0,0)
+		#center.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
+		#self.setCentralWidget(center)
 		self.addDockWidget(Qt.LeftDockWidgetArea, dock(ScriptView(main), 'script view'))
 		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(main), 'scene view'))
 		self.addDockWidget(Qt.LeftDockWidgetArea, dock(self.main.assist, 'tool assist'))
 		
 		# use state to get the proper layout until we have a proper state backup
-		self.restoreState(b'\x00\x00\x00\xff\x00\x00\x00\x00\xfd\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x01q\x00\x00\x02+\xfc\x02\x00\x00\x00\x03\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x00\x87\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x01\x8e\x00\x00\x00\xb9\x00\x00\x00:\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00z\x01\x00\x00\x03\x00\x00\x00\x01\x00\x00\x02:\x00\x00\x02+\xfc\x02\x00\x00\x00\x01\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x02+\x00\x00\x000\x01\x00\x00\x03\x00\x00\x00\x00\x00\x00\x02+\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x08\x00\x00\x00\x08\xfc\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00\x02\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x014\x00\x00\x00L\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\xff\xff\xff\xff\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x00\xda\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\x03\x00\x00\x01,\x00\x00\x00d\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00')
+		self.restoreState(b'\x00\x00\x00\xff\x00\x00\x00\x00\xfd\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x01Q\x00\x00\x02\xce\xfc\x02\x00\x00\x00\x02\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x19\x00\x00\x02\xce\x00\x00\x00\x84\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00s\x01\x00\x00\x03\x00\x00\x00\x01\x00\x00\x01\x7f\x00\x00\x02\xce\xfc\x02\x00\x00\x00\x01\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x19\x00\x00\x02\xce\x00\x00\x00\x94\x01\x00\x00\x03\x00\x00\x00\x00\x00\x00\x02\xce\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x08\x00\x00\x00\x08\xfc\x00\x00\x00\t\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00 \x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00c\x00r\x00e\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00$\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00a\x00n\x00n\x00o\x00t\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x01\x1e\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x16\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00w\x00e\x00b\x03\x00\x00\x01\xb4\x00\x00\x01\x1a\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x18\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00m\x00e\x00s\x00h\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00&\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00c\x00o\x00n\x00s\x00t\x00r\x00a\x00i\x00n\x00t\x00s\x03\x00\x00\x00R\x00\x00\x02\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00&\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00a\x00m\x00e\x00l\x00i\x00r\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x02Z\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00')
 	
 	
 	def closeEvent(self, evt):
@@ -745,10 +788,11 @@ class MainWindow(QMainWindow):
 		main = self.main
 		menubar = self.menuBar()
 		menu = menubar.addMenu('&File')
+		menu.addAction(QIcon.fromTheme('document-new'), 'new +', lambda:None, QKeySequence('Ctrl+N'))
 		menu.addAction(QIcon.fromTheme('document-open'), 'open', main._open, QKeySequence('Ctrl+O'))
 		menu.addAction(QIcon.fromTheme('document-save'), 'save', main._save, QKeySequence('Ctrl+S'))
 		menu.addAction(QIcon.fromTheme('document-save-as'), 'save as', main._save_as, QKeySequence('Ctrl+Shift+S'))
-		menu.addAction(QIcon.fromTheme('emblem-shared'), 'export +', main._export, QKeySequence('Ctrl+E'))
+		menu.addAction(QIcon.fromTheme('document-export'), 'save a copy', main._save_copy, QKeySequence('Ctrl+E'))
 		menu.addAction(QIcon.fromTheme('insert-image'), 'screenshot +', main._screenshot, QKeySequence('Ctrl+I'))
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('preferences-other'), 'interface settings', main._open_uimadcad_settings)
@@ -758,6 +802,8 @@ class MainWindow(QMainWindow):
 		menu = menubar.addMenu('&Edit')
 		menu.addAction(QIcon.fromTheme('edit-undo'), 'undo', main.script.undo, QKeySequence('Ctrl+Z'))
 		menu.addAction(QIcon.fromTheme('edit-redo'), 'redo', main.script.redo, QKeySequence('Ctrl+Shift+Z'))
+		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main.deselectall, shortcut=QKeySequence('Ctrl+A'))
+		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('media-playback-start'), 'execute', main.execute, QKeySequence('Ctrl+Return'))
 		menu.addAction(QIcon.fromTheme('view-refresh'), 'reexecute all', main.reexecute, QKeySequence('Ctrl+Shift+Return'))
 		menu.addAction(QIcon.fromTheme('go-bottom'), 'target to cursor', main._targettocursor, QKeySequence('Ctrl+T'))
@@ -767,10 +813,9 @@ class MainWindow(QMainWindow):
 		menu.addAction(QIcon.fromTheme('format-indent-more'), 'disable line +')
 		menu.addAction(QIcon.fromTheme('format-indent-less'), 'enable line +')
 		menu.addAction('disable line dependencies +')
-		menu.addSeparator()
+		menu.addAction('create function +')
+		menu.addAction('create list +')
 		menu.addAction(main.createaction('rename object', tooling.act_rename, shortcut=QKeySequence('F2')))
-		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main.deselectall, shortcut=QKeySequence('Ctrl+A'))
 		
 		menu = menubar.addMenu('&View')
 		menu.addAction(QAction('display navigation controls +', main, checkable=True))
@@ -798,7 +843,7 @@ class MainWindow(QMainWindow):
 		
 		menu.addAction('harvest toolbars on window side +')
 		menu.addAction('take floating toolbars to mouse +')
-		menu.addAction('save window layout', lambda: print(main.saveState()))
+		menu.addAction('save window layout', lambda: print(main.mainwindow.saveState()))
 		
 		menu = menubar.addMenu('&Scene')
 		action = QAction('display points', main, checkable=True, shortcut=QKeySequence('Shift+P'))
