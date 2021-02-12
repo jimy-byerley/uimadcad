@@ -372,34 +372,44 @@ def format(pattern, *args, **kwargs):
 
 def create_toolbars(main, widget):
 	tools = widget.addToolBar('creation')
+	tools.setObjectName('toolbar-creation')
 	tools.addAction(main.createaction('import', tool_import, 	'madcad-import'))
-	tools.addAction(QIcon.fromTheme('madcad-solid'), 'solid')
-	tools.addAction(QIcon.fromTheme('madcad-meshing'), 'manual triangulated meshing')
+	tools.addAction(main.createaction('solid', tool_solid, 'madcad-solid'))
+	tools.addAction(main.createaction('manual triangulated meshing', tool_meshing, 'madcad-meshing'))
 	tools.addAction(QIcon.fromTheme('madcad-splined'), 'manual splined meshing')
 	tools.addAction(main.createtool('point', tool_point,		'madcad-point'))
 	tools.addAction(main.createtool('segment', tool_segment,	'madcad-segment'))
 	tools.addAction(main.createtool('arc', tool_arcthrough,		'madcad-arc'))
 	tools.addAction(QIcon.fromTheme('madcad-spline'), 'spline')
-	tools.addAction(QIcon.fromTheme('insert-text'), 'text')
+	
+	tools = widget.addToolBar('annotation')
+	tools.setObjectName('toolbar-annotation')
+	tools.addAction(main.createtool('annotation', tool_note, 'madcad-annotation'))
+	tools.addAction(QIcon.fromTheme('madcad-cst-distance'), 'distance measure')
+	tools.addAction(QIcon.fromTheme('insert-text'), 'floating text')
 	tools.addAction(QIcon.fromTheme('insert-image'), 'image')
-	tools.addAction(QIcon.fromTheme('madcad-annotation'), 'annotation')
 	
 	tools = widget.addToolBar('mesh')
+	tools.setObjectName('toolbar-mesh')
 	tools.addAction(main.createtool('boolean', tool_boolean, 'madcad-boolean'))
 	tools.addAction(QIcon.fromTheme('madcad-chamfer'), 'chamfer')
 	
 	tools = widget.addToolBar('web')
+	tools.setObjectName('toolbar-web')
 	tools.addAction(main.createtool('extrusion', tool_extrusion, 'madcad-extrusion'))
 	tools.addAction(QIcon.fromTheme('madcad-revolution'), 'revolution')
-	tools.addAction(QIcon.fromTheme('madcad-extrans'), 'screw')
-	tools.addAction(QIcon.fromTheme('madcad-junction'), 'join')
+	tools.addAction(QIcon.fromTheme('madcad-extrans'), 'extrusion transformation')
 	tools.addAction(QIcon.fromTheme('madcad-triangulation'), 'surface')
+	tools.addAction(QIcon.fromTheme('madcad-junction'), 'join')
 	
 	tools = widget.addToolBar('amelioration')
+	tools.setObjectName('toolbar-ameliration')
 	tools.addAction(main.createtool('merge closes', tool_mergeclose, 'madcad-mergeclose'))
 	tools.addAction(main.createtool('strip buffers', tool_stripbuffers, 'madcad-stripbuffer'))
+	tools.addAction(QIcon.fromTheme('madcad-flip'), 'flip')
 	
 	tools = widget.addToolBar('constraints')
+	tools.setObjectName('toolbar-constraints')
 	# primitive constraints
 	tools.addAction(main.createtool('hold distance', tool_distance, 'madcad-cst-distance'))
 	tools.addAction(main.createtool('hold radius', tool_radius, 'madcad-cst-radius'))
@@ -441,6 +451,12 @@ def tool_import(main):
 	objname = os.path.splitext(os.path.basename(filename))[0]
 	if not objname.isidentifier():	objname = 'imported'
 	main.insertstmt('{} = read({})'.format(objname, repr(filename)))
+	
+def tool_solid(main):
+	main.insertexpr('Solid()')
+	
+def tool_meshing(main):
+	main.insertexpr('Mesh(\n\tpoints=[],\n\tfaces=[])')
 
 def tool_mergeclose(main):
 	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
@@ -470,6 +486,39 @@ def tool_arcthrough(main):
 				(vec3, 'end point'),
 			])
 	main.insertexpr(format('ArcThrough({}, {}, {})', *args))
+	
+def tool_note(main):
+	while True:
+		evt = yield
+		if not (evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton):
+			continue
+		view = main.active_sceneview
+		pos = view.somenear(evt.pos(), 10)
+		if not pos:		continue
+		disp = view.scene.item(view.itemat(pos))
+		name = dispname(main, disp)
+		if not name:	continue
+		break
+	
+	# create proper variables for temp objects reused
+	obj = main.interpreter.current[name]
+	if istemp(main, name):
+		newname = autoname(main, obj)
+		rename(main, name, newname)
+		obj = Var(obj, newname)
+	else:
+		obj = Var(obj, name)
+		
+	def asktext():
+		return QInputDialog.getText(main.mainwindow, 'text note', 'enter text:')[0]
+		
+	if isinstance(obj, vec3):
+		expr = format('note_floating({}, {})'.format(obj, asktext()))
+	elif isinstance(obj, (Mesh,Web,Wire)):
+		expr = format('note_floating({}, {})'.format(obj, asktext()))
+	else:
+		raise ToolError('unable to place a note on top of {}'.format(type(obj)))
+	main.insertexpr(expr)
 
 def tool_boolean(main):
 	args = yield from toolrequest(main, [
