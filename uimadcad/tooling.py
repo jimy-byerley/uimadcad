@@ -495,7 +495,8 @@ def tool_note(main):
 		view = main.active_sceneview
 		pos = view.somenear(evt.pos(), 10)
 		if not pos:		continue
-		disp = view.scene.item(view.itemat(pos))
+		item = view.itemat(pos)
+		disp = view.scene.item(item)
 		name = dispname(main, disp)
 		if not name:	continue
 		break
@@ -512,12 +513,12 @@ def tool_note(main):
 	def asktext():
 		return QInputDialog.getText(main.mainwindow, 'text note', 'enter text:')[0]
 		
-	if isinstance(obj, vec3):
-		expr = format('note_floating({}, {})'.format(obj, asktext()))
-	elif isinstance(obj, (Mesh,Web,Wire)):
-		expr = format('note_floating({}, {})'.format(obj, asktext()))
+	if isinstance(obj.value, (Mesh,Web,Wire)):
+		expr = format('note_leading({}.group({}), text={})', obj, item[-1], asktext())
+	elif isinstance(obj.value, (Wire,vec3,Axis,tuple)):
+		expr = format('note_leading({}, text={})', obj, asktext())
 	else:
-		raise ToolError('unable to place a note on top of {}'.format(type(obj)))
+		raise ToolError('unable to place a note on top of {}'.format(type(obj.value)))
 	main.insertexpr(expr)
 
 def tool_boolean(main):
@@ -551,13 +552,13 @@ class BooleanChoice(QWidget):
 """
 
 def tool_extrusion(main):
-	obj = yield from toolrequest(main, [
+	obj, = yield from toolrequest(main, [
 				(lambda o: isinstance(o, (Web,Mesh)), 'first volume'),
 				])
 	displt = QInputDialog.getText(main.mainwindow, 'extrusion displacement', 'vector expression:')[0]
 	if not displt:
 		raise ToolError('no displacement entered')
-	main.insertexpr(format('extrusion({}, {})', displt, obj))
+	main.insertexpr(format('extrusion({}, {})', Var(None,name=displt), obj))
 
 
 
