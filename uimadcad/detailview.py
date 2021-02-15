@@ -1,64 +1,51 @@
-from PyQt5.QtCore import Qt, QSize, QPoint
+from PyQt5.QtCore import Qt, QSize, QPoint, QMargins
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy, 
 							QCheckBox, QLabel, QPushButton, QTextEdit,
-							QAction,
+							QShortcut,
 							)
 from PyQt5.QtGui import QColor, QPalette, QFont, QFontMetrics, QTextOption, QIcon, QKeySequence
 from nprint import nformat
+from madcad import Mesh, Web, note_label
 
 from .common import *
+from . import settings
+
 
 
 class DetailView(QWidget):
-	tabsize = 5
-	fmt_value = charformat(
-					font=QFont('NotoMono', 7), 
-					foreground=QColor(255,255,255))
-	fmt_key = charformat(
-					font=QFont('NotoMono', 9, weight=QFont.Bold), 
-					foreground=QColor(100, 200, 255))
-	
-	
-	def __init__(self, main, ident, parent=None):
+	def __init__(self, scene, key, parent=None):
 		super().__init__(parent)
 		# setup ui
 		self._text = QTextEdit()
-		self._bar = QWidget()
-		self._btnfold = QPushButton('fold all +', self._bar)
-		self._btnpin = QCheckBox('keep visible', self._bar)
-		layout = QVBoxLayout()
-		layout.setContentsMargins(0,0,0,0)
-		layout.addWidget(self._btnfold)
-		layout.addWidget(self._btnpin)
-		self._bar.setLayout(layout)
 		layout = QHBoxLayout()
-		layout.setContentsMargins(0,0,0,0)
 		layout.addWidget(self._text)
-		layout.addWidget(self._bar)
+		layout.setContentsMargins(QMargins(0,0,0,0))
 		self.setLayout(layout)
+		self._text.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
 		
-		esc = QAction('close', self, shortcut=QKeySequence('Escape'))
-		esc.triggered.connect(self.close)
-		self.addAction(esc)
+		self._esc = QShortcut(QKeySequence('Escape'), self)
+		self._esc.activated.connect(self.close)
 		
-		font = self.fmt_value.font()
+		font = QFont(*settings.scriptview['font'])
 		
 		# register to main
-		self.main = main
-		self.ident = ident
-		main.details[ident] = self
-		main.views.append(self)
+		self.scene = scene
+		self.key = key
+		scene.main.details[key] = self
+		scene.main.views.append(self)
 		
 		# set window and ui settings
+		self.setWindowTitle('.'.join(str(k) for k in key))
 		self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
-		self.setWindowTitle('{}//   {}'.format(*ident))
 		self.setWindowIcon(QIcon.fromTheme('madcad-grpinfo'))
-		self.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-		self.resize(QSize(300,80) * font.pointSize()/7)
+		self.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+		self.resize(QSize(300,10) * font.pointSize()/7)
 		
 		self._text.setTextInteractionFlags(Qt.TextBrowserInteraction)
 		self._text.setWordWrapMode(QTextOption.WrapMode.NoWrap)
-		self._text.setTabStopDistance(self.tabsize * QFontMetrics(font).maxWidth())
+		self._text.setTabStopDistance(settings.scriptview['tabsize'] * QFontMetrics(font).maxWidth()+1.5)
+		
+		scene.main.executed.connect(self.sync)
 		
 		# get the content
 		self.sync()
@@ -68,53 +55,53 @@ class DetailView(QWidget):
 		
 	def sync(self, updated=None):
 		''' sync the displayed informations with the main scene '''
-		main = self.main
-		grp, sub = self.ident
-		# remove the current view if the referenced group doesn't exist
-		if grp not in main.scene or not hasattr(main.scene[grp], 'groups') or sub >= len(main.scene[grp].groups):
+		try:				disp = self.scene.item(self.key)
+		except IndexError:	disp = None
+		except KeyError:	disp = None
+		
+		if disp and hasattr(disp, 'source') and isinstance(disp.source, (Mesh,Web)):
+			sub = self.key[-1]
+			self.info(disp.source.groups[sub])
+			self.scene.additions[('marker',self.key)] = note_label(disp.source.group(sub), text=str(sub), style='circle')
+			self.scene.sync()
+		else:
 			self.close()
-			return
-		# update the text view
-		infos = main.scene[grp].groups[sub]
-		self.info(infos)
-		# add a marker to the scene
-		#self.scenekey = '{}-detail{}'.format(grp,sub)
-		#main.scene[self.scenekey] = DetailMarker(indev)
-		#main.poses[self.scenekey] = main.poses[grp]
 	
-	def closeEvent(self, evt):
-		evt.accept()
-		# discard the used label
-		if self.ident in self.main.details:
-			del self.main.details[self.ident]
-		# remove the group marker
-		#if self.scenekey in self.main.scene:
-			#del self.main.scene[scenekey]
-			#self.main.updatescene()
-		# unregister from views
-		for i,view in enumerate(self.main.views):
-			if view is self:
-				self.main.views.pop(i)
-	
-	def dispose(self):
-		''' close the detail window if it has not been pinned '''
-		if not self._btnpin.isChecked():
-			self.close()
+	def closeEvent(self, event):
+		self.scene.main.views.remove(self)
+		del self.scene.main.details[self.key]
+		del self.scene.additions[('marker',self.key)]
+		self.scene.sync()
+		if isinstance(self.parent(), QDockWidget):
+			self.scene.main.mainwindow.removeDockWidget(self.parent())
+		else:
+			super().close()
 	
 	def info(self, infos):
 		''' set the displayed informations '''
+		self._text.document().clear()
 		cursor = QTextCursor(self._text.document())
+		palette = self.palette()
+		familly, size = settings.scriptview['font']
+		
+		fmt_value = charformat(
+						font=QFont(familly, size), 
+						foreground=palette.text())
+		fmt_key = charformat(
+						font=QFont(familly, size*1.2, weight=QFont.Bold), 
+						foreground=palette.link())
+		
 		if isinstance(infos, dict):
 			for key in sorted(list(infos)):
 				formated = nformat(repr(infos[key]))
 				# one line format
 				if not '\n' in formated:	
-					cursor.insertText((key+':').ljust(16), self.fmt_key)
-					cursor.insertText(formated+'\n', self.fmt_value)
+					cursor.insertText((key+':').ljust(16), fmt_key)
+					cursor.insertText(formated+'\n', fmt_value)
 				# multiline format
 				else:
-					cursor.insertText(key+':', self.fmt_key)
-					cursor.insertText(('\n'+formated).replace('\n', '\n    ')+'\n', self.fmt_value)
+					cursor.insertText(key+':', fmt_key)
+					cursor.insertText(('\n'+formated).replace('\n', '\n    ')+'\n', fmt_value)
 		else:
-			cursor.insertText(nformat(repr(infos)), self.fmt_value)
+			cursor.insertText(nformat(repr(infos)), fmt_value)
 

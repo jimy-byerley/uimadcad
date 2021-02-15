@@ -280,6 +280,8 @@ class SceneView(madcad.rendering.View):
 				disp.selected = not disp.selected
 			self.update()
 			self.main.updatescript()
+		elif evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.RightButton:
+			self.showdetail(key, evt.pos())
 	
 	# DEPRECATED
 	def objcontrol(self, rdri, subi, evt):
@@ -318,21 +320,21 @@ class SceneView(madcad.rendering.View):
 				self.showdetail(ident, evt.pos())
 		
 	
-	def showdetail(self, ident, position=None):
+	def showdetail(self, key, position=None):
 		''' display a detail window for the ident given (grp,sub) '''
-		if ident in self.main.details:
-			detail = self.main.details[ident]
-		else:
-			detail = DetailView(self.main, ident)
+		if key in self.main.details:	return
 		
+		detail = DetailView(self.scene, key)
+		detail.move(self.mapToGlobal(self.geometry().center()))
+		detail.show()
+	
 		if position:
-			if position.x() < self.width()//2:	offsetx = -350
+			if position.x() < self.width()//2:	offsetx = -200
 			else:								offsetx = 50
 			detail.move(self.mapToGlobal(position) + QPoint(offsetx,0))
 		
 		detail.show()
 		detail.activateWindow()
-		return detail
 		
 	def separate_scene(self):
 		#self.scene = self.scene.duplicate(self.scene.ctx)
