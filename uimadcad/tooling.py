@@ -150,96 +150,18 @@ class Var(object):
 	def __init__(self, value=None, name=None):
 		self.value, self.name = value, name
 	
-
-def toolrequest(main, args, create=True):
-	match = [None] * len(args)	# matched objects
-	env = main.interpreter.current
-	
-	# search the selection for the required objects
-	for disp in scene_unroll(main.active_sceneview.scene):
-		if disp.selected:
-			name = dispname(main, disp)
-			if name:
-				for i,(req,comment) in enumerate(args):
-					if not match[i] and satisfy(env[name], req):
-						match[i] = Var(env[name], name)
-						break
-	
-	for i,var in enumerate(match):
-		if not var:	continue
-		# check that the used objects dont rely on an object that is in the modified area of the script
-		if not islive(main, var.name):
-			raise ToolError('cannot use variable {} moved in the script'.format(repr(grp)))
-		# create proper variables for temp objects reused
-		if istemp(main, var.name):
-			newname = autoname(main, var.value)
-			rename(main, var.name, newname)
-			var.name = newname
-	
-	# create successive missing objects (if they are sufficiently simple objects)
-	for i,(req,comment) in enumerate(args):
-		if match[i]:	continue
-		
-		main.assist.info(comment)
-		if req not in completition or not create:
-			raise ToolError('missing {}'.format(comment))
-	
-		# run a selection in concurrence with the creation
-		def select(main):
-			while True:
-				evt = yield
-				if not (evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton):
-					continue
-				view = main.active_sceneview
-				pos = view.somenear(evt.pos(), 10)
-				if not pos:	
-					continue
-				key = view.itemat(pos)
-				disp = view.scene.item(key)
-				name = dispname(main, disp)
-				if not name or not satisfy(env[name], req):
-					continue
-				disp.selected = True
-				# create proper variables for temp objects reused
-				obj = env[name]
-				if istemp(main, name):
-					newname = autoname(main, obj)
-					rename(main, name, newname)
-					return Var(obj, newname)
-				else:
-					return Var(obj, name)
-
-		# get the first returned value from the selector or the creation
-		iterator = race(select(main), completition[req](main))
-		next(iterator)
-		match[i] = yield from iterator
-	
-	main.deselectall()
-	return match
-
-
-
-def race(*args):
-	if len(args) == 1 and hasattr(args[0], '__iter__'):
-		args = args[0]
-	while True:
-		obj = yield
-		for it in args:
-			try:
-				res = it.send(obj)
-			except StopIteration as err:
-				return err.value
-
-def satisfy(obj, req):
-	''' return True if obj satisfy the requirement req (type or funcion) '''
-	if isinstance(req, type):	return isinstance(obj, req)
-	elif callable(req):			return req(obj)
-	else:						return False
-	
-def dispname(main, disp):
+def dispvar(main, disp):
 	if hasattr(disp, 'source') and disp.source:
-		return main.interpreter.ids.get(id(disp.source))
-
+		name = main.interpreter.ids.get(id(disp.source))
+		if name:
+			return Var(disp.source, name)
+		
+def clickedvar(main, evt):
+	view = main.active_sceneview
+	pos = view.somenear(evt.pos())
+	if pos:
+		disp = view.scene.item(view.itemat(pos))
+		return dispvar(main, disp)
 	
 
 def islive(main, name):
@@ -256,6 +178,17 @@ def istemp(main, name):
 	''' return whether a variable name belongs to a temporary object (an expression) or has been assigned '''
 	node = main.interpreter.locations[name]
 	return not isinstance(node, ast.Assign)
+
+def acquirevar(main, var):
+	''' create proper variables for temp objects reused '''
+	if istemp(main, var.name):
+		# check that the used objects dont rely on an object that is in the modified area of the script
+		if not islive(main, var.name):
+			raise ToolError('cannot use variable {} moved in the script'.format(repr(grp)))
+		newname = autoname(main, var.value)
+		rename(main, var.name, newname)
+		return Var(var.value, newname)
+	return var
 
 def rename(main, oldname, newname=None):
 	''' rename the object
@@ -294,44 +227,7 @@ def rename(main, oldname, newname=None):
 			# insert expression with assignation
 			main.mod[stmt.position] = '{} = {}\n'.format(newname, expr)
 			main.interpreter.current[newname] = main.interpreter.current.get(oldname)
-		
-
-		
-	
-def createpoint(main):
-	evt = yield from waitclick()
-	view = main.active_sceneview
-	p = view.ptfrom(evt.pos(), view.navigation.center)
-	solid = view.scene.active_solid
-	if solid:
-		p = vec3(mat4(affineInverse(solid.world * solid.pose)) * vec4(p,1))
-	main.addtemp(p)
-	view.scene.add(p)
-	view.update()
-	return Var(p)
-	
-def waitclick():
-	evt = yield
-	while evt.type() != QEvent.MouseButtonRelease or evt.button() != Qt.LeftButton:
-		evt = yield
-	return evt
-
-def createaxis(main):
-	evt = yield from waitclick()
-	view = main.active_sceneview
-	p0 = view.ptfrom(evt.pos(), view.navigation.center)
-	first = evt.pos()
-	evt = yield from waitclick()
-	if view == main.active_sceneview and (first-evt.pos()).manhattanLength() < 20:
-		axis = (p0, vec3(fvec3(view.navigation.matrix()[2])))
-	else:
-		p1 = main.active_sceneview.ptfrom(evt.pos(), view.navigation.center)
-		axis = (p0, normalize(p1-p0))
-	view.scene.add(axis)
-	view.update()
-	return Var(axis)
-	
-
+			
 def autoname(main, obj):
 	''' suggest an unused name for the given object '''
 	if isinstance(obj, vec3):		basename = 'P'
@@ -367,6 +263,110 @@ def format(pattern, *args, **kwargs):
 				**{k:dump(o) for k,o in kwargs.items()},
 				),
 				width=40)
+		
+
+def toolrequest(main, args, create=True):
+	match = [None] * len(args)	# matched objects
+	env = main.interpreter.current
+	
+	# search the selection for the required objects
+	for disp in scene_unroll(main.active_sceneview.scene):
+		if disp.selected:
+			var = dispvar(main, disp)
+			if var:
+				for i,(req,comment) in enumerate(args):
+					if not match[i] and satisfy(var.value, req):
+						match[i] = var
+						break
+	
+	for i,var in enumerate(match):
+		if var:		acquirevar(main, var)
+	
+	# create successive missing objects (if they are sufficiently simple objects)
+	for i,(req,comment) in enumerate(args):
+		if match[i]:	continue
+		
+		main.assist.info(comment)
+		if req not in completition or not create:
+			raise ToolError('missing {}'.format(comment))
+	
+		# run a selection in concurrence with the creation
+		def select(main):
+			while True:
+				evt = yield from waitclick()
+				view = main.active_sceneview
+				pos = view.somenear(evt.pos())
+				if not pos:	
+					continue
+				disp = view.scene.item(view.itemat(pos))
+				var = dispvar(main, disp)
+				if not var or not satisfy(var.value, req):
+					continue
+				disp.selected = True
+				# create proper variables for temp objects reused
+				return acquirevar(main, var)
+
+		# get the first returned value from the selector or the creation
+		iterator = race(select(main), completition[req](main))
+		next(iterator)
+		match[i] = yield from iterator
+	
+	main.deselectall()
+	return match
+
+
+
+def race(*args):
+	if len(args) == 1 and hasattr(args[0], '__iter__'):
+		args = args[0]
+	while True:
+		obj = yield
+		for it in args:
+			try:
+				res = it.send(obj)
+			except StopIteration as err:
+				return err.value
+
+def satisfy(obj, req):
+	''' return True if obj satisfy the requirement req (type or funcion) '''
+	if isinstance(req, type):	return isinstance(obj, req)
+	elif callable(req):			return req(obj)
+	else:						return False
+
+		
+	
+def createpoint(main):
+	evt = yield from waitclick()
+	view = main.active_sceneview
+	p = view.ptfrom(evt.pos(), view.navigation.center)
+	solid = view.scene.active_solid
+	if solid:
+		p = vec3(mat4(affineInverse(solid.world * solid.pose)) * vec4(p,1))
+	main.addtemp(p)
+	view.scene.add(p)
+	view.update()
+	return Var(p)
+	
+def waitclick():
+	evt = yield
+	while evt.type() != QEvent.MouseButtonRelease or evt.button() != Qt.LeftButton:
+		evt = yield
+	return evt
+
+def createaxis(main):
+	evt = yield from waitclick()
+	view = main.active_sceneview
+	p0 = view.ptfrom(evt.pos(), view.navigation.center)
+	first = evt.pos()
+	evt = yield from waitclick()
+	if view == main.active_sceneview and (first-evt.pos()).manhattanLength() < 20:
+		axis = (p0, vec3(fvec3(view.navigation.matrix()[2])))
+	else:
+		p1 = main.active_sceneview.ptfrom(evt.pos(), view.navigation.center)
+		axis = (p0, normalize(p1-p0))
+	view.scene.add(axis)
+	view.update()
+	return Var(axis)
 
 
 
@@ -438,9 +438,9 @@ def create_toolbars(main, widget):
 def act_rename(main):
 	for disp in scene_unroll(main.active_sceneview.scene):
 		if disp.selected:
-			name = dispname(main, disp)
-			if name:
-				rename(main, name)
+			var = dispvar(main, disp)
+			if var:
+				rename(main, var.name)
 				break
 
 def tool_import(main):
@@ -499,36 +499,26 @@ def tool_arcthrough(main):
 	
 def tool_note(main):
 	while True:
-		evt = yield
-		if not (evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton):
-			continue
+		evt = waitclick()
 		view = main.active_sceneview
-		pos = view.somenear(evt.pos(), 10)
+		pos = view.somenear(evt.pos())
 		if not pos:		continue
 		item = view.itemat(pos)
 		disp = view.scene.item(item)
-		name = dispname(main, disp)
-		if not name:	continue
-		break
+		var = dispvar(main, disp)
+		if var:	break
 	
-	# create proper variables for temp objects reused
-	obj = main.interpreter.current[name]
-	if istemp(main, name):
-		newname = autoname(main, obj)
-		rename(main, name, newname)
-		obj = Var(obj, newname)
-	else:
-		obj = Var(obj, name)
+	acquirevar(main, var)
 		
 	def asktext():
 		return QInputDialog.getText(main.mainwindow, 'text note', 'enter text:')[0]
 		
-	if isinstance(obj.value, (Mesh,Web,Wire)):
-		expr = format('note_leading({}.group({}), text={})', obj, item[-1], asktext())
-	elif isinstance(obj.value, (Wire,vec3,Axis,tuple)):
-		expr = format('note_leading({}, text={})', obj, asktext())
+	if isinstance(var.value, (Mesh,Web,Wire)):
+		expr = format('note_leading({}.group({}), text={})', var, item[-1], asktext())
+	elif isinstance(var.value, (Wire,vec3,Axis,tuple)):
+		expr = format('note_leading({}, text={})', var, asktext())
 	else:
-		raise ToolError('unable to place a note on top of {}'.format(type(obj.value)))
+		raise ToolError('unable to place a note on top of {}'.format(type(var.value)))
 	main.insertexpr(expr)
 
 def tool_boolean(main):
@@ -642,34 +632,19 @@ def tool_planar(main):
 	axis, = yield from toolrequest(main, [
 				(Axis, 'axis normal to the plane'),
 				])
-				
-	vars = []
-				
+	
 	# let the user select or create the points to put on the plane
+	vars = []
 	while True:
 		evt = yield
 		if evt.type() == QEvent.KeyPressed and evt.key() == Qt.Esc or evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.MiddleButton:
 			break
 		if not (evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton):
 			continue
-		view = main.active_sceneview
-		pos = view.somenear(evt.pos(), 10)
-		if not pos:		continue
-		disp = view.scene.item(view.itemat(pos))
-		name = dispname(main, disp)
-		if not name:	continue
-	
-		# create proper variables for temp objects reused
-		obj = main.interpreter.current[name]
-		if not isinstance(obj, vec3):	continue
-		if istemp(main, name):
-			newname = autoname(main, obj)
-			rename(main, name, newname)
-			obj = Var(obj, newname)
-		else:
-			obj = Var(obj, name)
-		
-		vars.append(obj)
+		var = clickedvar(evt)
+		if not var:	
+			continue
+		vars.append(acquirevar(var))
 	
 	main.insertexpr(format('Planar({}, [{}])', 
 				axis, 
