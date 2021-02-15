@@ -62,6 +62,7 @@ class ErrorView(QWidget):
 	
 	def set(self, exception):
 		''' set the exception to display '''
+		self.exception = exception
 		# set labels
 		self.setWindowTitle(type(exception).__name__)
 		self._label.setText('<b style="color:#ff5555">{}:</b> {}'.format(
@@ -81,7 +82,7 @@ class ErrorView(QWidget):
 						QColor(255,100,100),
 						palette.color(QPalette.Background),
 						0.2))
-		if isinstance(exception, SyntaxError) and self.exception.filename == self.main.interpreter.name:
+		if type(exception) == SyntaxError and exception.filename == self.main.interpreter.name:
 			cursor.insertText('  File \"{}\", line {}\n'.format(exception.filename, exception.lineno), fmt_traceback)
 			offset = exception.offset
 			while offset > 0 and exception.text[offset-1].isalnum():	offset -= 1
@@ -106,7 +107,7 @@ class ErrorView(QWidget):
 		self.setVisible(True)
 		
 	def showsource(self):
-		if isinstance(self.exception, SyntaxError) and self.exception.filename == self.main.interpreter.name:
+		if type(self.exception) == SyntaxError and self.exception.filename == self.main.interpreter.name:
 			line = self.exception.lineno
 		else:
 			step = self.exception.__traceback__
