@@ -147,7 +147,7 @@ class Modification(object):
 
 class Var(object):
 	__slots__ = 'value', 'name'
-	def __init__(self, value, name=None):
+	def __init__(self, value=None, name=None):
 		self.value, self.name = value, name
 	
 
@@ -378,6 +378,7 @@ def create_toolbars(main, widget):
 	tools.addAction(main.createaction('manual triangulated meshing', tool_meshing, 'madcad-meshing'))
 	tools.addAction(QIcon.fromTheme('madcad-splined'), 'manual splined meshing')
 	tools.addAction(main.createtool('point', tool_point,		'madcad-point'))
+	tools.addAction(main.createtool('axis', tool_axis,		'madcad-axis'))
 	tools.addAction(main.createtool('segment', tool_segment,	'madcad-segment'))
 	tools.addAction(main.createtool('arc', tool_arcthrough,		'madcad-arc'))
 	tools.addAction(QIcon.fromTheme('madcad-spline'), 'spline')
@@ -398,15 +399,16 @@ def create_toolbars(main, widget):
 	tools.setObjectName('toolbar-web')
 	tools.addAction(main.createtool('extrusion', tool_extrusion, 'madcad-extrusion'))
 	tools.addAction(QIcon.fromTheme('madcad-revolution'), 'revolution')
-	tools.addAction(QIcon.fromTheme('madcad-extrans'), 'extrusion transformation')
+	tools.addAction(QIcon.fromTheme('madcad-tube'), 'tube')
+	tools.addAction(QIcon.fromTheme('madcad-saddle'), 'saddle')
 	tools.addAction(QIcon.fromTheme('madcad-triangulation'), 'surface')
-	tools.addAction(QIcon.fromTheme('madcad-junction'), 'join')
+	tools.addAction(QIcon.fromTheme('madcad-junction'), 'junction')
 	
 	tools = widget.addToolBar('amelioration')
 	tools.setObjectName('toolbar-ameliration')
 	tools.addAction(main.createtool('merge closes', tool_mergeclose, 'madcad-mergeclose'))
 	tools.addAction(main.createtool('strip buffers', tool_stripbuffers, 'madcad-stripbuffer'))
-	tools.addAction(QIcon.fromTheme('madcad-flip'), 'flip')
+	tools.addAction(QIcon.fromTheme('madcad-flip'), 'flip orientation')
 	
 	tools = widget.addToolBar('constraints')
 	tools.setObjectName('toolbar-constraints')
@@ -471,6 +473,14 @@ def tool_point(main):
 	main.assist.info('click to place the point')
 	p = yield from createpoint(main)
 	main.insertexpr(dump(p))
+	
+def tool_axis(main):
+	origin, dst = yield from toolrequest(main, [
+				(vec3, 'origin point'),
+				(vec3, 'direction point'),
+			])
+	dir = normalize(dst.value-origin.value)
+	main.insertexpr(format('Axis({}, {})', origin, dir))
 	
 def tool_segment(main):
 	args = yield from toolrequest(main, [
@@ -552,14 +562,37 @@ class BooleanChoice(QWidget):
 """
 
 def tool_extrusion(main):
-	obj, = yield from toolrequest(main, [
-				(lambda o: isinstance(o, (Web,Mesh)), 'first volume'),
+	outline, = yield from toolrequest(main, [
+				(lambda o: isinstance(o, (Web,Wire,Mesh)), 'outline mesh'),
 				])
 	displt = QInputDialog.getText(main.mainwindow, 'extrusion displacement', 'vector expression:')[0]
 	if not displt:
 		raise ToolError('no displacement entered')
-	main.insertexpr(format('extrusion({}, {})', Var(None,name=displt), obj))
+	main.insertexpr(format('extrusion({}, {})', Var(name=displt), outline))
 
+def tool_revolution(main):
+	outline, axis = yield from toolrequest(main, [
+				(lambda o: isinstance(o, (Web,Wire,Mesh)), 'outline mesh'),
+				(isaxis, 'revolution axis'),
+				])
+	angle = QInputDialog.getText(main.mainwindow, 'revolution angle', 'angle (degrees):')[0]
+	if not angle:
+		raise ToolError('no displacement entered')
+	main.insertexpr(format('revolution(radians({}), {}, {})', Var(name=angle), axis, outline))
+	
+def tool_tube(main):
+	args = yield from toolrequest(main, [
+				(lambda o: isinstance(o, (Web,Wire,Mesh)), 'outline'),
+				(lambda o: isinstance(o, (Web,Wire,Mesh)), 'path'),
+				])
+	main.insertexpr(format('tube({}, {})', *args))
+	
+def tool_saddle(main):
+	args = yield from toolrequest(main, [
+				(lambda o: isinstance(o, (Web,Wire,Mesh)), 'profile 1'),
+				(lambda o: isinstance(o, (Web,Wire,Mesh)), 'profile 2'),
+				])
+	main.insertexpr(format('saddle({}, {})', *args))
 
 
 
@@ -571,7 +604,7 @@ def tool_distance(main):
 	target = QInputDialog.getText(main.mainwindow, 'distance constraint', 'target distance:')[0]
 	if not target:
 		raise ToolError('no distance entered or invalid radius')
-	main.insertexpr(format('Distance({}, {}, {})', *args, target))
+	main.insertexpr(format('Distance({}, {}, {})', *args, Var(name=target)))
 
 def tool_radius(main):
 	arc, = yield from toolrequest(main, [
@@ -580,7 +613,7 @@ def tool_radius(main):
 	target = QInputDialog.getText(main.mainwindow, 'radius constraint', 'target radius:')[0]
 	if not target:
 		raise ToolError('no radius entered')
-	main.insertexpr(format('Radius({}, {})', arc, target))
+	main.insertexpr(format('Radius({}, {})', arc, Var(name=target)))
 
 def tool_angle(main):
 	args = yield from toolrequest(main, [
@@ -590,54 +623,89 @@ def tool_angle(main):
 	target = QInputDialog.getText(main.mainwindow, 'angle constraint', 'target oriented angle:')[0]
 	if not target:
 		raise ToolError('no angle entered')
-	main.insertexpr(format('Angle({}, {}, {})', *args, target))
+	main.insertexpr(format('Angle({}, {}, radians({}))', *args, Var(name=target)))
 
 def tool_tangent(main):
 	args = yield from toolrequest(main, [
 				(object, 'primitive 1'),
 				(object, 'primitive 2'),
 				])
+	common = None
 	for v1 in args[0].slvvars:
 		for v2 in args[1].slvvars:
-			indev
+			if getattr(args[0], v1) is getattr(args[1], v2):
+				common = v1, v2
+	main.insertexpr(format('Tangent({}, {}, {}.{})', args[0], args[1], args[0], Var(name=common[0])))
+				
 			
 def tool_planar(main):
-	args = yield from toolrequest(main, [
+	axis, = yield from toolrequest(main, [
 				(Axis, 'axis normal to the plane'),
 				])
+				
+	vars = []
+				
 	# let the user select or create the points to put on the plane
-	indev
+	while True:
+		evt = yield
+		if evt.type() == QEvent.KeyPressed and evt.key() == Qt.Esc or evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.MiddleButton:
+			break
+		if not (evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton):
+			continue
+		view = main.active_sceneview
+		pos = view.somenear(evt.pos(), 10)
+		if not pos:		continue
+		disp = view.scene.item(view.itemat(pos))
+		name = dispname(main, disp)
+		if not name:	continue
+	
+		# create proper variables for temp objects reused
+		obj = main.interpreter.current[name]
+		if not isinstance(obj, vec3):	continue
+		if istemp(main, name):
+			newname = autoname(main, obj)
+			rename(main, name, newname)
+			obj = Var(obj, newname)
+		else:
+			obj = Var(obj, name)
+		
+		vars.append(obj)
+	
+	main.insertexpr(format('Planar({}, [{}])', 
+				axis, 
+				', '.join(dump(obj) for obj in vars)),
+				)
 
 
 def tool_pivot(main):
 	args = yield from toolrequest(main, [
 				(Axis, 'axis of the pivot'),
 				])
-	main.insertexpr(format('Pivot(Solid(), Solid(), {})', args[0]))
+	main.insertexpr(format('Pivot(Solid(), Solid(), {})', *args))
 
 def tool_gliding(main):
 	args = yield from toolrequest(main, [
 				(Axis, 'axis of the pivot'),
 				])
-	main.insertexpr(format('Gliding(Solid(), Solid(), {})', args[0]))
+	main.insertexpr(format('Gliding(Solid(), Solid(), {})', *args))
 	
 def tool_plane(main):
 	args = yield from toolrequest(main, [
 				(Axis, 'normal axis to the plane'),
 				])
-	main.insertexpr(format('Plane(Solid(), Solid(), {})',  args[0]))
+	main.insertexpr(format('Plane(Solid(), Solid(), {})',  *args))
 	
 def tool_ball(main):
 	args = yield from toolrequest(main, [
 				(vec3, 'position of the ball'),
 				])
-	main.insertexpr(format('Ball(Solid(), Solid(), {})', args[0]))
+	main.insertexpr(format('Ball(Solid(), Solid(), {})', *args))
 	
 def tool_punctiform(main):
 	args = yield from toolrequest(main, [
 				(Axis, 'normal axis to the plane'),
 				])
-	main.insertexpr('Punctiform(Solid(), Solid(), {})'.format(args[0]))
+	main.insertexpr(format('Ball(Solid(), Solid(), {})', *args))
 	
 def tool_track(main):
 	(o,x), = yield from toolrequest(main, [
@@ -650,10 +718,10 @@ def tool_helicoid(main):
 	axis, = yield from toolrequest(main, [
 				(Axis, 'axis of the helicoid'),
 				])
-	pitch = QInputDialog.getText(main.mainwindow, 'helicoid joint', 'screw pitch (/tr):')[0]
+	pitch = QInputDialog.getText(main.mainwindow, 'helicoid joint', 'screw pitch (mm/tr):')[0]
 	if not pitch:
 		raise ToolError('no pich entered')
-	main.insertexpr(format('Helicoid(Solid(), Solid(), {}, {})', pitch, axis))
+	main.insertexpr(format('Helicoid(Solid(), Solid(), {}, {})', Var(name=pitch), axis))
 
 
 # tools that will automatically used to create missing objects in request
