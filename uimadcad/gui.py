@@ -243,42 +243,7 @@ class Madcad(QObject):
 		self.script.clearUndoRedoStacks()
 		self.file_changed.emit()
 		return True
-				
-	"""
-	def _save(self):
-		''' callback for the button 'save'
-			save to the file specified in self.currentfile, using its extension
-		'''
-		if not self.currentfile:	self._save_as()
-		else:
-			extension = self.currentfile[self.currentfile.find('.')+1:]
-			if extension not in ('py', 'txt'):
-				box = QMessageBox(
-					QMessageBox.Warning, 'bad file type', 
-					"The file extension '{}' is not a standard madcad file extension and may result in problems to open the file from a browser\n\nSave anyway ?".format(extension),
-					QMessageBox.Yes | QMessageBox.Discard,
-					)
-				if box.exec() == QMessageBox.Discard:	return
-				else:
-					extension = 'py'
-			
-			if extension in ('py', 'txt'):
-				open(self.currentfile, 'w').write(self.script.toPlainText())
-			
-			self.script.setModified(False)
-			self.file_changed.emit()
-			
-	def _save_as(self):
-		''' callback for button 'save as' 
-			ask the user for a new value for self.currentfile
-		'''
-		dialog = QFileDialog(self.mainwindow, 'save madcad file', self.currentfile or os.curdir)
-		dialog.setAcceptMode(QFileDialog.AcceptSave)
-		dialog.exec()
-		if dialog.result() == QDialog.Accepted:
-			self.currentfile = dialog.selectedFiles()[0]
-			self._save()
-	"""
+	
 	def _prompt_file(self):
 		dialog = QFileDialog(self.mainwindow, 'save madcad file', self.currentfile or os.curdir)
 		dialog.setAcceptMode(QFileDialog.AcceptSave)
@@ -311,7 +276,7 @@ class Madcad(QObject):
 	def _save_as(self):
 		file = self._prompt_file()
 		if file:
-			self.current_file = file
+			self.currentfile = file
 			self.save()
 			self.script.setModified(False)
 			self.file_changed.emit()
