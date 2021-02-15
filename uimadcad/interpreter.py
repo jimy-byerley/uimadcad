@@ -345,10 +345,6 @@ def astannotate(tree, text):
 			i = node.position
 			while i < len(text) and text[i].isalnum():	i+=1
 			node.end_position = i
-		elif isinstance(node, ast.Attribute):
-			i = node.position+1
-			while i < len(text) and text[i].isalnum():	i+=1
-			node.end_position = i
 		
 		# generic retreival from the last child
 		elif hasattr(node, 'position'):
@@ -358,7 +354,11 @@ def astannotate(tree, text):
 				if hasattr(child, 'end_position'):
 					node.end_position = max(node.end_position, child.end_position)
 		
-		if isinstance(node, (ast.Call,ast.Tuple)):
+		if isinstance(node, ast.Attribute):
+			i = node.end_position + len(node.attr)
+			while i < len(text) and text[i].isalnum():	i+=1
+			node.end_position = i
+		elif isinstance(node, (ast.Call,ast.Tuple)):
 			node.end_position = text.find(')', node.end_position)+1
 		elif isinstance(node, (ast.Subscript, ast.List)):
 			node.end_position = text.find(']', node.end_position)+1
