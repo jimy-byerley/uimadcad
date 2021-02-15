@@ -308,8 +308,12 @@ class Madcad(QObject):
 		self.editzone[1] += added - removed
 		# get the added text
 		cursor = QTextCursor(self.script)
-		cursor.setPosition(position+added)
-		cursor.setPosition(position, cursor.KeepAnchor)
+		cursor.setPosition(position)
+		if not position:	
+			# because Qt moves the insertion position and put removed to 1 when inserting at position 0
+			cursor.setPosition(position+added-1, cursor.KeepAnchor)
+		else:
+			cursor.setPosition(position+added, cursor.KeepAnchor)
 		# transform it to fit the common standards
 		newtext = cursor.selectedText().replace('\u2029', '\n')
 		# apply change to the interpeter
