@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="16"
+   height="16"
+   viewBox="0 0 16 16"
+   version="1.1"
+   id="svg6592"
+   inkscape:version="1.0.2 (1.0.2+r75+1)"
+   sodipodi:docname="madcad-axis.svg">
+  <defs
+     id="defs11" />
+  <style
+     id="current-color-scheme"
+     type="text/css">
+	  .ColorScheme-Text { color:#232629; }
+      .ColorScheme-Highlight { color:#93cee9; }
+    </style>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#9a9a9a"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="17.11462"
+     inkscape:cx="8.2591001"
+     inkscape:cy="7.8998841"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     inkscape:document-rotation="0"
+     showgrid="true"
+     units="px"
+     inkscape:window-width="897"
+     inkscape:window-height="554"
+     inkscape:window-x="896"
+     inkscape:window-y="180"
+     inkscape:window-maximized="0">
+    <inkscape:grid
+       type="xygrid"
+       id="grid7157" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata6589">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Calque 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       style="fill:none;stroke:#808080;stroke-width:0.708;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:2.83200002,1.41600001,0.708,1.41600001;stroke-dashoffset:4.24800003;stroke-opacity:1"
+       d="M 1,15 15,1"
+       id="path7174"
+       sodipodi:nodetypes="cc" />
+    <rect
+       style="opacity:1;fill:currentColor;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:2.26772;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.992157;paint-order:normal"
+       class="ColorScheme-Text"
+       id="rect7155"
+       width="2"
+       height="2"
+       x="7"
+       y="7" />
+  </g>
+</svg>
