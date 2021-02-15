@@ -5,6 +5,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy,
 from PyQt5.QtGui import QColor, QPalette, QFont, QFontMetrics, QTextOption, QIcon
 import traceback
 import textwrap
+from madcad.nprint import nprint
+
 from .common import *
 
 class ErrorView(QWidget):
@@ -16,7 +18,7 @@ class ErrorView(QWidget):
 		self._text = QPlainTextEdit()
 		self._label = QLabel('(no exception)')
 		self._keepchk = QCheckBox('keep apart')
-		self._sourcebtn = QPushButton('source +')
+		self._sourcebtn = QPushButton('source')
 		self.main = main
 		self.exception = exception
 		
@@ -53,7 +55,7 @@ class ErrorView(QWidget):
 		self._label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
 		# configure the button
 		self._sourcebtn.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Minimum))
-		#self._sourcebtn.clicked.connect(self.showsource)	# TODO: retreive find the stack frame for the execution module, then we would have the line number
+		self._sourcebtn.clicked.connect(self.showsource)
 		
 		if exception:
 			self.set(exception)
@@ -79,7 +81,7 @@ class ErrorView(QWidget):
 						QColor(255,100,100),
 						palette.color(QPalette.Background),
 						0.2))
-		if isinstance(exception, SyntaxError):
+		if isinstance(exception, SyntaxError) and self.exception.filename == self.main.interpreter.name:
 			cursor.insertText('  File \"{}\", line {}\n'.format(exception.filename, exception.lineno), fmt_traceback)
 			offset = exception.offset
 			while offset > 0 and exception.text[offset-1].isalnum():	offset -= 1
@@ -102,6 +104,25 @@ class ErrorView(QWidget):
 		self._text.setTextCursor(cursor)
 		self._text.ensureCursorVisible()
 		self.setVisible(True)
+		
+	def showsource(self):
+		if isinstance(self.exception, SyntaxError) and self.exception.filename == self.main.interpreter.name:
+			line = self.exception.lineno
+		else:
+			step = self.exception.__traceback__
+			line = -1
+			while step:
+				print(frame.f_code.co_filename)
+				if step.tb_frame.f_code.co_filename == self.main.interpreter.name:
+					line = frame.f_lineno
+					break
+				step = step.tb_next
+		if line >= 0:
+			self.main.active_scriptview.seek_line(line-1)
+			self.main.active_scriptview.editor.activateWindow()
+			self.main.active_scriptview.editor.setFocus()
+		else:
+			print('no source to display in this traceback')
 	
 	@property
 	def keep(self):	

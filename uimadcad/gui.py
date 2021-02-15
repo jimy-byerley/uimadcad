@@ -309,9 +309,9 @@ class Madcad(QObject):
 		# get the added text
 		cursor = QTextCursor(self.script)
 		cursor.setPosition(position)
-		if not position:	
-			# because Qt moves the insertion position and put removed to 1 when inserting at position 0
-			cursor.setPosition(position+added-1, cursor.KeepAnchor)
+		if not position and removed:	
+			# because Qt moves the insertion position and put removed to 1 sometimes when inserting at position 0
+			cursor.setPosition(position+added-removed, cursor.KeepAnchor)
 		else:
 			cursor.setPosition(position+added, cursor.KeepAnchor)
 		# transform it to fit the common standards
@@ -373,11 +373,12 @@ class Madcad(QObject):
 		if view and not view.keep:
 			view.set(err)
 		else:
-			self.active_errorview = ErrorView(self, err)
-			self.active_errorview.show()
-			self.views.append(self.active_errorview)
-		if self.mainwindow:
-			self.mainwindow.activateWindow()
+			self.active_errorview = view = ErrorView(self, err)
+			self.views.append(view)
+			view.show()
+			if self.mainwindow:
+				view.move(self.mainwindow.geometry().center())
+				self.mainwindow.activateWindow()
 	
 	def hideerror(self):
 		view = self.active_errorview
@@ -891,9 +892,6 @@ class MainWindow(QMainWindow):
 		menu.addAction(action)
 		action = QAction('enable line wrapping', main, checkable=True, shortcut=QKeySequence('F10'))
 		action.toggled.connect(main._enable_line_wrapping)
-		menu.addAction(action)
-		action = QAction('scroll on selected object +', main, checkable=True)
-		#action.toggled.connect(main._enable_center_on_select)	# TODO when settings will be added
 		menu.addAction(action)
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('edit-find'), 'find +', lambda: None, shortcut=QKeySequence('Ctrl+F'))

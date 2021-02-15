@@ -229,6 +229,22 @@ class ScriptView(QWidget):
 	def fontsize_decrease(self):
 		self.font.setPointSize(self.font.pointSize() - 1)
 		self.highlighter = Highlighter(self.editor.document(), self.font)
+		
+	def seek_line(self, lineno):
+		''' set cursor and scroll to lineno '''
+		block = self.editor.document().findBlockByLineNumber(lineno-1)
+		cursor = QTextCursor(block)
+		cursor.movePosition(QTextCursor.EndOfLine)
+		self.editor.setTextCursor(cursor)
+		self.editor.ensureCursorVisible()
+	
+	def seek_position(self, position):
+		''' set cursor and scroll to position '''
+		cursor = QTextCursor(self.editor.document())
+		cursor.setPosition(position)
+		cursor.movePosition(QTextCursor.EndOfLine)
+		self.editor.setTextCursor(cursor)
+		self.editor.ensureCursorVisible()
 
 
 class LineNumbers(QWidget):
