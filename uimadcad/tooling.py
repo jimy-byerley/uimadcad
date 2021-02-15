@@ -499,7 +499,7 @@ def tool_arcthrough(main):
 	
 def tool_note(main):
 	while True:
-		evt = waitclick()
+		evt = yield from waitclick()
 		view = main.active_sceneview
 		pos = view.somenear(evt.pos())
 		if not pos:		continue
