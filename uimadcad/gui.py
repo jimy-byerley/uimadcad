@@ -623,10 +623,10 @@ class Madcad(QObject):
 	def posvar(self, position):
 		mscore = inf
 		mname = None
-		for name,interval in self.interpreter.locations.items():
-			start,end = astinterval(interval)
-			if start <= position and position <= end:
-				score = end-start
+		for name,node in self.interpreter.locations.items():
+			start,stop = astinterval(node)
+			if start <= position and position <= stop:
+				score = stop-start
 				if score < mscore:
 					mscore = score
 					mname = name
@@ -684,9 +684,9 @@ class Madcad(QObject):
 				view.editor.setExtraSelections(extra)
 	
 	def update_endzone(self):
-		i = astatpos(self.interpreter.ast, self.exectarget)
-		if i < len(self.interpreter.ast.body):
-			around = self.interpreter.ast.body[i]
+		i = astatpos(self.interpreter.part, self.exectarget)
+		if i < len(self.interpreter.part.body):
+			around = self.interpreter.part.body[i]
 			self.displayzones['aroundtarget'] = around.position, around.end_position
 		else:
 			self.displayzones.pop('aroundtarget', None)
