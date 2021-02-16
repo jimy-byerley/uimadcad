@@ -83,7 +83,6 @@ class Madcad(QObject):
 		self.details = {}
 		self.hiddens = set()
 		self.displayzones = {}
-		#self.editzone = [0,1]
 		
 		# madcad ressources (and widgets)
 		self.standardcameras = {

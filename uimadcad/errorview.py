@@ -113,9 +113,8 @@ class ErrorView(QWidget):
 			step = self.exception.__traceback__
 			line = -1
 			while step:
-				print(frame.f_code.co_filename)
 				if step.tb_frame.f_code.co_filename == self.main.interpreter.name:
-					line = frame.f_lineno
+					line = step.tb_frame.f_lineno
 					break
 				step = step.tb_next
 		if line >= 0:

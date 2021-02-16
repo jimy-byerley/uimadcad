@@ -226,7 +226,7 @@ def rename(main, oldname, newname=None):
 			main.mod[node.position:node.end_position] = newname
 			# insert expression with assignation
 			main.mod[stmt.position] = '{} = {}\n'.format(newname, expr)
-			main.interpreter.current[newname] = main.interpreter.current.get(oldname)
+	main.interpreter.current[newname] = main.interpreter.current.get(oldname)
 			
 def autoname(main, obj):
 	''' suggest an unused name for the given object '''
@@ -280,7 +280,9 @@ def toolrequest(main, args, create=True):
 						break
 	
 	for i,var in enumerate(match):
-		if var:		acquirevar(main, var)
+		if var:
+			match[i] = acquirevar(main, var)
+			print('acquired', i, var.name, match[i].name)
 	
 	# create successive missing objects (if they are sufficiently simple objects)
 	for i,(req,comment) in enumerate(args):
