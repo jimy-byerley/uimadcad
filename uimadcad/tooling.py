@@ -282,7 +282,6 @@ def toolrequest(main, args, create=True):
 	for i,var in enumerate(match):
 		if var:
 			match[i] = acquirevar(main, var)
-			print('acquired', i, var.name, match[i].name)
 	
 	# create successive missing objects (if they are sufficiently simple objects)
 	for i,(req,comment) in enumerate(args):
@@ -609,8 +608,8 @@ def tool_radius(main):
 
 def tool_angle(main):
 	args = yield from toolrequest(main, [
-				(Segment, 'start segment'),
-				(Segment, 'second segment'),
+				(lambda o: hasattr(o, 'direction'), 'start segment'),
+				(lambda o: hasattr(o, 'direction'), 'second segment'),
 				])
 	target = QInputDialog.getText(main.mainwindow, 'angle constraint', 'target oriented angle:')[0]
 	if not target:
@@ -619,8 +618,8 @@ def tool_angle(main):
 
 def tool_tangent(main):
 	args = yield from toolrequest(main, [
-				(object, 'primitive 1'),
-				(object, 'primitive 2'),
+				(lambda o: hasattr(o, 'slv_tangent'), 'primitive 1'),
+				(lambda o: hasattr(o, 'slv_tangent'), 'primitive 2'),
 				])
 	common = None
 	for v1 in args[0].slvvars:
@@ -632,7 +631,7 @@ def tool_tangent(main):
 			
 def tool_planar(main):
 	axis, = yield from toolrequest(main, [
-				(Axis, 'axis normal to the plane'),
+				(isaxis, 'axis normal to the plane'),
 				])
 	
 	# let the user select or create the points to put on the plane
@@ -656,19 +655,19 @@ def tool_planar(main):
 
 def tool_pivot(main):
 	args = yield from toolrequest(main, [
-				(Axis, 'axis of the pivot'),
+				(isaxis, 'axis of the pivot'),
 				])
 	main.insertexpr(format('Pivot(Solid(), Solid(), {})', *args))
 
 def tool_gliding(main):
 	args = yield from toolrequest(main, [
-				(Axis, 'axis of the pivot'),
+				(isaxis, 'axis of the pivot'),
 				])
 	main.insertexpr(format('Gliding(Solid(), Solid(), {})', *args))
 	
 def tool_plane(main):
 	args = yield from toolrequest(main, [
-				(Axis, 'normal axis to the plane'),
+				(isaxis, 'normal axis to the plane'),
 				])
 	main.insertexpr(format('Plane(Solid(), Solid(), {})',  *args))
 	
@@ -680,20 +679,20 @@ def tool_ball(main):
 	
 def tool_punctiform(main):
 	args = yield from toolrequest(main, [
-				(Axis, 'normal axis to the plane'),
+				(isaxis, 'normal axis to the plane'),
 				])
 	main.insertexpr(format('Ball(Solid(), Solid(), {})', *args))
 	
 def tool_track(main):
 	(o,x), = yield from toolrequest(main, [
-				(Axis, 'axis of the track'),
+				(isaxis, 'axis of the track'),
 				])
 	z = vec3(fvec3(main.active_sceneview.uniforms['view'][2]))
 	main.insertexpr(format('Track(Solid(), Solid(), {})', (o,x,z)))
 	
 def tool_helicoid(main):
 	axis, = yield from toolrequest(main, [
-				(Axis, 'axis of the helicoid'),
+				(isaxis, 'axis of the helicoid'),
 				])
 	pitch = QInputDialog.getText(main.mainwindow, 'helicoid joint', 'screw pitch (mm/tr):')[0]
 	if not pitch:
@@ -705,6 +704,7 @@ def tool_helicoid(main):
 completition = {
 	vec3:	createpoint,
 	Axis:	createaxis,
+	isaxis:	createaxis,
 	}
 
 
