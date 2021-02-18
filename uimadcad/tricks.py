@@ -27,29 +27,36 @@ class EditorNode:
 		node = main.interpreter.locations[name]
 		if isinstance(node, ast.Assign):	node = node.value
 		
-		cursor = QTextCursor(self.main.script)
-		cursor.setPosition(node.end_position)
-		cursor.setPosition(node.position, QTextCursor.KeepAnchor)
-		self.cursor = cursor
+		# double cursor to allow undo without loosing the start/end positions in the text
+		start = QTextCursor(self.main.script)
+		start.setPosition(node.position-1)
+		stop = QTextCursor(start)
+		stop.setPosition(node.end_position+1)
+		self.cursors = (start, stop)
 		
 		self.load(node)
 		
+	def cursor(self):
+		''' text cursor with the node text selected '''
+		start, stop = self.cursors
+		cursor = QTextCursor(start)
+		cursor.setPosition(start.position()+1)
+		cursor.setPosition(stop.position()-1, QTextCursor.KeepAnchor)
+		return cursor
+		
 	def text(self):
-		return self.cursor.selectedText().replace('\u2029', '\n')
+		''' get the node text in the script '''
+		return self.cursor().selectedText().replace('\u2029', '\n')
 		
 	def apply(self, run=True):
 		''' update the script with the modifications '''
-		pos = min(self.cursor.anchor(), self.cursor.position())
-		self.cursor.beginEditBlock()
-		self.cursor.removeSelectedText()
-		self.cursor.insertText(self.dump())
-		self.cursor.setPosition(pos, QTextCursor.KeepAnchor)
-		self.cursor.endEditBlock()
+		self.cursor().insertText(self.dump())
 		
 		if run and self.main.exectrigger:
 			self.main.execute()
 		
 	def finalize(self):
+		''' finish the edition '''
 		pass
 		
 def store(dst, src):
