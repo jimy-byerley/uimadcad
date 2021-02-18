@@ -38,8 +38,8 @@ from .scriptview import ScriptView
 from .sceneview import Scene, SceneView, SceneList, scene_unroll
 from .errorview import ErrorView
 from .detailview import DetailView
-from .tricks import PointEditor, EditionError
 from .tooling import ToolAssist, ToolError, Modification
+from . import tricks
 from . import tooling
 from . import settings
 
@@ -75,6 +75,7 @@ class Madcad(QObject):
 		self.active_scriptview = None
 		self.active_errorview = None
 		self.active_solid = None
+		self.active_editor = None
 		
 		self.exectrigger = 1
 		self.exectarget = 0
@@ -94,7 +95,6 @@ class Madcad(QObject):
 			'+Y': fquat(fvec3(pi/2, 0, pi/2)),
 			}
 		
-		# madcad widgets
 		self.script = QTextDocument(self)
 		self.script.setDocumentLayout(QPlainTextDocumentLayout(self.script))
 		self.script.contentsChange.connect(self._contentsChange)
@@ -103,6 +103,7 @@ class Madcad(QObject):
 		self.interpreter = Interpreter()
 		self.scopes = []
 		
+		# madcad widgets
 		self.scenes = []	# objets a afficher sur les View
 		self.views = []		# widgets d'affichage (textview, sceneview, graphicview, ...)
 		self.assist = ToolAssist(self)
@@ -385,28 +386,41 @@ class Madcad(QObject):
 			view.hide()
 		
 	def edit(self, name):
-		obj = self.scene[name]
-		if isinstance(obj, vec3):	editor = PointEditor
-		elif isinstance(obj, Mesh):	editor = MeshEditor
-		else:	return
+		obj = self.interpreter.current[name]
+		editor = tricks.editors.get(type(obj))
+		if not editor:
+			return
 		try:	
 			self.editors[name] = e = editor(self, name)
-			self.active_sceneview.scene.sync()
-			self.updatescript()
 		except EditionError as err:
 			print('unable to edit variable', name, ':', err)
 		else:
+			print('editing', name)
+			self.active_sceneview.scene.sync()
+			self.updatescript()
 			return e
 	
 	def finishedit(self, name):
 		if name in self.editors:
-			self.editors[name].finish()
+			self.editors[name].finalize()
 			del self.editors[name]
-			self.updatescene([name])
+			self.active_sceneview.scene.sync()
 			self.updatescript()
+			self.active_editor = next(iter(self.editors.values()), None)
+			print('end edit', name)
+			
+	def _edit(self):
+		for disp in scene_unroll(self.active_sceneview.scene):
+			disp.selected and self.edit(self.interpreter.ids[id(disp.source)])
+				
+	def _finishedit(self):
+		if not self.active_editor:
+			self.active_editor = next(iter(self.editors.values()), None)
+		if self.active_editor:
+			self.finishedit(self.active_editor.name)
 
 		
-	def _editfunction(self):
+	def _enterfunction(self):
 		''' start editing definition of function used under cursor '''
 		cursor = self.active_scriptview.editor.textCursor()
 		try:	it, callnode, defnode = self.interpreter.enter(cursor.position())
@@ -780,15 +794,18 @@ class MainWindow(QMainWindow):
 		menu.addAction(QIcon.fromTheme('media-playback-start'), 'execute', main.execute, QKeySequence('Ctrl+Return'))
 		menu.addAction(QIcon.fromTheme('view-refresh'), 'reexecute all', main.reexecute, QKeySequence('Ctrl+Shift+Return'))
 		menu.addAction(QIcon.fromTheme('go-bottom'), 'target to cursor', main._targettocursor, QKeySequence('Ctrl+T'))
-		menu.addAction(QIcon.fromTheme('go-jump'), 'edit function', main._editfunction, QKeySequence('Ctrl+G'))
-		menu.addAction(QIcon.fromTheme('draw-arrow-back'), 'return to upper context', lambda: None, QKeySequence('Ctrl+Shift+G'))
+		menu.addAction(QIcon.fromTheme('go-jump'), 'edit function', main._enterfunction, QKeySequence('Ctrl+G'))
+		menu.addAction(QIcon.fromTheme('draw-arrow-back'), 'return to upper context', main._returnfunction, QKeySequence('Ctrl+Shift+G'))
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('format-indent-more'), 'disable line +')
 		menu.addAction(QIcon.fromTheme('format-indent-less'), 'enable line +')
 		menu.addAction('disable line dependencies +')
 		menu.addAction('create function +')
 		menu.addAction('create list +')
+		menu.addSeparator()
 		menu.addAction(main.createaction('rename object', tooling.act_rename, shortcut=QKeySequence('F2')))
+		menu.addAction(QIcon.fromTheme('edit-node'), 'graphical edit object', main._edit, QKeySequence('E'))
+		menu.addAction(QIcon.fromTheme('edit-paste'), 'end graphical edit ', main._finishedit, QKeySequence('Escape'))
 		
 		menu = menubar.addMenu('&View')
 		menu.addAction(QAction('display navigation controls +', main, checkable=True))

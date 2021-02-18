@@ -28,7 +28,6 @@ from . import tricks
 
 import ast
 from copy import deepcopy, copy
-from nprint import nprint
 
 
 QEventGLContextChange = 215	# opengl context change event type, not yet defined in PyQt5
@@ -54,7 +53,6 @@ class Scene(madcad.rendering.Scene, QObject):
 			'__grid__': Displayable(Grid),
 			'__updateposes__': Step('screen', -1, self._updateposes),
 			}
-		self.editors = {}		# displays replacing variable displays for editions
 		self.poses = {}			# solid per variable for poses, non associated solids are not in that dict
 		self.active_solid = None	# current solid for current space
 		self.executed = True	# flag set to True to enable a full relead of the scene
@@ -96,6 +94,7 @@ class Scene(madcad.rendering.Scene, QObject):
 					if zs <= ts and te <= ze and displayable(temp):
 						newscene[name] = temp
 		# add scene's own additions
+		newscene.update(main.editors)
 		newscene.update(self.additions)
 		
 		# update the scene
@@ -271,8 +270,8 @@ class SceneView(madcad.rendering.View):
 			disp.control(self, key[:i], key[i:], evt)
 			if evt.isAccepted(): return
 		
+		# sub selection
 		if evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton:
-			disp = self.scene.item(key)
 			if type(disp).__name__ in ('SolidDisplay', 'WebDisplay'):
 				disp.vertices.selectsub(key[-1])
 				disp.selected = any(disp.vertices.flags & 0x1)
@@ -280,44 +279,20 @@ class SceneView(madcad.rendering.View):
 				disp.selected = not disp.selected
 			self.update()
 			self.main.updatescript()
+			evt.accept()
+		# show details
 		elif evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.RightButton:
 			self.showdetail(key, evt.pos())
-	
-	# DEPRECATED
-	def objcontrol(self, rdri, subi, evt):
-		''' overwrite the Scene method, to implement the edition behaviors '''
-		grp,rdr = self.stack[rdri]
-		
-		# an editor exists for this object
-		if grp in self.main.editors:
-			self.tool = rdr.control(self, grp, subi, evt)
-			if not evt.isAccepted():
-				if evt.button() == Qt.LeftButton and evt.type() == QEvent.MouseButtonDblClick:
-					self.main.finishedit(grp)
-					evt.accept()
-					return
-		
-		# the events is submitted to the custom controls first
-		if hasattr(rdr, 'control'):
-			self.tool = rdr.control(self, rdri, subi, evt)
-			if evt.isAccepted():	
-				return
-		
-		if evt.button() == Qt.LeftButton:
-			if evt.type() == QEvent.MouseButtonRelease and hasattr(rdr, 'select'):
-				self.main.select((grp,subi))
+			evt.accept()
+		# edition
+		elif evt.type() == QEvent.MouseButtonDblClick and evt.button() == Qt.LeftButton and hasattr(disp, 'source'):
+			name = self.main.interpreter.ids.get(id(disp.source))
+			if name:	
+				if name in self.main.editors:
+					self.main.finishedit(name)
+				else:
+					self.main.edit(name)
 				evt.accept()
-			elif evt.type() == QEvent.MouseButtonDblClick:
-				self.main.select((grp,subi))
-				self.main.edit(grp)
-				evt.accept()
-		
-		elif evt.button() == Qt.RightButton and evt.type() == QEvent.MouseButtonRelease:
-			obj = self.main.scene[grp]
-			if isinstance(obj, (Mesh,Web,Wire)) and isinstance(rdr, (SolidDisplay,WebDisplay)):
-				ident = (grp,subi)
-				self.main.select(ident, True)
-				self.showdetail(ident, evt.pos())
 		
 	
 	def showdetail(self, key, position=None):

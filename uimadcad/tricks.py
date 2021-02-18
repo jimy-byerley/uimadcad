@@ -2,17 +2,18 @@ from PyQt5.QtCore import QEvent
 from PyQt5.QtGui import QTextCursor
 from madcad.mathutils import vec3, affineInverse
 import re, ast
+
+from madcad import *
 from madcad.displays import *
-from nprint import nprint
+from madcad.nprint import nprint
 
 
 
 format_varname = r'[a-zA-Z]\w*'
 format_float = r'[+-]?\d+\.?\d*(?:e[+-]?\d+)?'
 format_vec3 = r'vec3\(\s*({0}),\s*({0}),\s*({0}),?\s*\)'.format(format_float)
-format_axis = r'\({0},\s{0}\)'.format(format_vec3)
+format_axis = r'(Axis)?\({0},\s{0}\)'.format(format_vec3)
 edit_color = fvec3(1, 0.8, 0.2)
-edit_text = 8
 
 
 class EditionError(Exception):	pass
@@ -22,7 +23,6 @@ class EditorNode:
 	def __init__(self, main, name):
 		self.main = main
 		self.name = name
-		self.point = main.scene[name]
 		
 		node = main.interpreter.locations[name]
 		if isinstance(node, ast.Assign):	node = node.value
@@ -32,7 +32,12 @@ class EditorNode:
 		cursor.setPosition(node.position, QTextCursor.KeepAnchor)
 		self.cursor = cursor
 		
-	def apply(self):
+		self.load(node)
+		
+	def text(self):
+		return self.cursor.selectedText().replace('\u2029', '\n')
+		
+	def apply(self, run=True):
 		''' update the script with the modifications '''
 		pos = min(self.cursor.anchor(), self.cursor.position())
 		self.cursor.beginEditBlock()
@@ -41,7 +46,10 @@ class EditorNode:
 		self.cursor.setPosition(pos, QTextCursor.KeepAnchor)
 		self.cursor.endEditBlock()
 		
-	def finish(self):
+		if run and self.main.exectrigger:
+			self.main.execute()
+		
+	def finalize(self):
 		pass
 		
 def store(dst, src):
@@ -50,47 +58,39 @@ def store(dst, src):
 
 class PointEditor(EditorNode):
 	''' editor for a single point position '''
-	def __init__(self, main, name):
-		super().__init__(main, name)
-		if not re.fullmatch(format_vec3, self.cursor.selectedText()):
-			raise EditionError("the current expression format can't be edited")
+	def load(self, node):
+		if not re.fullmatch(format_vec3, self.text()):
+			raise EditionError("the current expression format cannot be edited")
+		self.point = fvec3(self.main.interpreter.current[self.name])
 	
 	def dump(self):
 		return 'vec3({:.4g}, {:.4g}, {:.4g})'.format(*self.point)
 	
-	def display(self, scene):
-		return self.Display(scene, self),
-	
-	class Display(PointDisplay):
+	class display(PointDisplay):
 		def __init__(self, scene, editor):
 			super().__init__(scene, editor.point, color=edit_color)
 			self.editor = editor
-			self.transform = fmat4(editor.main.poses[editor.name].pose())
-		def control(self, scene, rdri, ident, evt):
+		def control(self, view, key, sub, evt):
+			self.editor.main.active_editor = self.editor
 			if evt.type() == QEvent.MouseButtonPress:
 				evt.accept()
-				self.startpt = fvec3(self.transform * fvec4(self.position,1))
-				#self.startpt = vec3(self.position)
-				return self.move
-		def select(self, idents, state=None):
-			pass
-		def move(self, scene, evt):
-			if evt.type() == QEvent.MouseMove:
-				evt.accept()
-				worldpt = fvec3(scene.ptfrom((evt.x(), evt.y()), self.startpt))
-				self.position = fvec3(affineInverse(self.transform) * fvec4(worldpt,1))
-				store(self.editor.point, vec3(self.position))
-				#pt = scene.localptfrom((evt.x(), evt.y()), self.startpt)
-				#self.position = fvec3(pt)
-				#store(self.editor.point, pt)
-				scene.update()
-			else:
-				self.editor.apply()
-				scene.tool = None
-				if self.editor.main.exectrigger:
-					self.editor.main.execute()
+				self.startpt = fvec3(self.world * fvec4(self.position,1))
+				def move(evt):
+					if evt.type() == QEvent.MouseMove:
+						evt.accept()
+						worldpt = fvec3(view.ptfrom(evt.pos(), self.startpt))
+						self.editor.point = self.position = fvec3(affineInverse(self.world) * fvec4(worldpt,1))
+						view.update()
+					else:
+						self.editor.apply()
+						view.tool.remove(move)
+				view.tool.append(move)
 
 
 class MeshEditor(EditorNode):
 	format = re.compile(r'Mesh\(\s\[((\s{},\s)*)\], \[((\s\d\s,)*\)])'.format(format_vec3))
 	
+editors = {
+	vec3:	PointEditor,
+	Mesh:	MeshEditor,
+	}
