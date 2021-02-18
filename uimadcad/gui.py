@@ -392,7 +392,7 @@ class Madcad(QObject):
 			return
 		try:	
 			self.editors[name] = e = editor(self, name)
-		except EditionError as err:
+		except tricks.EditionError as err:
 			print('unable to edit variable', name, ':', err)
 		else:
 			print('editing', name)
