@@ -76,6 +76,7 @@ class Madcad(QObject):
 		self.active_errorview = None
 		self.active_solid = None
 		self.active_editor = None
+		self.active_tool = None
 		
 		self.exectrigger = 1
 		self.exectarget = 0
@@ -140,11 +141,12 @@ class Madcad(QObject):
 		
 		# generator packing the given procedure to handle exceptions
 		def capsule():
-			self.assist.generator = gen = procedure(self)
+			self.cancel_tool()
+			self.active_tool = procedure(self)
 			self.assist.tool(name)
 			self.assist.info('')
 			try:
-				yield from gen
+				yield from self.active_tool
 			except ToolError as err:
 				self.assist.info('<b style="color:#ff5555">{}</b>'.format(err))
 			except Exception as err:
@@ -158,6 +160,7 @@ class Madcad(QObject):
 				else:	self.active_sceneview.update()
 				self.assist.tool('')
 				self.assist.info('')
+			self.active_tool = None
 		
 		# button callback
 		def callback():
@@ -204,6 +207,12 @@ class Madcad(QObject):
 		
 		return action
 	
+	def cancel_tool(self):
+		if self.active_tool:
+			try:	self.main.active_tool.throw(ToolError('action canceled'))
+			except ToolError:	pass
+			self.assist.tool(None)
+			self.active_tool = None
 	
 	# END
 	# BEGIN --- file management system ---
@@ -416,8 +425,8 @@ class Madcad(QObject):
 			)
 	
 	def _finishedit(self):
-		if self.assist.generator:
-			self.assist.cancel()
+		if self.active_tool:
+			self.tool_cancel()
 		else:
 			if not self.active_editor:
 				self.active_editor = next(iter(self.editors.values()), None)

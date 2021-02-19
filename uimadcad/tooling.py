@@ -26,7 +26,6 @@ class ToolAssist(QWidget):
 		super().__init__(parent)
 		self.main = main
 		self.visible = False
-		self.generator = None
 		self._tool = QLabel()
 		self._info = QLabel()
 		
@@ -43,7 +42,7 @@ class ToolAssist(QWidget):
 		#self.addAction(self.shortcut)
 		# cancel button
 		cancel = QPushButton('cancel')
-		cancel.clicked.connect(self.cancel)
+		cancel.clicked.connect(self.main.cancel_tool)
 		
 		# ui layout
 		layout = QVBoxLayout()
@@ -51,13 +50,6 @@ class ToolAssist(QWidget):
 		layout.addWidget(self._info)
 		layout.addWidget(cancel)
 		self.setLayout(layout)
-		self.tool(None)
-		
-	def cancel(self):
-		''' cancel the current tool procedure '''
-		if self.generator:
-			try:	self.generator.throw(ToolError('action canceled'))
-			except ToolError:	pass
 		self.tool(None)
 	
 	def tool(self, name):
