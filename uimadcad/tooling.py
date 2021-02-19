@@ -36,10 +36,11 @@ class ToolAssist(QWidget):
 		f = self._tool.font()
 		f.setPointSize(int(f.pointSize()*1.2))
 		self._tool.setFont(f)
-		# cancel shortcut
-		self.shortcut = QAction('cancel', self, shortcut=QKeySequence('Escape'))
-		self.shortcut.triggered.connect(self.cancel)
-		self.addAction(self.shortcut)
+		# cancel shortcut (already present in the menubar)
+		#self.shortcut = QShortcut(QKeySequence('Escape'), self, 
+							#member=self.cancel, 
+							#ambiguousMember=self.cancel)
+		#self.addAction(self.shortcut)
 		# cancel button
 		cancel = QPushButton('cancel')
 		cancel.clicked.connect(self.cancel)
@@ -251,6 +252,8 @@ def dump(o):
 		else:		o = o.value
 	if isinstance(o, vec3):
 		return 'vec3({:.4g},\t{:.4g},\t{:.4g})'.format(*o)
+	elif isinstance(o, tuple):
+		return '(' + ',\t'.join(dump(e) for e in o) + ')'
 	else:
 		return repr(o)
 		
@@ -588,9 +591,10 @@ def tool_saddle(main):
 
 
 def tool_distance(main):
+	crit = lambda o: isinstance(o, vec3) or isaxis(o) or isinstance(o, Segment)
 	args = yield from toolrequest(main, [
-				(vec3, 'start point'),
-				(vec3, 'end point'),
+				(crit, 'start point'),
+				(crit, 'end point'),
 				])
 	target = QInputDialog.getText(main.mainwindow, 'distance constraint', 'target distance:')[0]
 	if not target:
@@ -681,14 +685,14 @@ def tool_punctiform(main):
 	args = yield from toolrequest(main, [
 				(isaxis, 'normal axis to the plane'),
 				])
-	main.insertexpr(format('Ball(Solid(), Solid(), {})', *args))
+	main.insertexpr(format('Punctiform(Solid(), Solid(), {})', *args))
 	
 def tool_track(main):
-	(o,x), = yield from toolrequest(main, [
+	axis, = yield from toolrequest(main, [
 				(isaxis, 'axis of the track'),
 				])
 	z = vec3(fvec3(main.active_sceneview.uniforms['view'][2]))
-	main.insertexpr(format('Track(Solid(), Solid(), {})', (o,x,z)))
+	main.insertexpr(format('Track(Solid(), Solid(), {})', (*axis.value, z)))
 	
 def tool_helicoid(main):
 	axis, = yield from toolrequest(main, [

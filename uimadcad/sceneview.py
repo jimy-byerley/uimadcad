@@ -17,7 +17,7 @@ from PyQt5.QtGui import (
 		)
 
 from madcad import *
-from madcad.rendering import Display, displayable, Displayable, Step
+from madcad.rendering import Display, displayable, Displayable, Step, Group
 from madcad.displays import SolidDisplay, WebDisplay, GridDisplay
 import madcad
 
@@ -195,10 +195,10 @@ class Scene(madcad.rendering.Scene, QObject):
 		def selbox(level):
 			box = Box(fvec3(inf), fvec3(-inf))
 			for disp in level:
-				if disp.selected:
-					box.union(disp.box.transform(disp.world))
-				elif isinstance(disp, madcad.rendering.Group):
+				if isinstance(disp, Group):
 					box.union(selbox(disp.displays.values()))
+				elif disp.selected:
+					box.union(disp.box.transform(disp.world))
 			return box
 		return selbox(self.displays.values())
 
@@ -265,25 +265,35 @@ class SceneView(madcad.rendering.View):
 	def control(self, key, evt):
 		''' overwrite the Scene method, to implement the edition behaviors '''
 		disp = self.scene.displays
+		stack = []
 		for i in range(1,len(key)):
 			disp = disp[key[i-1]]
 			disp.control(self, key[:i], key[i:], evt)
 			if evt.isAccepted(): return
+			stack.append(disp)
 		
 		# sub selection
 		if evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton:
+			disp = stack[-1]
+			# select what is under cursor
 			if type(disp).__name__ in ('SolidDisplay', 'WebDisplay'):
 				disp.vertices.selectsub(key[-1])
 				disp.selected = any(disp.vertices.flags & 0x1)
 			else:
 				disp.selected = not disp.selected
+			# make sure that a display is selected if one of its sub displays is
+			for disp in reversed(stack):
+				if isinstance(disp, Group):
+					disp.selected = any(sub.selected	for sub in disp.displays.values())
 			self.update()
 			self.main.updatescript()
 			evt.accept()
+		
 		# show details
 		elif evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.RightButton:
 			self.showdetail(key, evt.pos())
 			evt.accept()
+		
 		# edition
 		elif evt.type() == QEvent.MouseButtonDblClick and evt.button() == Qt.LeftButton and hasattr(disp, 'source'):
 			name = self.main.interpreter.ids.get(id(disp.source))
@@ -297,7 +307,11 @@ class SceneView(madcad.rendering.View):
 	
 	def showdetail(self, key, position=None):
 		''' display a detail window for the ident given (grp,sub) '''
-		if key in self.main.details:	return
+		if key in self.main.details:	
+			return
+		disp = self.scene.item(key)
+		if not disp or not hasattr(disp, 'source') or not isinstance(disp.source, (Mesh,Web)):
+			return
 		
 		detail = DetailView(self.scene, key)
 		detail.move(self.mapToGlobal(self.geometry().center()))

@@ -395,7 +395,6 @@ class Madcad(QObject):
 		except tricks.EditionError as err:
 			print('unable to edit variable', name, ':', err)
 		else:
-			print('editing', name)
 			self.active_sceneview.scene.sync()
 			self.updatescript()
 			return e
@@ -407,17 +406,23 @@ class Madcad(QObject):
 			self.active_sceneview.scene.sync()
 			self.updatescript()
 			self.active_editor = next(iter(self.editors.values()), None)
-			print('end edit', name)
 			
 	def _edit(self):
 		for disp in scene_unroll(self.active_sceneview.scene):
-			disp.selected and self.edit(self.interpreter.ids[id(disp.source)])
-				
+			(	disp.selected 
+			and hasattr(disp, 'source') 
+			and id(disp.source) in self.interpreter.ids 
+			and self.edit(self.interpreter.ids[id(disp.source)])
+			)
+	
 	def _finishedit(self):
-		if not self.active_editor:
-			self.active_editor = next(iter(self.editors.values()), None)
-		if self.active_editor:
-			self.finishedit(self.active_editor.name)
+		if self.assist.generator:
+			self.assist.cancel()
+		else:
+			if not self.active_editor:
+				self.active_editor = next(iter(self.editors.values()), None)
+			if self.active_editor:
+				self.finishedit(self.active_editor.name)
 
 		
 	def _enterfunction(self):
@@ -562,15 +567,22 @@ class Madcad(QObject):
 		self.updatescript()
 		
 	def set_active_solid(self):
-		found = None
-		for disp in scene_unroll(self.active_sceneview.scene):
-			if isinstance(disp, Solid.display):
-				if disp.selected:	
-					found = disp
-					break
+		found = next((disp	for disp in scene_unroll(self.active_sceneview.scene)
+							if isinstance(disp, Solid.display)), 
+						None)
 		self.active_sceneview.scene.active_solid = found
 		self.active_sceneview.update()
 		
+	def lock_solid(self):
+		view = self.active_sceneview
+		for manip in scene_unroll(view.scene):
+			if isinstance(manip, kinematic.Kinemanip):
+				for i,disp in manip.displays.items():
+					if isinstance(disp, Solid.display) and disp.selected:
+						solid = manip.solids[i]
+						manip.lock(view.scene, solid, not manip.islocked(solid))
+		view.update()
+	
 	# END
 	# BEGIN --- display system ---
 	
@@ -898,7 +910,8 @@ class MainWindow(QMainWindow):
 		
 		menu.addSeparator()
 		
-		menu.addAction('set active solid', main.set_active_solid, shortcut=QKeySequence('Shift+S'))
+		menu.addAction('lock solid', main.lock_solid, shortcut=QKeySequence('L'))
+		menu.addAction('set active solid', main.set_active_solid, shortcut=QKeySequence('S'))
 		menu.addAction('explode objects +')
 		
 		
