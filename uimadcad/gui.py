@@ -568,7 +568,7 @@ class Madcad(QObject):
 		
 	def set_active_solid(self):
 		found = next((disp	for disp in scene_unroll(self.active_sceneview.scene)
-							if isinstance(disp, Solid.display)), 
+							if isinstance(disp, Solid.display) and disp.selected), 
 						None)
 		self.active_sceneview.scene.active_solid = found
 		self.active_sceneview.update()
