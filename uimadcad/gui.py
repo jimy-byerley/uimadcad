@@ -44,7 +44,7 @@ from . import tooling
 from . import settings
 
 from copy import deepcopy, copy
-from nprint import nprint, nformat
+from nprint import nprint, nformat, deformat
 import ast, traceback
 import os, sys
 import re
@@ -209,10 +209,10 @@ class Madcad(QObject):
 	
 	def cancel_tool(self):
 		if self.active_tool:
-			try:	self.main.active_tool.throw(ToolError('action canceled'))
+			try:	self.active_tool.throw(ToolError('action canceled'))
 			except ToolError:	pass
-			self.assist.tool(None)
-			self.active_tool = None
+		self.assist.tool(None)
+		self.active_tool = None
 	
 	# END
 	# BEGIN --- file management system ---
@@ -555,8 +555,6 @@ class Madcad(QObject):
 		indent = cursor.selectedText()
 		if not indent.isspace():	indent = ''
 		
-		# put cursor to target line
-		
 		block = ''
 		# integration
 		if newline:
@@ -565,6 +563,56 @@ class Madcad(QObject):
 		block += (text+'\n').replace('\n', '\n'+indent)
 		self.mod[self.active_scriptview.editor.textCursor().position()] = block
 		
+	def _commentline(self):
+		editor = self.active_scriptview.editor
+		cursor = editor.textCursor()
+		start, stop = sorted([cursor.position(), cursor.anchor()])
+		# start operation
+		cursor.beginEditBlock()
+		cursor.setPosition(start)
+		cursor.movePosition(QTextCursor.StartOfLine)
+		while cursor.position() < stop:
+			# comment
+			cursor.insertText('#')
+			# advance
+			cursor.movePosition(QTextCursor.EndOfLine)
+			cursor.movePosition(QTextCursor.NextCharacter)
+		cursor.endEditBlock()
+	
+	def _uncommentline(self):
+		editor = self.active_scriptview.editor
+		cursor = editor.textCursor()
+		start, stop = sorted([cursor.position(), cursor.anchor()])
+		# start operation
+		cursor.beginEditBlock()
+		cursor.setPosition(start)
+		cursor.movePosition(QTextCursor.StartOfLine)
+		while cursor.position() < stop:
+			# get the beginning of line
+			cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
+			while cursor.selectedText().isspace():
+				cursor.clearSelection()
+				cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
+			# check for comment
+			if cursor.selectedText().startswith('#'):
+				cursor.removeSelectedText()
+			# advance
+			cursor.movePosition(QTextCursor.EndOfLine)
+			cursor.movePosition(QTextCursor.NextCharacter)
+		cursor.endEditBlock()
+		
+	def _reformatcode(self):
+		cursor = self.active_scriptview.editor.textCursor()
+		cursor.insertText(nformat(
+							deformat(
+								cursor.selectedText().replace('\u2029', '\n')), 
+							width=50))
+		
+	def _createlist(self):
+		pass
+	
+	def _createfunction(self):	
+		pass
 		
 	def deselectall(self):
 		for disp in scene_unroll(self.active_sceneview.scene):
@@ -608,31 +656,31 @@ class Madcad(QObject):
 		self.active_scriptview.update_linenumbers()
 	def _enable_line_wrapping(self, enable):
 		self.active_scriptview.editor.setWordWrapMode(enable)
+		
+	def _display_quick(self, enable):
+		settings.view['quick_toolbars'] = enable
+		for view in self.views:
+			if hasattr(view, 'quick'):
+				view.quick.setHidden(not enable)
 	
 	def _display_faces(self, enable):
 		self.active_sceneview.scene.options['display_faces'] = enable
 		self.active_sceneview.scene.touch()
-		self.active_sceneview.update()
 	def _display_groups(self, enable):
 		self.active_sceneview.scene.options['display_groups'] = enable
 		self.active_sceneview.scene.touch()
-		self.active_sceneview.update()
 	def _display_wire(self, enable):
 		self.active_sceneview.scene.options['display_wire'] = enable
 		self.active_sceneview.scene.touch()
-		self.active_sceneview.update()
 	def _display_points(self, enable):
 		self.active_sceneview.scene.options['display_points'] = enable
 		self.active_sceneview.scene.touch()
-		self.active_sceneview.update()
 	def _display_grid(self, enable):
 		self.active_sceneview.scene.options['display_grid'] = enable
 		self.active_sceneview.scene.touch()
-		self.active_sceneview.update()
 	def _display_annotations(self, enable):
 		self.active_sceneview.scene.options['display_annotations'] = enable
 		self.active_sceneview.scene.touch()
-		self.active_sceneview.update()
 	def _display_all(self, enable):
 		self.active_sceneview.scene.displayall = enable
 		self.active_sceneview.scene.sync()
@@ -810,7 +858,6 @@ class MainWindow(QMainWindow):
 		menu = menubar.addMenu('&Edit')
 		menu.addAction(QIcon.fromTheme('edit-undo'), 'undo', main.script.undo, QKeySequence('Ctrl+Z'))
 		menu.addAction(QIcon.fromTheme('edit-redo'), 'redo', main.script.redo, QKeySequence('Ctrl+Shift+Z'))
-		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main.deselectall, shortcut=QKeySequence('Ctrl+A'))
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('media-playback-start'), 'execute', main.execute, QKeySequence('Ctrl+Return'))
 		menu.addAction(QIcon.fromTheme('view-refresh'), 'reexecute all', main.reexecute, QKeySequence('Ctrl+Shift+Return'))
@@ -818,23 +865,22 @@ class MainWindow(QMainWindow):
 		menu.addAction(QIcon.fromTheme('go-jump'), 'edit function', main._enterfunction, QKeySequence('Ctrl+G'))
 		menu.addAction(QIcon.fromTheme('draw-arrow-back'), 'return to upper context', main._returnfunction, QKeySequence('Ctrl+Shift+G'))
 		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('format-indent-more'), 'disable line +')
-		menu.addAction(QIcon.fromTheme('format-indent-less'), 'enable line +')
-		menu.addAction('disable line dependencies +')
-		menu.addAction('create function +')
-		menu.addAction('create list +')
+		menu.addAction(QIcon.fromTheme('format-indent-more'), 'disable line', main._commentline, QKeySequence('Ctrl+D'))
+		menu.addAction(QIcon.fromTheme('format-indent-less'), 'enable line', main._uncommentline, QKeySequence('Ctrl+Shift+D'))
+		menu.addAction(QIcon.fromTheme('view-list-tree'), 'disable line dependencies +', lambda: None, QKeySequence('Alt+D'))
+		menu.addAction('create function +', main._createfunction, QKeySequence('Alt+G'))
+		menu.addAction('create list +', main._createlist, QKeySequence('Alt+L'))
 		menu.addSeparator()
-		menu.addAction(main.createaction('rename object', tooling.act_rename, shortcut=QKeySequence('F2')))
+		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main.deselectall, shortcut=QKeySequence('Ctrl+A'))
+		menu.addAction(main.createaction('rename object', tooling.act_rename, shortcut=QKeySequence('F2'), icon='edit-rename'))
 		menu.addAction(QIcon.fromTheme('edit-node'), 'graphical edit object', main._edit, QKeySequence('E'))
 		menu.addAction(QIcon.fromTheme('edit-paste'), 'end graphical edit ', main._finishedit, QKeySequence('Escape'))
 		
 		menu = menubar.addMenu('&View')
-		menu.addAction(QAction('display navigation controls +', main, checkable=True))
-		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('image-x-generic'), 'new 3D view', 
-			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(main), 'scene view')))
-		menu.addAction(QIcon.fromTheme('text-x-script'), 'new text view', 
-			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(main), 'build script')))
+		action = QAction('display quick access toolbars', main, checkable=True)
+		action.setChecked(settings.view['quick_toolbars'])
+		action.toggled.connect(main._display_quick)
+		menu.addAction(action)
 		menu.addSeparator()
 		
 		themes = menu.addMenu('theme preset')
@@ -852,9 +898,13 @@ class MainWindow(QMainWindow):
 		layouts.addAction('compact +')
 		layouts.addAction('vertical +')
 		
-		menu.addAction('harvest toolbars on window side +')
-		menu.addAction('take floating toolbars to mouse +')
 		menu.addAction('save window layout', lambda: print(main.mainwindow.saveState()))
+		menu.addSeparator()
+		menu.addAction(QIcon.fromTheme('object'), 'new 3D view', 
+			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(main), 'scene view')))
+		menu.addAction(QIcon.fromTheme('dialog-scripts'), 'new text view', 
+			lambda: self.addDockWidget(Qt.RightDockWidgetArea, dock(ScriptView(main), 'build script')))
+		
 		
 		menu = menubar.addMenu('&Scene')
 		action = QAction('display points', main, checkable=True, shortcut=QKeySequence('Shift+P'))
@@ -919,7 +969,7 @@ class MainWindow(QMainWindow):
 		
 		menu.addSeparator()
 		
-		menu.addAction('lock solid', main.lock_solid, shortcut=QKeySequence('L'))
+		menu.addAction(QIcon.fromTheme('lock'), 'lock solid', main.lock_solid, shortcut=QKeySequence('L'))
 		menu.addAction('set active solid', main.set_active_solid, shortcut=QKeySequence('S'))
 		menu.addAction('explode objects +')
 		
@@ -928,17 +978,18 @@ class MainWindow(QMainWindow):
 		action = QAction('show line numbers', main, checkable=True, shortcut=QKeySequence('F11'))
 		action.toggled.connect(main._show_line_numbers)
 		menu.addAction(action)
-		action = QAction('enable line wrapping', main, checkable=True, shortcut=QKeySequence('F10'))
+		action = QAction(QIcon.fromTheme('text-wrap'), 'enable line wrapping', main, checkable=True, shortcut=QKeySequence('F10'))
 		action.toggled.connect(main._enable_line_wrapping)
 		menu.addAction(action)
+		menu.addSeparator()
+		menu.addAction(QIcon.fromTheme('zoom-in'), 'increase font size', lambda: main.active_scriptview.fontsize_increase(), shortcut=QKeySequence(QKeySequence.ZoomIn))
+		menu.addAction(QIcon.fromTheme('zoom-out'), 'decrease font size', lambda: main.active_scriptview.fontsize_decrease(), shortcut=QKeySequence(QKeySequence.ZoomOut))
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('edit-find'), 'find +', lambda: None, shortcut=QKeySequence('Ctrl+F'))
 		menu.addAction(QIcon.fromTheme('edit-find-replace'), 'replace +', lambda: None, shortcut=QKeySequence('Ctrl+R'))
 		menu.addAction(QIcon.fromTheme('format-indent-more'), 'increase indendation', lambda: main.active_scriptview.editor.indent_increase(), shortcut=QKeySequence('Tab'))
 		menu.addAction(QIcon.fromTheme('format-indent-less'), 'decrease indentation', lambda: main.active_scriptview.editor.indent_decrease(), shortcut=QKeySequence('Shift+Tab'))
-		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('zoom-in'), 'increase font size', lambda: main.active_scriptview.fontsize_increase(), shortcut=QKeySequence(QKeySequence.ZoomIn))
-		menu.addAction(QIcon.fromTheme('zoom-out'), 'decrease font size', lambda: main.active_scriptview.fontsize_decrease(), shortcut=QKeySequence(QKeySequence.ZoomOut))
+		menu.addAction(QIcon.fromTheme('view-list-tree'), 'reformat code', main._reformatcode, QKeySequence('Ctrl+Shift+Tab'))
 		
 		menu = menubar.addMenu('&Plot')
 		menu.addAction(QAction('display curve labels +', main, checkable=True))

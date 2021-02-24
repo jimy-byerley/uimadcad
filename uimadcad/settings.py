@@ -13,7 +13,8 @@ execution = {
 view = {
 	'layout': 'default',
 	'enable_floating': False,	# floating dockable windows, may have performance issues with big meshes
-	'window-size': [640,480],
+	'window_size': [640,480],
+	'quick_toolbars': True,
 	}
 
 scriptview = {

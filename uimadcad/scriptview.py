@@ -5,7 +5,7 @@ from PyQt5.QtCore import (
 from PyQt5.QtWidgets import (
 		QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction, 
 		QTextEdit, QPlainTextEdit, QPlainTextDocumentLayout, 
-		QPushButton, QLabel, QComboBox,
+		QPushButton, QLabel, QComboBox, QToolBar,
 		QMainWindow, QDockWidget,
 		)
 from PyQt5.QtGui import (
@@ -33,6 +33,10 @@ class TextEdit(QPlainTextEdit):
 		self.parent().focused()
 		super().focusInEvent(event)
 		
+	def focusOutEvent(self, event):
+		self.parent().unfocused()
+		super().leaveEvent(event)
+		
 	def keyPressEvent(self, event):
 		cursor = self.textCursor()
 		if cursor.hasSelection():
@@ -43,16 +47,30 @@ class TextEdit(QPlainTextEdit):
 	
 	def indent_increase(self, cursor=None):
 		if not cursor:	cursor = self.textCursor()
-		anchor = min(cursor.position(), cursor.anchor())
+		start, stop = sorted([cursor.position(), cursor.anchor()])
+		cursor.setPosition(start)
+		cursor.movePosition(QTextCursor.StartOfLine)
+		cursor.movePosition(QTextCursor.PreviousCharacter)
+		cursor.setPosition(stop, QTextCursor.KeepAnchor)
+		
 		cursor.insertText(cursor.selectedText().replace('\u2029', '\u2029\t'))
-		cursor.setPosition(anchor, cursor.KeepAnchor)
+		
+		cursor = self.textCursor()
+		cursor.setPosition(start, cursor.KeepAnchor)
 		self.setTextCursor(cursor)
 	
 	def indent_decrease(self, cursor=None):
 		if not cursor:	cursor = self.textCursor()
-		anchor = min(cursor.position(), cursor.anchor())
+		start, stop = sorted([cursor.position(), cursor.anchor()])
+		cursor.setPosition(start)
+		cursor.movePosition(QTextCursor.StartOfLine)
+		cursor.movePosition(QTextCursor.PreviousCharacter)
+		cursor.setPosition(stop, QTextCursor.KeepAnchor)
+		
 		cursor.insertText(cursor.selectedText().replace('\u2029\t', '\u2029'))
-		cursor.setPosition(anchor, cursor.KeepAnchor)
+		
+		cursor = self.textCursor()
+		cursor.setPosition(start, cursor.KeepAnchor)
 		self.setTextCursor(cursor)
 	
 
@@ -117,6 +135,26 @@ class ScriptView(QWidget):
 		layout.addWidget(button_close)
 		toolbar.setLayout(layout)
 		
+		self.quick = QToolBar('quick', self.editor)
+		self.quick.setOrientation(Qt.Vertical)
+		self.quick.addAction(QIcon.fromTheme('edit-undo'), 'undo', main.script.undo)
+		self.quick.addAction(QIcon.fromTheme('edit-redo'), 'redo', main.script.redo)
+		self.quick.addSeparator()
+		self.quick.addAction(QIcon.fromTheme('format-indent-more'), 'disable line', main._commentline)
+		self.quick.addAction(QIcon.fromTheme('format-indent-less'), 'enable line', main._uncommentline)
+		self.quick.addAction(QIcon.fromTheme('view-list-tree'), 'disable line dependencies +', lambda: None)
+		self.quick.addAction('def', main._createfunction)
+		self.quick.addAction('list', main._createlist)
+		self.quick.addSeparator()
+		self.quick.addAction(QIcon.fromTheme('go-bottom'), 'target to cursor', main._targettocursor)
+		self.quick.addAction(QIcon.fromTheme('media-playback-start'), 'execute', main.execute)
+		self.quick.addAction(QIcon.fromTheme('go-jump'), 'edit function', main._enterfunction)
+		self.quick.addSeparator()		
+		self.quick.addAction(QIcon.fromTheme('view-list-tree'), 'reformat code', main._reformatcode)
+		self.quick.addAction(QIcon.fromTheme('edit-find'), 'find +', lambda: None)
+		self.quick.hide()
+		
+		
 		# global layout
 		layout = QVBoxLayout(spacing=0)
 		layout.addWidget(PathBar(main))
@@ -133,12 +171,6 @@ class ScriptView(QWidget):
 		
 		main.views.append(self)
 		if not main.active_scriptview:	main.active_scriptview = self
-	
-	def focused(self):
-		# set active code view
-		self.main.active_scriptview = self
-		# update exectrigger and exectarget
-		self.main.exectrigger = mode = self.trigger_mode.currentIndex()
 		
 	def changeEvent(self, event):
 		# detect QDockWidget integration
@@ -162,6 +194,23 @@ class ScriptView(QWidget):
 			self.main.mainwindow.removeDockWidget(self.parent())
 		else:
 			super().close()
+			
+	def enterEvent(self, event):
+		if settings.view['quick_toolbars']:	
+			self.quick.show()
+		
+	def leaveEvent(self, event):
+		if not self.editor.hasFocus():	
+			self.quick.hide()
+	
+	def focused(self):
+		# set active code view
+		self.main.active_scriptview = self
+		# update exectrigger and exectarget
+		self.main.exectrigger = mode = self.trigger_mode.currentIndex()
+		
+	def unfocused(self):
+		self.quick.hide()
 	
 	
 	def _cursorPositionChanged(self):
@@ -191,6 +240,8 @@ class ScriptView(QWidget):
 	def resizeEvent(self, event):
 		super().resizeEvent(event)
 		self.update_linenumbers()
+		size = self.editor.size()
+		self.quick.setGeometry(QRect(size.width()-45, 0, 30, size.height()))
 
 	def update_linenumbers(self):
 		# update the line number area

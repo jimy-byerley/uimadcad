@@ -377,7 +377,6 @@ def create_toolbars(main, widget):
 	tools.addAction(main.createtool('axis', tool_axis,		'madcad-axis'))
 	tools.addAction(main.createtool('segment', tool_segment,	'madcad-segment'))
 	tools.addAction(main.createtool('arc', tool_arcthrough,		'madcad-arc'))
-	tools.addAction(QIcon.fromTheme('madcad-spline'), 'spline')
 	
 	tools = widget.addToolBar('annotation')
 	tools.setObjectName('toolbar-annotation')
@@ -404,7 +403,7 @@ def create_toolbars(main, widget):
 	tools.setObjectName('toolbar-ameliration')
 	tools.addAction(main.createtool('merge closes', tool_mergeclose, 'madcad-mergeclose'))
 	tools.addAction(main.createtool('strip buffers', tool_stripbuffers, 'madcad-stripbuffer'))
-	tools.addAction(QIcon.fromTheme('madcad-flip'), 'flip orientation')
+	tools.addAction(main.createtool('madcad-flip', tool_flip, 'flip orientation'))
 	
 	tools = widget.addToolBar('constraints')
 	tools.setObjectName('toolbar-constraints')
@@ -458,11 +457,15 @@ def tool_meshing(main):
 
 def tool_mergeclose(main):
 	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
-	main.insertstmt(args[0]+'.mergeclose()')
+	main.insertstmt(format('{}.mergeclose()', args[0]))
 	
 def tool_stripbuffers(main):
 	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
-	main.insertstmt(args[0]+'.finish()')
+	main.insertstmt(format('{}.finish()', args[0]))
+	
+def tool_flip(main):
+	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
+	main.insertstmt(format('{}.flip()', args[0]))
 
 def tool_point(main):
 	main.assist.tool('point')
@@ -683,8 +686,8 @@ def tool_track(main):
 	axis, = yield from toolrequest(main, [
 				(isaxis, 'axis of the track'),
 				])
-	z = vec3(fvec3(main.active_sceneview.uniforms['view'][2]))
-	main.insertexpr(format('Track(Solid(), Solid(), {})', (*axis.value, z)))
+	z = vec3(fvec3(transpose(main.active_sceneview.uniforms['view'])[2]))
+	main.insertexpr(format('Track(Solid(), Solid(), {})', (axis.value[0], z, cross(z,axis.value[1]))))
 	
 def tool_helicoid(main):
 	axis, = yield from toolrequest(main, [

@@ -5,7 +5,7 @@ from PyQt5.QtCore import (
 		)
 from PyQt5.QtWidgets import (
 		QWidget, QStyleFactory, QSizePolicy, QHBoxLayout, 
-		QPlainTextEdit, QComboBox, QDockWidget, QPushButton,
+		QPlainTextEdit, QComboBox, QDockWidget, QPushButton, QToolBar, QAction, 
 		QPlainTextDocumentLayout,
 		)
 from PyQt5.QtGui import (
@@ -24,7 +24,7 @@ import madcad
 from .common import *
 from .detailview import DetailView
 from .interpreter import Interpreter, InterpreterError, astinterval
-from . import tricks
+from . import tricks, settings
 
 import ast
 from copy import deepcopy, copy
@@ -78,12 +78,6 @@ class Scene(madcad.rendering.Scene, QObject):
 			if name in self.forceddisplays or name in it.neverused or self.displayall and name in it.locations:
 				if displayable(obj):
 					newscene[name] = obj
-				# some exceptional behaviors
-				elif isjoint(obj):
-					for s in obj.solids:
-						i = id(s)
-						if i in it.ids and it.ids[i] not in newscene:
-							newscene[it.ids[i]] = s
 		
 		# display objects in the display zones
 		for zs,ze in main.displayzones.values():
@@ -104,6 +98,10 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.update_solidsets()
 		# trigger the signal for dependent widgets
 		self.changed.emit()
+		
+	def touch(self):
+		self.changed.emit()
+		super().touch()
 	
 	def update(self, objs):
 		if not objs:	return
@@ -234,6 +232,34 @@ class SceneView(madcad.rendering.View):
 		
 		main.views.append(self)
 		if not main.active_sceneview:	main.active_sceneview = self
+		
+		self.quick = QToolBar('quick', self)
+		self.quick.setOrientation(Qt.Vertical)
+		action = QAction('points', main, checkable=True)
+		action.setChecked(madcad.settings.scene['display_points'])
+		action.toggled.connect(main._display_points)
+		self.quick.addAction(action)
+		action = QAction('wire', main, checkable=True)
+		action.setChecked(madcad.settings.scene['display_wire'])
+		action.toggled.connect(main._display_wire)
+		self.quick.addAction(action)
+		action = QAction('groups', main, checkable=True)
+		action.setChecked(madcad.settings.scene['display_groups'])
+		action.toggled.connect(main._display_groups)
+		self.quick.addAction(action)
+		action = QAction('faces', main, checkable=True)
+		action.setChecked(madcad.settings.scene['display_faces'])
+		action.toggled.connect(main._display_faces)
+		self.quick.addAction(action)
+		action = QAction('all', main, checkable=True)
+		action.toggled.connect(main._display_all)
+		self.quick.addAction(action)
+		self.quick.addAction(QIcon.fromTheme('lock'), 'lock solid', main.lock_solid)
+		self.quick.addAction(QIcon.fromTheme('madcad-solid'), 'set active solid', main.set_active_solid)
+		self.quick.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main.deselectall)
+		self.quick.addAction(QIcon.fromTheme('edit-node'), 'graphical edit object', main._edit)
+		self.quick.setGeometry(0,0, 40, 300)
+		self.quick.hide()
 	
 		self.statusbar = SceneViewBar(self)
 		self.scene.changed.connect(self.update)
@@ -251,6 +277,17 @@ class SceneView(madcad.rendering.View):
 		super().focusInEvent(event)
 		self.main.active_sceneview = self
 		self.main.active_changed.emit()
+		
+	def enterEvent(self, event):
+		if settings.view['quick_toolbars']:	
+			self.quick.show()
+		
+	def leaveEvent(self, event):
+		if not self.hasFocus():	
+			self.quick.hide()
+		
+	def focusOutEvent(self, event):
+		self.quick.hide()
 	
 	def changeEvent(self, evt):
 		# detect QDockWidget integration
@@ -327,9 +364,16 @@ class SceneView(madcad.rendering.View):
 		
 	def separate_scene(self):
 		#self.scene = self.scene.duplicate(self.scene.ctx)
-		self.scene = Scene(self.main, ctx=self.scene.ctx)
+		self.set_scene(Scene(self.main, ctx=self.scene.ctx))
 		self.preload()
 		self.scene.sync()
+		
+	def set_scene(self, new):
+		if self.scene:
+			self.scene.changed.disconnect(self.update)
+		self.scene = new
+		self.scene.changed.connect(self.update)
+		self.update()
 		
 
 class SceneViewBar(QWidget):
@@ -341,8 +385,7 @@ class SceneViewBar(QWidget):
 		self.scenes = scenes = QComboBox()
 		scenes.setFrame(False)
 		def callback(i):
-			self.sceneview.scene = self.sceneview.main.scenes[i]
-			self.sceneview.update()
+			self.sceneview.set_scene(self.sceneview.main.scenes[i])
 			self.composition.scene = self.sceneview.scene
 		scenes.activated.connect(callback)
 		scenes.setModel(sceneview.main.scenesmenu)
@@ -360,7 +403,6 @@ class SceneViewBar(QWidget):
 			
 		def separate_scene():
 			self.sceneview.separate_scene()
-			self.sceneview.update()
 			self.composition.scene = self.sceneview.scene
 			scenes.setCurrentIndex(len(sceneview.main.scenes)-1)
 			
