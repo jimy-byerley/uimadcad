@@ -137,6 +137,7 @@ class ScriptView(QWidget):
 		
 		self.quick = QToolBar('quick', self.editor)
 		self.quick.setOrientation(Qt.Vertical)
+		self.quick.addAction(QIcon.fromTheme('document-save'), 'save', main._save)
 		self.quick.addAction(QIcon.fromTheme('edit-undo'), 'undo', main.script.undo)
 		self.quick.addAction(QIcon.fromTheme('edit-redo'), 'redo', main.script.redo)
 		self.quick.addSeparator()

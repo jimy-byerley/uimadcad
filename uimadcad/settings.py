@@ -4,17 +4,17 @@ from madcad.mathutils import *
 from PyQt5.QtGui import QColor
 
 execution = {
-	'onstartup': False,
-	'trigger': 1,
-	'steptime': 0.1,
-	'checkdanger': 'startup',	# 'never'/False, 'startup'/True, 'always'
+	'onstartup': True,			# execution at program startup
+	'trigger': 1,				# execution trigger: {0: manual, 1: on line change, 2: on typing}
+	'steptime': 0.1,			# execution time tolerated between backups, if a block runs a longer time, the interpreter will start create a backup
+	'checkdanger': 'startup',	# when to check for dangerous code ('never'/False, 'startup'/True, 'always')
 	}
 	
 view = {
 	'layout': 'default',
 	'enable_floating': False,	# floating dockable windows, may have performance issues with big meshes
-	'window_size': [640,480],
-	'quick_toolbars': True,
+	'window_size': [900,500],
+	'quick_toolbars': True,		# display the quickaccess toolbars
 	}
 
 scriptview = {
