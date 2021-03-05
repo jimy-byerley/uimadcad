@@ -93,11 +93,69 @@ class PointEditor(EditorNode):
 						view.tool.remove(move)
 				view.tool.append(move)
 
-
+"""
 class MeshEditor(EditorNode):
-	format = re.compile(r'Mesh\(\s\[((\s{},\s)*)\], \[((\s\d\s,)*\)])'.format(format_vec3))
+	''' editor for Mesh dump '''
+	#format_points = re.compile(r'\[\s*({},?\s*)*\]'.format(format_vec3))
+	#format_faces = re.compile(r'\[\s*(\(\d,\s\d,\s\d\)+,?\s*)*\]')
+	#format_tracks = re.compile(r'\[\s*(\d+,?\s*)*\]')
+	def load(self, node):
+		if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != 'Mesh':
+			raise EditionError('the expression is not a call to Mesh')
+		# collect argument nodes
+		args = {'points':[], 'lines':[], 'tracks':[], 'groups':[]}
+		for arg, match in zip(node.args, ['points', 'lines', 'tracks', 'groups']):
+			args[match] = arg
+		args.update(node.keywords)
+		# collect points
+		for name, node in args.items():
+			if not isinstance(node, ast.List):
+				match = False
+			else:
+				for v in node.elts:
+					if isinstance(v, ast.Int):	pass
+					elif (	isinstance(v, ast.Tuple) 
+						and	all(isinstance(e, ast.Int)	for e in v.elts)
+						):	pass
+					elif (	isinstance(v, ast.Call) 
+						and	isinstance(v.func, ast.Name) 
+						and	v.func.id == 'vec3' 
+						and	all(isinstance(e, (ast.Int, ast.Float))	for e in v.args)
+						):	pass
+					else:
+						match = False
+						break
+			text = self.main.interpreter.text[node.position:node.end_position]
+			args[name] = None if match else text
+		
+		self.exprs = args
+		self.value = self.main.intepreter.current[self.name]
+		try:	self.value.check()
+		except MeshError:
+			raise EditionError('the given mesh is inconsistent')
+			
+	def dump(self):
+		args = [self.exprs[name] or repr(getitem(self.value, name))	
+					for name in self.exprs]
+		if not self.exprs['points']:
+			args[0].replace('dvec3', 'vec3')
+		return nformat('Mesh({})'.format(', '.join(args)))
+						
+	class display(Display):
+		def __init__(self, scene, editor):
+			self.editor = editor
+			indev
+"""
+
+class AnnotationEditor(Display):
+	pass
+	
+class JointEditor(Display):
+	pass
+
+		
 	
 editors = {
 	vec3:	PointEditor,
-	Mesh:	MeshEditor,
+	#Mesh:	MeshEditor,
 	}
