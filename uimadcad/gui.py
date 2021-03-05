@@ -211,6 +211,7 @@ class Madcad(QObject):
 		if self.active_tool:
 			try:	self.active_tool.throw(ToolError('action canceled'))
 			except ToolError:	pass
+			except StopIteration:	pass
 		self.assist.tool(None)
 		self.active_tool = None
 	
@@ -603,10 +604,13 @@ class Madcad(QObject):
 		
 	def _reformatcode(self):
 		cursor = self.active_scriptview.editor.textCursor()
+		anchor = min(cursor.anchor(), cursor.position())
 		cursor.insertText(nformat(
 							deformat(
 								cursor.selectedText().replace('\u2029', '\n')), 
 							width=50))
+		cursor.setPosition(anchor, QTextCursor.KeepAnchor)
+		self.active_scriptview.editor.setTextCursor(cursor)
 		
 	def _createlist(self):
 		pass
