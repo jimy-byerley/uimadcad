@@ -246,6 +246,12 @@ def dump(o):
 		return 'vec3({:.4g},\t{:.4g},\t{:.4g})'.format(*o)
 	elif isinstance(o, tuple):
 		return '(' + ',\t'.join(dump(e) for e in o) + ')'
+	elif isinstance(o, Mesh):
+		args = [repr(mesh.points).replace('dvec3', 'vec3'), repr(mesh.faces)]
+		if any(e	for e in mesh.groups):
+			args.append(repr(mesh.tracks))
+			args.append(repr(mesh.groups))
+		return 'Mesh({})'.format(', '.join(args))
 	else:
 		return repr(o)
 		
@@ -287,23 +293,8 @@ def toolrequest(main, args, create=True):
 			raise ToolError('missing {}'.format(comment))
 	
 		# run a selection in concurrence with the creation
-		def select(main):
-			while True:
-				evt = yield from waitclick()
-				view = main.active_sceneview
-				pos = view.somenear(evt.pos())
-				if not pos:	
-					continue
-				disp = view.scene.item(view.itemat(pos))
-				var = dispvar(main, disp)
-				if not var or not satisfy(var.value, req):
-					continue
-				disp.selected = True
-				# create proper variables for temp objects reused
-				return acquirevar(main, var)
-
 		# get the first returned value from the selector or the creation
-		iterator = race(select(main), completition[req](main))
+		iterator = race(select(main, req), completition[req](main))
 		next(iterator)
 		match[i] = yield from iterator
 	
@@ -329,7 +320,21 @@ def satisfy(obj, req):
 	elif callable(req):			return req(obj)
 	else:						return False
 
-		
+def select(main, req):
+	''' return when an view item is selected '''
+	while True:
+		evt = yield from waitclick()
+		view = main.active_sceneview
+		pos = view.somenear(evt.pos())
+		if not pos:	
+			continue
+		disp = view.scene.item(view.itemat(pos))
+		var = dispvar(main, disp)
+		if not var or not satisfy(var.value, req):
+			continue
+		disp.selected = True
+		# create proper variables for temp objects reused
+		return acquirevar(main, var)
 	
 def createpoint(main):
 	evt = yield from waitclick()
@@ -356,7 +361,7 @@ def createaxis(main):
 	first = evt.pos()
 	evt = yield from waitclick()
 	if view == main.active_sceneview and (first-evt.pos()).manhattanLength() < 20:
-		axis = (p0, vec3(fvec3(view.navigation.matrix()[2])))
+		axis = (p0, vec3(fvec3(transpose(view.uniforms['view'])[2])))
 	else:
 		p1 = main.active_sceneview.ptfrom(evt.pos(), view.navigation.center)
 		axis = (p0, normalize(p1-p0))
@@ -371,12 +376,14 @@ def create_toolbars(main, widget):
 	tools.setObjectName('toolbar-creation')
 	tools.addAction(main.createaction('import', tool_import, 	'madcad-import'))
 	tools.addAction(main.createaction('solid', tool_solid, 'madcad-solid'))
-	tools.addAction(main.createaction('manual triangulated meshing', tool_meshing, 'madcad-meshing'))
-	tools.addAction(QIcon.fromTheme('madcad-splined'), 'manual splined meshing')
+	#tools.addAction(main.createaction('manual triangulated meshing', tool_meshing, 'madcad-meshing'))
+	#tools.addAction(QIcon.fromTheme('madcad-splined'), 'manual splined meshing')
 	tools.addAction(main.createtool('point', tool_point,		'madcad-point'))
 	tools.addAction(main.createtool('axis', tool_axis,		'madcad-axis'))
 	tools.addAction(main.createtool('segment', tool_segment,	'madcad-segment'))
 	tools.addAction(main.createtool('arc', tool_arcthrough,		'madcad-arc'))
+	tools.addAction(main.createtool('softened', tool_softened, 'madcad-spline'))
+	tools.addAction(main.createtool('interpolated', tool_interpolated, 'madcad-spline'))
 	
 	tools = widget.addToolBar('annotation')
 	tools.setObjectName('toolbar-annotation')
@@ -403,7 +410,7 @@ def create_toolbars(main, widget):
 	tools.setObjectName('toolbar-ameliration')
 	tools.addAction(main.createtool('merge closes', tool_mergeclose, 'madcad-mergeclose'))
 	tools.addAction(main.createtool('strip buffers', tool_stripbuffers, 'madcad-stripbuffer'))
-	tools.addAction(main.createtool('madcad-flip', tool_flip, 'flip orientation'))
+	tools.addAction(main.createtool('flip orientation', tool_flip, 'madcad-flip'))
 	
 	tools = widget.addToolBar('constraints')
 	tools.setObjectName('toolbar-constraints')
@@ -495,6 +502,73 @@ def tool_arcthrough(main):
 				(vec3, 'end point'),
 			])
 	main.insertexpr(format('ArcThrough({}, {}, {})', *args))
+	
+def tool_circle(main):
+	axis, radius = yield from toolrequest(main, [
+				(axis, 'circle axis'),
+				(vec3, 'point on radius'),
+				])
+	main.insertexpr(format('Circle({}, {})', axis, distance(axis.value[0], radius.value[0])))
+	
+def tool_arctangent(main):
+	args = yield from toolrequest(main, [
+				(vec3, 'start point'), 
+				(vec3, 'pass point'), 
+				(vec3, 'end point'),
+			])
+	main.insertexpr(format('ArcTangent({}, {}, {})', *args))
+	
+def tool_tangentellipsis(main):
+	args = yield from toolrequest(main, [
+				(vec3, 'start point'), 
+				(vec3, 'pass point'), 
+				(vec3, 'end point'),
+			])
+	main.insertexpr(format('TangentEllipsis({}, {}, {})', *args))
+	
+def tool_softened(main):
+	scene = main.active_sceneview.scene
+	pts = []
+	
+	for disp in scene_unroll(main.active_sceneview.scene):
+		if disp.selected:
+			var = dispvar(main, disp)
+			if var and isinstance(var.value, vec3):
+				pts.append(var)
+			
+	try:
+		main.assist.info("place points")
+		while True:
+			iterator = race(select(main, vec3), createpoint(main))
+			next(iterator)
+			pt = yield from iterator
+			pts.append(pt)
+	except ToolError:
+		main.insertexpr(format('Softened(['+ ', '.join(dump(p) for p in pts)) + '])')
+		return
+		
+	
+def tool_interpolated(main):
+	scene = main.active_sceneview.scene
+	pts = []
+	
+	for disp in scene_unroll(main.active_sceneview.scene):
+		if disp.selected:
+			var = dispvar(main, disp)
+			if var and isinstance(var.value, vec3):
+				pts.append(var)
+			
+	try:
+		main.assist.info("place points")
+		while True:
+			iterator = race(select(main, vec3), createpoint(main))
+			next(iterator)
+			pt = yield from iterator
+			pts.append(pt)
+	except ToolError:
+		main.insertexpr(format('Interpolated(['+ ', '.join(dump(p) for p in pts)) + '])')
+		return
+	
 	
 def tool_note(main):
 	while True:
