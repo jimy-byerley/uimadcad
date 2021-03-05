@@ -85,7 +85,7 @@ class Scene(madcad.rendering.Scene, QObject):
 				if name not in newscene:
 					ts,te = astinterval(node)
 					temp = it.current[name]
-					if zs <= ts and te <= ze and displayable(temp):
+					if zs <= ts and te <= ze and displayable(temp) and type(temp) not in (list, dict):
 						newscene[name] = temp
 		# add scene's own additions
 		newscene.update(main.editors)
@@ -205,8 +205,8 @@ def scene_unroll(scene):
 	def recur(level):
 		for disp in level:
 			yield disp
-			if isinstance(disp, madcad.rendering.Group):	
-				yield from recur(disp.displays.values())
+			if hasattr(disp, '__iter__'):	
+				yield from recur(disp)
 	yield from recur(scene.displays.values())		
 
 
@@ -320,8 +320,8 @@ class SceneView(madcad.rendering.View):
 				disp.selected = not disp.selected
 			# make sure that a display is selected if one of its sub displays is
 			for disp in reversed(stack):
-				if isinstance(disp, Group):
-					disp.selected = any(sub.selected	for sub in disp.displays.values())
+				if hasattr(disp, '__iter__'):
+					disp.selected = any(sub.selected	for sub in disp)
 			self.update()
 			self.main.updatescript()
 			evt.accept()
