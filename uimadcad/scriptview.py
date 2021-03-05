@@ -242,7 +242,7 @@ class ScriptView(QWidget):
 		super().resizeEvent(event)
 		self.update_linenumbers()
 		size = self.editor.size()
-		self.quick.setGeometry(QRect(size.width()-45, 0, 30, size.height()))
+		self.quick.setGeometry(QRect(size.width()-50, 0, 35, size.height()-25))
 
 	def update_linenumbers(self):
 		# update the line number area
