@@ -4,16 +4,24 @@ if __name__ == '__main__':
 
 	import sys, os, locale
 	from PyQt5.QtCore import Qt, QTimer
+	from PyQt5.QtGui import QIcon
 	from PyQt5.QtWidgets import QApplication
+	
 	# set Qt opengl context sharing to avoid reinitialization of scenes everytime, (this is for pymadcad display)
 	QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
-	print('start qt ...')
+	#print('start qt ...')
 	# setup Qt application
 	app = QApplication(sys.argv)
-	print('ok')
+	#print('ok')
 	app.setApplicationName('madcad')
 	app.setApplicationVersion(version)
 	app.setApplicationDisplayName('madcad v{}'.format(version))
+	
+	# set icons if not provided by the system
+	if not QIcon.themeName():
+		path = QIcon.themeSearchPaths()
+		path.append('path to own icons')
+		QIcon.setThemeSearchPaths(path)
 	
 	# set locale settings to default to get correct 'repr' of glm types
 	locale.setlocale(locale.LC_NUMERIC, 'C')
