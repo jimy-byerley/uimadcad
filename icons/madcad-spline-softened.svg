@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="48"
+   height="48"
+   viewBox="0 0 12.7 12.7"
+   version="1.1"
+   id="svg8"
+   inkscape:version="1.0.2 (1.0.2+r75+1)"
+   sodipodi:docname="madcad-spline-softened.svg">
+  <defs
+     id="defs13" />
+  <style
+     id="current-color-scheme"
+     type="text/css">
+	  .ColorScheme-Text { color:#232629; }
+      .ColorScheme-Highlight { color:#93cee9; }
+    </style>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#2d2d2d"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="6.1802368"
+     inkscape:cx="25.003092"
+     inkscape:cy="31.130516"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     units="px"
+     inkscape:window-width="1040"
+     inkscape:window-height="584"
+     inkscape:window-x="748"
+     inkscape:window-y="411"
+     inkscape:window-maximized="0"
+     borderlayer="false"
+     inkscape:showpageshadow="false"
+     inkscape:snap-global="false"
+     inkscape:document-rotation="0">
+    <inkscape:grid
+       type="xygrid"
+       id="grid939" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Calque 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-284.29998)">
+    <path
+       style="fill:none;stroke:#888888;stroke-width:0.5px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       d="m 0.65791643,296.41047 1.91115377,-6.68363 9.2882728,1.70935 -3.0784401,-6.1806"
+       id="path856" />
+    <path
+       style="fill:none;stroke:currentColor;stroke-width:0.529167;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 0.74301392,296.30771 c 1.13686218,-3.42954 4.35430088,-6.12005 6.57890668,-5.62652 2.2246059,0.49353 3.3972464,-1.69263 1.5726628,-5.08906"
+       id="path1549"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="czc"
+       class="ColorScheme-Text" />
+    <rect
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.396875;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       id="rect1557"
+       width="1.8772286"
+       height="1.775756"
+       x="-0.037482932"
+       y="295.26443"
+       class="ColorScheme-Text" />
+    <rect
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.396875;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       id="rect1557-4"
+       width="1.8772286"
+       height="1.775756"
+       x="7.7593422"
+       y="284.36755"
+       class="ColorScheme-Text" />
+    <rect
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.386519;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       id="rect1557-4-8"
+       width="1.7805389"
+       height="1.775756"
+       x="1.7608137"
+       y="288.88004"
+       class="ColorScheme-Highlight" />
+    <rect
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.395443;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       id="rect1557-4-8-4"
+       width="1.863709"
+       height="1.775756"
+       x="10.662446"
+       y="290.48993"
+       class="ColorScheme-Highlight" />
+  </g>
+</svg>

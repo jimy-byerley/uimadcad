@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   xmlns:osb="http://www.openswatchbook.org/uri/2009/osb"
    xmlns:dc="http://purl.org/dc/elements/1.1/"
    xmlns:cc="http://creativecommons.org/ns#"
    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
-   xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    width="48"
@@ -14,10 +12,13 @@
    viewBox="0 0 12.7 12.7"
    version="1.1"
    id="svg8"
-   inkscape:version="1.0.1 (1.0.1+r73)"
-   sodipodi:docname="madcad-spline.svg">
- 
-  <style id="current-color-scheme" type="text/css">
+   inkscape:version="1.0.2 (1.0.2+r75+1)"
+   sodipodi:docname="madcad-tangentellipsis.svg">
+  <defs
+     id="defs13" />
+  <style
+     id="current-color-scheme"
+     type="text/css">
 	  .ColorScheme-Text { color:#232629; }
       .ColorScheme-Highlight { color:#93cee9; }
     </style>
@@ -28,9 +29,9 @@
      borderopacity="1.0"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:zoom="2.7582555"
-     inkscape:cx="6.6605515"
-     inkscape:cy="26.47295"
+     inkscape:zoom="5.8092074"
+     inkscape:cx="25.117002"
+     inkscape:cy="29.042397"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="false"
@@ -56,7 +57,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title />
+        <dc:title></dc:title>
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -66,42 +67,39 @@
      id="layer1"
      transform="translate(0,-284.29998)">
     <path
-       style="fill:none;stroke:#888888;stroke-width:0.5291667;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 0.74301392,296.30771 c -0.26486142,-1.24013 0.51661728,-5.57245 2.03487068,-6.5811 3.2347018,-2.14896 4.5303281,2.97224 7.6489544,1.44575 2.476454,-1.21217 2.400463,-4.5044 -0.423408,-5.5457"
+       style="fill:none;stroke:#888888;stroke-width:0.3px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       d="M 11.115624,296.10794 0.96486007,290.6457 10.883993,285.30315"
+       id="path898" />
+    <path
+       style="fill:none;stroke:currentColor;stroke-width:0.6px;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 11.092598,296.12937 c -2.8156701,-1.81159 -7.2540774,-3.3783 -7.2704698,-5.50503 -0.013145,-1.70536 4.9449394,-4.18421 6.9581528,-5.19988"
        id="path1549"
        inkscape:connector-curvature="0"
-       sodipodi:nodetypes="cssc" />
+       sodipodi:nodetypes="csc"
+       class="ColorScheme-Text" />
     <rect
-       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.39687499;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.396875;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
        id="rect1557"
        width="1.8772286"
        height="1.775756"
-       x="-0.22096826"
-       y="295.293"
+       x="10.022741"
+       y="295.12823"
        class="ColorScheme-Text" />
     <rect
-       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.39687499;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.396875;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
        id="rect1557-4"
        width="1.8772286"
        height="1.775756"
-       x="9.0901842"
-       y="284.35828"
+       x="10.018822"
+       y="284.50568"
        class="ColorScheme-Text" />
     <rect
-       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.39687499;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.394433;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
        id="rect1557-4-8"
-       width="1.8772286"
+       width="1.8542008"
        height="1.775756"
-       x="1.6996528"
-       y="288.95834"
-       class="ColorScheme-Highlight" />
-    <rect
-       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.39687499;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
-       id="rect1557-4-8-4"
-       width="1.8772286"
-       height="1.775756"
-       x="9.2593031"
-       y="290.32822"
+       x="0.14505008"
+       y="289.79422"
        class="ColorScheme-Highlight" />
   </g>
 </svg>
