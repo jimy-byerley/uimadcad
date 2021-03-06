@@ -29,7 +29,7 @@
      borderopacity="1.0"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:zoom="3.3413632"
+     inkscape:zoom="1.8586552"
      inkscape:cx="25.117002"
      inkscape:cy="29.042397"
      inkscape:document-units="px"
@@ -71,12 +71,11 @@
        d="M 11.796688,296.05255 1.6459245,290.59031 11.565057,285.24776"
        id="path898" />
     <path
-       style="fill:none;stroke:currentColor;stroke-width:0.6px;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       style="fill:none;stroke:#888888;stroke-width:0.6px;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
        d="m 11.800606,296.04445 c -2.8156697,-1.81159 -3.5615616,-3.49057 -3.5097413,-5.88686 0.042956,-1.98637 1.2871362,-3.70968 3.3003493,-4.72535"
        id="path1549"
        inkscape:connector-curvature="0"
-       sodipodi:nodetypes="csc"
-       class="ColorScheme-Text" />
+       sodipodi:nodetypes="csc" />
     <rect
        style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.396875;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
        id="rect1557"

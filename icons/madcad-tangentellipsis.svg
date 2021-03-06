@@ -29,7 +29,7 @@
      borderopacity="1.0"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:zoom="5.8092074"
+     inkscape:zoom="3.2314098"
      inkscape:cx="25.117002"
      inkscape:cy="29.042397"
      inkscape:document-units="px"
@@ -57,7 +57,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -71,12 +71,11 @@
        d="M 11.115624,296.10794 0.96486007,290.6457 10.883993,285.30315"
        id="path898" />
     <path
-       style="fill:none;stroke:currentColor;stroke-width:0.6px;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 11.092598,296.12937 c -2.8156701,-1.81159 -7.2540774,-3.3783 -7.2704698,-5.50503 -0.013145,-1.70536 4.9449394,-4.18421 6.9581528,-5.19988"
+       style="fill:none;stroke:#888888;stroke-width:0.6px;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 11.092598,296.12937 c -2.8156701,-1.81159 -6.3318386,-3.36629 -6.348231,-5.49302 -0.013145,-1.70536 4.0227006,-4.19622 6.035914,-5.21189"
        id="path1549"
        inkscape:connector-curvature="0"
-       sodipodi:nodetypes="csc"
-       class="ColorScheme-Text" />
+       sodipodi:nodetypes="csc" />
     <rect
        style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.396875;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
        id="rect1557"
