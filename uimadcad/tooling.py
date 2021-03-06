@@ -383,17 +383,17 @@ def create_toolbars(main, widget):
 	tools.addAction(main.createtool('segment', tool_segment,	'madcad-segment'))
 	tools.addAction(main.createtool('arc through', tool_arcthrough,		'madcad-arc'))
 	tools.addAction(main.createtool('circle', tool_circle,		'madcad-circle'))
-	tools.addAction(main.createtool('softened', tool_softened,	'madcad-spline-softened'))
 	tools.addAction(main.createtool('interpolated', tool_interpolated, 'madcad-spline-interpolated'))
+	tools.addAction(main.createtool('softened', tool_softened,	'madcad-spline-softened'))
 	tools.addAction(main.createtool('arc tangent', tool_arctangent,		'madcad-arctangent'))
 	tools.addAction(main.createtool('tangent ellipsis', tool_tangentellipsis,	'madcad-tangentellipsis'))
 	
 	tools = widget.addToolBar('annotation')
 	tools.setObjectName('toolbar-annotation')
 	tools.addAction(main.createtool('annotation', tool_note, 'madcad-annotation'))
-	tools.addAction(QIcon.fromTheme('madcad-cst-distance'), 'distance measure')
-	tools.addAction(QIcon.fromTheme('insert-text'), 'floating text')
-	tools.addAction(QIcon.fromTheme('insert-image'), 'image')
+	tools.addAction(QIcon.fromTheme('madcad-cst-distance'), 'distance measure +')
+	tools.addAction(main.createtool('floating text', tool_text, 'insert-text'))
+	tools.addAction(QIcon.fromTheme('insert-image'), 'image +')
 	
 	tools = widget.addToolBar('mesh')
 	tools.setObjectName('toolbar-mesh')
@@ -403,11 +403,11 @@ def create_toolbars(main, widget):
 	tools = widget.addToolBar('web')
 	tools.setObjectName('toolbar-web')
 	tools.addAction(main.createtool('extrusion', tool_extrusion, 'madcad-extrusion'))
-	tools.addAction(QIcon.fromTheme('madcad-revolution'), 'revolution')
-	tools.addAction(QIcon.fromTheme('madcad-tube'), 'tube')
-	tools.addAction(QIcon.fromTheme('madcad-saddle'), 'saddle')
-	tools.addAction(QIcon.fromTheme('madcad-triangulation'), 'surface')
-	tools.addAction(QIcon.fromTheme('madcad-junction'), 'junction')
+	tools.addAction(main.createtool('revolution', tool_revolution, 'madcad-revolution'))
+	tools.addAction(main.createtool('tube', tool_tube, 'madcad-tube'))
+	tools.addAction(main.createtool('saddle', tool_saddle, 'madcad-saddle'))
+	tools.addAction(main.createtool('surface', tool_triangulation, 'madcad-triangulation'))
+	tools.addAction(main.createtool('junction', tool_junction, 'madcad-junction'))
 	
 	tools = widget.addToolBar('amelioration')
 	tools.setObjectName('toolbar-ameliration')
@@ -421,9 +421,9 @@ def create_toolbars(main, widget):
 	tools.addAction(main.createtool('hold distance', tool_distance, 'madcad-cst-distance'))
 	tools.addAction(main.createtool('hold radius', tool_radius, 'madcad-cst-radius'))
 	tools.addAction(main.createtool('hold angle', tool_angle, 'madcad-cst-angle'))
-	tools.addAction(QIcon.fromTheme('madcad-cst-tangent'), 'make tangent')
-	tools.addAction(QIcon.fromTheme('madcad-cst-onplane'), 'hold on plane')
-	tools.addAction(QIcon.fromTheme('madcad-cst-projection'), 'hold projection')
+	tools.addAction(main.createtool('make tangent', tool_tangent, 'madcad-cst-tangent'))
+	tools.addAction(main.createtool('hold on plane', tool_planar, 'madcad-cst-onplane'))
+	tools.addAction(main.createtool('hold projection', tool_projected, 'madcad-cst-projection'))
 	# kinematic constraints
 	tools.addAction(main.createtool('ball', tool_ball, 'madcad-cst-ball'))
 	tools.addAction(main.createtool('plane', tool_plane, 'madcad-cst-plane'))
@@ -508,10 +508,10 @@ def tool_arcthrough(main):
 	
 def tool_circle(main):
 	axis, radius = yield from toolrequest(main, [
-				(axis, 'circle axis'),
+				(isaxis, 'circle axis'),
 				(vec3, 'point on radius'),
 				])
-	main.insertexpr(format('Circle({}, {})', axis, distance(axis.value[0], radius.value[0])))
+	main.insertexpr(format('Circle({}, {})', axis, distance(axis.value[0], radius.value)))
 	
 def tool_arctangent(main):
 	args = yield from toolrequest(main, [
@@ -596,6 +596,12 @@ def tool_note(main):
 	else:
 		raise ToolError('unable to place a note on top of {}'.format(type(var.value)))
 	main.insertexpr(expr)
+	
+def tool_text(main):
+	pos, = yield from toolrequest(main, [(vec3, 'placement point')])
+	text = QInputDialog.getText(main.mainwindow, 'text note', 'enter text:')[0]
+	
+	main.insertexpr(format('note_floating({}, text={})', pos, text))
 
 def tool_boolean(main):
 	args = yield from toolrequest(main, [
@@ -604,6 +610,7 @@ def tool_boolean(main):
 				])
 	main.insertexpr(format('difference({}, {})', *args))
 	#main.assist.ui(BooleanChoice(args))
+	
 """
 class BooleanChoice(QWidget):
 	''' menu to select options for tool execution '''
@@ -659,6 +666,26 @@ def tool_saddle(main):
 				(lambda o: isinstance(o, (Web,Wire,Mesh)), 'profile 2'),
 				])
 	main.insertexpr(format('saddle({}, {})', *args))
+	
+def tool_triangulation(main):
+	outline, = yield from toolrequest(main, [
+				(lambda o: isinstance(o, (Web,Wire) or isprimitive(o)), 'outline'),
+				])
+	main.insertexpr(format('flatsurface({})', outline))
+	
+def tool_junction(main):
+	scene = main.active_sceneview.scene
+	outlines = []
+	
+	for disp in scene_unroll(main.active_sceneview.scene):
+		if disp.selected:
+			var = dispvar(main, disp)
+			if val:
+				val = var.value
+				if isinstance(val, (Web,Wire,Mesh)) or isprimitive(val) or val and isinstance(var, list) and isprimitive(var.value[0]):
+					outlines.append(var)
+	
+	indev
 
 
 
@@ -728,6 +755,16 @@ def tool_planar(main):
 				', '.join(dump(obj) for obj in vars)),
 				)
 
+def tool_projected(main):
+	crit = lambda o: isinstance(o, vec3) or isaxis(o) or isinstance(o, Segment)
+	args = yield from toolrequest(main, [
+				(crit, 'start point'),
+				(crit, 'end point'),
+				])
+	target = QInputDialog.getText(main.mainwindow, 'projection constraint', 'vector offset:')[0]
+	if not target:
+		raise ToolError('no distance entered or invalid radius')
+	main.insertexpr(format('Distance({}, {}, {})', *args, Var(name=target)))
 
 def tool_pivot(main):
 	args = yield from toolrequest(main, [
