@@ -177,7 +177,7 @@ def acquirevar(main, var):
 	if istemp(main, var.name):
 		# check that the used objects dont rely on an object that is in the modified area of the script
 		if not islive(main, var.name):
-			raise ToolError('cannot use variable {} moved in the script'.format(repr(grp)))
+			raise ToolError('cannot use variable {} moved in the script'.format(repr(var.name)))
 		newname = autoname(main, var.value)
 		rename(main, var.name, newname)
 		return Var(var.value, newname)
@@ -253,7 +253,7 @@ def dump(o):
 			args.append(repr(mesh.groups))
 		return 'Mesh({})'.format(', '.join(args))
 	else:
-		return repr(o)
+		return repr(o).replace('dvec3(', 'vec3(')
 		
 def format(pattern, *args, **kwargs):
 	''' format the given string using dump() instead of str()
@@ -263,7 +263,7 @@ def format(pattern, *args, **kwargs):
 				*[dump(o) for o in args], 
 				**{k:dump(o) for k,o in kwargs.items()},
 				),
-				width=40)
+				width=50)
 		
 
 def toolrequest(main, args, create=True):
@@ -361,10 +361,10 @@ def createaxis(main):
 	first = evt.pos()
 	evt = yield from waitclick()
 	if view == main.active_sceneview and (first-evt.pos()).manhattanLength() < 20:
-		axis = (p0, vec3(fvec3(transpose(view.uniforms['view'])[2])))
+		axis = Axis(p0, vec3(fvec3(transpose(view.uniforms['view'])[2])))
 	else:
 		p1 = main.active_sceneview.ptfrom(evt.pos(), view.navigation.center)
-		axis = (p0, normalize(p1-p0))
+		axis = Axis(p0, normalize(p1-p0))
 	view.scene.add(axis)
 	view.update()
 	return Var(axis)
