@@ -241,19 +241,22 @@ def dump(o):
 	''' dump object into script '''
 	if isinstance(o, Var):
 		if o.name:	return o.name
-		else:		o = o.value
-	if isinstance(o, vec3):
-		return 'vec3({:.4g},\t{:.4g},\t{:.4g})'.format(*o)
-	elif isinstance(o, tuple):
-		return '(' + ',\t'.join(dump(e) for e in o) + ')'
-	elif isinstance(o, Mesh):
-		args = [repr(mesh.points).replace('dvec3', 'vec3'), repr(mesh.faces)]
-		if any(e	for e in mesh.groups):
-			args.append(repr(mesh.tracks))
-			args.append(repr(mesh.groups))
-		return 'Mesh({})'.format(', '.join(args))
+		else:		
+			o = o.value
+			if isinstance(o, vec3):
+				return 'vec3({:.4g},\t{:.4g},\t{:.4g})'.format(*o)
+			elif isinstance(o, tuple):
+				return '(' + ',\t'.join(dump(e) for e in o) + ')'
+			elif isinstance(o, Mesh):
+				args = [repr(mesh.points).replace('dvec3', 'vec3'), repr(mesh.faces)]
+				if any(e	for e in mesh.groups):
+					args.append(repr(mesh.tracks))
+					args.append(repr(mesh.groups))
+				return 'Mesh({})'.format(', '.join(args))
+			else:
+				return repr(o).replace('dvec3(', 'vec3(')
 	else:
-		return repr(o).replace('dvec3(', 'vec3(')
+		return str(o)
 		
 def format(pattern, *args, **kwargs):
 	''' format the given string using dump() instead of str()
@@ -422,11 +425,11 @@ def create_toolbars(main, widget):
 	tools.addAction(main.createtool('hold radius', tool_radius, 'madcad-cst-radius'))
 	tools.addAction(main.createtool('hold angle', tool_angle, 'madcad-cst-angle'))
 	tools.addAction(main.createtool('make tangent', tool_tangent, 'madcad-cst-tangent'))
-	tools.addAction(main.createtool('hold on plane', tool_planar, 'madcad-cst-onplane'))
+	tools.addAction(main.createtool('hold on plane', tool_onplane, 'madcad-cst-onplane'))
 	tools.addAction(main.createtool('hold projection', tool_projected, 'madcad-cst-projection'))
 	# kinematic constraints
 	tools.addAction(main.createtool('ball', tool_ball, 'madcad-cst-ball'))
-	tools.addAction(main.createtool('plane', tool_plane, 'madcad-cst-plane'))
+	tools.addAction(main.createtool('planar', tool_planar, 'madcad-cst-plane'))
 	tools.addAction(main.createtool('pivot', tool_pivot, 'madcad-cst-pivot'))
 	tools.addAction(main.createtool('gliding', tool_gliding, 'madcad-cst-gliding'))
 	tools.addAction(main.createtool('track', tool_track, 'madcad-cst-track'))
@@ -641,7 +644,7 @@ def tool_extrusion(main):
 	displt = QInputDialog.getText(main.mainwindow, 'extrusion displacement', 'vector expression:')[0]
 	if not displt:
 		raise ToolError('no displacement entered')
-	main.insertexpr(format('extrusion({}, {})', Var(name=displt), outline))
+	main.insertexpr(format('extrusion({}, {})', displt, outline))
 
 def tool_revolution(main):
 	outline, axis = yield from toolrequest(main, [
@@ -651,7 +654,7 @@ def tool_revolution(main):
 	angle = QInputDialog.getText(main.mainwindow, 'revolution angle', 'angle (degrees):')[0]
 	if not angle:
 		raise ToolError('no displacement entered')
-	main.insertexpr(format('revolution(radians({}), {}, {})', Var(name=angle), axis, outline))
+	main.insertexpr(format('revolution(radians({}), {}, {})', angle, axis, outline))
 	
 def tool_tube(main):
 	args = yield from toolrequest(main, [
@@ -697,8 +700,8 @@ def tool_distance(main):
 				])
 	target = QInputDialog.getText(main.mainwindow, 'distance constraint', 'target distance:')[0]
 	if not target:
-		raise ToolError('no distance entered or invalid radius')
-	main.insertexpr(format('Distance({}, {}, {})', *args, Var(name=target)))
+		raise ToolError('no distance entered')
+	main.insertexpr(format('Distance({}, {}, {})', *args, target))
 
 def tool_radius(main):
 	arc, = yield from toolrequest(main, [
@@ -707,7 +710,7 @@ def tool_radius(main):
 	target = QInputDialog.getText(main.mainwindow, 'radius constraint', 'target radius:')[0]
 	if not target:
 		raise ToolError('no radius entered')
-	main.insertexpr(format('Radius({}, {})', arc, Var(name=target)))
+	main.insertexpr(format('Radius({}, {})', arc, target))
 
 def tool_angle(main):
 	args = yield from toolrequest(main, [
@@ -717,7 +720,7 @@ def tool_angle(main):
 	target = QInputDialog.getText(main.mainwindow, 'angle constraint', 'target oriented angle:')[0]
 	if not target:
 		raise ToolError('no angle entered')
-	main.insertexpr(format('Angle({}, {}, radians({}))', *args, Var(name=target)))
+	main.insertexpr(format('Angle({}, {}, radians({}))', *args, target))
 
 def tool_tangent(main):
 	args = yield from toolrequest(main, [
@@ -729,28 +732,23 @@ def tool_tangent(main):
 		for v2 in args[1].slvvars:
 			if getattr(args[0], v1) is getattr(args[1], v2):
 				common = v1, v2
-	main.insertexpr(format('Tangent({}, {}, {}.{})', args[0], args[1], args[0], Var(name=common[0])))
+	main.insertexpr(format('Tangent({}, {}, {}.{})', args[0], args[1], args[0], common[0]))
 				
 			
-def tool_planar(main):
+def tool_onplane(main):
 	axis, = yield from toolrequest(main, [
 				(isaxis, 'axis normal to the plane'),
 				])
 	
 	# let the user select or create the points to put on the plane
 	vars = []
+	main.assist.info("select the points to keep on plane")
 	while True:
-		evt = yield
-		if evt.type() == QEvent.KeyPressed and evt.key() == Qt.Esc or evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.MiddleButton:
-			break
-		if not (evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton):
-			continue
-		var = clickedvar(evt)
-		if not var:	
-			continue
-		vars.append(acquirevar(var))
+		try:	var = yield from select(main, vec3)
+		except ToolError: break
+		vars.append(var)
 	
-	main.insertexpr(format('Planar({}, [{}])', 
+	main.insertexpr(format('OnPlane({}, [{}])', 
 				axis, 
 				', '.join(dump(obj) for obj in vars)),
 				)
@@ -761,10 +759,15 @@ def tool_projected(main):
 				(crit, 'start point'),
 				(crit, 'end point'),
 				])
-	target = QInputDialog.getText(main.mainwindow, 'projection constraint', 'vector offset:')[0]
+	along = QInputDialog.getText(main.mainwindow, 'projection constraint', 'vector direction:')[0]
+	if not along:
+		raise ToolError('no direction entered')
+	
+	target = QInputDialog.getText(main.mainwindow, 'distance constraint', 'target distance:')[0]
 	if not target:
-		raise ToolError('no distance entered or invalid radius')
-	main.insertexpr(format('Distance({}, {}, {})', *args, Var(name=target)))
+		raise ToolError('no distance entered')
+	
+	main.insertexpr(format('Distance({}, {}, {}, along={})', *args, target))
 
 def tool_pivot(main):
 	args = yield from toolrequest(main, [
@@ -778,11 +781,11 @@ def tool_gliding(main):
 				])
 	main.insertexpr(format('Gliding(Solid(), Solid(), {})', *args))
 	
-def tool_plane(main):
+def tool_planar(main):
 	args = yield from toolrequest(main, [
 				(isaxis, 'normal axis to the plane'),
 				])
-	main.insertexpr(format('Plane(Solid(), Solid(), {})',  *args))
+	main.insertexpr(format('Planar(Solid(), Solid(), {})',  *args))
 	
 def tool_ball(main):
 	args = yield from toolrequest(main, [
@@ -810,7 +813,7 @@ def tool_helicoid(main):
 	pitch = QInputDialog.getText(main.mainwindow, 'helicoid joint', 'screw pitch (mm/tr):')[0]
 	if not pitch:
 		raise ToolError('no pich entered')
-	main.insertexpr(format('Helicoid(Solid(), Solid(), {}, {})', Var(name=pitch), axis))
+	main.insertexpr(format('Helicoid(Solid(), Solid(), {}, {})', pitch, axis))
 
 
 # tools that will automatically used to create missing objects in request
