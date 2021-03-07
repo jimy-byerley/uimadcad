@@ -296,24 +296,45 @@ def toolrequest(main, args, create=True):
 			raise ToolError('missing {}'.format(comment))
 	
 		# run a selection in concurrence with the creation
-		# get the first returned value from the selector or the creation
-		iterator = race(select(main, req), completition[req](main))
-		next(iterator)
-		match[i] = yield from iterator
+		match[i] = yield from race(select(main, req), completition[req](main))
 	
 	main.deselectall()
 	return match
 
-
+def requestmany(main, req, description='', create=True):
+	''' give as many of one element as requested '''
+	vars = []
+	# take all satisfying selected objects from the scene
+	for disp in scene_unroll(main.active_sceneview.scene):
+		if disp.selected:
+			var = dispvar(main, disp)
+			if var and req(var.value):
+				vars.append(var)
+	# if there is no such selection, generate an unlimited quantity
+	if not vars and create and req in completition:
+		main.assist.info(description)
+		while True:	
+			try:
+				var = yield from race(select(main, vec3), completition[req](main))
+			except ToolError:
+				break
+			vars.append(var)
+	return vars
 
 def race(*args):
+	''' get the first returned value from the selector or the creation '''
 	if len(args) == 1 and hasattr(args[0], '__iter__'):
 		args = args[0]
+	for it in args:	
+		try:	
+			next(it)
+		except StopIteration as err:
+			return err.value
 	while True:
 		obj = yield
 		for it in args:
 			try:
-				res = it.send(obj)
+				it.send(obj)
 			except StopIteration as err:
 				return err.value
 
@@ -533,47 +554,12 @@ def tool_tangentellipsis(main):
 	main.insertexpr(format('TangentEllipsis({}, {}, {})', *args))
 	
 def tool_softened(main):
-	scene = main.active_sceneview.scene
-	pts = []
-	
-	for disp in scene_unroll(main.active_sceneview.scene):
-		if disp.selected:
-			var = dispvar(main, disp)
-			if var and isinstance(var.value, vec3):
-				pts.append(var)
-			
-	try:
-		main.assist.info("place points")
-		while True:
-			iterator = race(select(main, vec3), createpoint(main))
-			next(iterator)
-			pt = yield from iterator
-			pts.append(pt)
-	except ToolError:
-		main.insertexpr(format('Softened(['+ ', '.join(dump(p) for p in pts)) + '])')
-		return
-		
+	pts = yield from requestmany(main, vec3, "create points")
+	main.insertexpr(format('Softened(['+ ', '.join(dump(p) for p in pts) + '])'))
 	
 def tool_interpolated(main):
-	scene = main.active_sceneview.scene
-	pts = []
-	
-	for disp in scene_unroll(main.active_sceneview.scene):
-		if disp.selected:
-			var = dispvar(main, disp)
-			if var and isinstance(var.value, vec3):
-				pts.append(var)
-			
-	try:
-		main.assist.info("place points")
-		while True:
-			iterator = race(select(main, vec3), createpoint(main))
-			next(iterator)
-			pt = yield from iterator
-			pts.append(pt)
-	except ToolError:
-		main.insertexpr(format('Interpolated(['+ ', '.join(dump(p) for p in pts)) + '])')
-		return
+	pts = yield from requestmany(main, vec3, "create points")
+	main.insertexpr(format('Interpolated(['+ ', '.join(dump(p) for p in pts) + '])'))
 	
 	
 def tool_note(main):
@@ -612,30 +598,7 @@ def tool_boolean(main):
 				(Mesh, 'second volume'),
 				])
 	main.insertexpr(format('difference({}, {})', *args))
-	#main.assist.ui(BooleanChoice(args))
-	
-"""
-class BooleanChoice(QWidget):
-	''' menu to select options for tool execution '''
-	def __init__(self, meshes):
-		self.meshes = meshes
-		choice = QComboBox(self)
-		choice.addItem('union')
-		choice.addItem('difference')
-		choice.addItem('intersection')
-		choice.addItem('exclusion')
-		choice.currentIndexChanged.connect(self.set)
-		finishbt = QPushButton('finish')
-		finishbt.activated.connect(self.finish)
-		layout = QHBoxLayout()
-		layout.addWidget(choice)
-		layout.addWidget(finishbt)
-		self.setLayout(layout)
-	def set(self, mode):
-		indev
-	def finish(self):
-		indev
-"""
+
 
 def tool_extrusion(main):
 	outline, = yield from toolrequest(main, [
@@ -678,17 +641,11 @@ def tool_triangulation(main):
 	
 def tool_junction(main):
 	scene = main.active_sceneview.scene
-	outlines = []
-	
-	for disp in scene_unroll(main.active_sceneview.scene):
-		if disp.selected:
-			var = dispvar(main, disp)
-			if val:
-				val = var.value
-				if isinstance(val, (Web,Wire,Mesh)) or isprimitive(val) or val and isinstance(var, list) and isprimitive(var.value[0]):
-					outlines.append(var)
-	
-	indev
+	outlines = yield from requestmany(main,
+			req=lambda o: isinstance(o, (Web,Wire,Mesh)) or isprimitive(o) or o and isinstance(o, list) and isprimitive(var.value[0]),
+			description="select outlines",
+			create=False)
+	main.insertexpr(format('junction(' + ', '.join(dump(o) for o in outlines) + ')'))
 
 
 
@@ -739,14 +696,21 @@ def tool_onplane(main):
 	axis, = yield from toolrequest(main, [
 				(isaxis, 'axis normal to the plane'),
 				])
+	pts = []
+	
+	for disp in scene_unroll(main.active_sceneview.scene):
+		if disp.selected:
+			var = dispvar(main, disp)
+			if var and isinstance(var.value, vec3):
+				pts.append(var)
 	
 	# let the user select or create the points to put on the plane
-	vars = []
-	main.assist.info("select the points to keep on plane")
-	while True:
-		try:	var = yield from select(main, vec3)
-		except ToolError: break
-		vars.append(var)
+	if not pts:
+		main.assist.info("select the points to keep on plane")
+		while True:
+			try:	var = yield from select(main, vec3)
+			except ToolError: break
+			pts.append(var)
 	
 	main.insertexpr(format('OnPlane({}, [{}])', 
 				axis, 
