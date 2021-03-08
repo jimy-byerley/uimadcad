@@ -88,6 +88,7 @@ class Interpreter:
 		self.part = part = ast.Module(body=part, type_ignores=[])
 		processed, locations = self.process(part, backenv.keys())
 		
+		error = None
 		if autobackup:
 			env = copyvars(backenv, locations.keys())
 			
@@ -103,7 +104,8 @@ class Interpreter:
 				try:
 					exec(code, env)
 				except Exception as err:
-					raise InterpreterError(err)
+					error = err
+					break
 				
 				# autobackup
 				t = time()
@@ -120,7 +122,8 @@ class Interpreter:
 			try:
 				exec(code, env)
 			except Exception as err:
-				raise InterpreterError(err)
+				error = err
+				pass
 		
 		# publish results
 		self.part_altered = processed
@@ -135,6 +138,9 @@ class Interpreter:
 		self.used = used
 		self.neverused |= used
 		self.neverused -= reused
+		
+		if error:	
+			raise InterpreterError(error)
 	
 	def process(self, tree, oldvars):
 		''' process an AST to retreive its temporary values 

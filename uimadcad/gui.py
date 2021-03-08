@@ -362,11 +362,11 @@ class Madcad(QObject):
 			self.execution_label('<p style="color:#ff5555">FAILED</p>')
 		else:
 			self.execution_label('<p style="color:#55ff22">COMPUTED</p>')
-			self.currentenv = self.interpreter.current
-			self.update_endzone()
-			self.updatescript()
 			self.hideerror()
-			self.executed.emit()				
+		self.currentenv = self.interpreter.current
+		self.update_endzone()
+		self.updatescript()
+		self.executed.emit()				
 	
 	def reexecute(self):
 		''' reexecute all the script '''
@@ -590,13 +590,14 @@ class Madcad(QObject):
 		cursor.movePosition(QTextCursor.StartOfLine)
 		while cursor.position() < stop:
 			# get the beginning of line
-			cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
+			cursor.movePosition(QTextCursor.NextCharacter, QTextCursor.KeepAnchor)
 			while cursor.selectedText().isspace():
 				cursor.clearSelection()
-				cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
+				cursor.movePosition(QTextCursor.NextCharacter, QTextCursor.KeepAnchor)
 			# check for comment
-			if cursor.selectedText().startswith('#'):
+			if cursor.selectedText() == '#':
 				cursor.removeSelectedText()
+				stop -= 1
 			# advance
 			cursor.movePosition(QTextCursor.EndOfLine)
 			cursor.movePosition(QTextCursor.NextCharacter)

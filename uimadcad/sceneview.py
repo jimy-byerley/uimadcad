@@ -82,7 +82,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		# display objects in the display zones
 		for zs,ze in main.displayzones.values():
 			for name,node in it.locations.items():
-				if name not in newscene:
+				if name not in newscene and name in it.current:
 					ts,te = astinterval(node)
 					temp = it.current[name]
 					if zs <= ts and te <= ze and displayable(temp) and type(temp) not in (list, dict):
