@@ -20,6 +20,7 @@ class ToolError(Exception):
 	''' exception used to indicate an error in the usage of a Scene tool '''
 	pass
 
+
 class ToolAssist(QWidget):
 	''' assistant widget (or window) that pop up when a tool is enabled '''
 	def __init__(self, main, parent=None):
@@ -309,7 +310,7 @@ def requestmany(main, req, description='', create=True):
 		if disp.selected:
 			var = dispvar(main, disp)
 			if var and req(var.value):
-				vars.append(var)
+				vars.append(acquirevar(main, var))
 	# if there is no such selection, generate an unlimited quantity
 	if not vars and create and req in completition:
 		main.assist.info(description)
