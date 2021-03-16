@@ -4,9 +4,10 @@ version=0.5
 target=$(dirname $0)
 
 # exit on error
-set -eux
+set -eu
 
-while getopts ":ah" arg; do
+while getopts "a:h:" arg
+do
 	case $arg in 
 	a)
 		arch=$OPTARG
@@ -21,6 +22,7 @@ while getopts ":ah" arg; do
 	esac
 done
 
+set -x
 
 format=$1
 arch=${arch:-$(arch)}
@@ -40,7 +42,8 @@ deb)
 	# rename the tree for further additions
 	package=$target/dist/deb_${arch}
 	rm -fr $package
-	mv $prefix $package
+	install -d $package
+	mv $prefix $package/usr
 	
 	# name trick for the architecture
 	case $arch in

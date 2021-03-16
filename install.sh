@@ -3,9 +3,9 @@
 project=$(dirname $0)
 
 # exit on error
-set -eux
+set -eu
 
-while getopts ":pah" arg; do
+while getopts "p:a:h:" arg; do
 	case $arg in 
 	a)
 		arch=$OPTARG
@@ -23,6 +23,7 @@ while getopts ":pah" arg; do
 	esac
 done
 
+set -x
 
 arch=${arch:-$(arch)}
 platform=${platform:-linux}
@@ -46,8 +47,6 @@ esac
 
 install -d $bin
 install -d $data
-# launcher, must be in release mode to not contain the source code
-install $project/launcher/target/release/madcad $bin/
 # main archive
 # files must be inserted in the python importation order to solve the dependency problems
 $project/launcher/target/release/pack $data/uimadcad \
@@ -64,9 +63,13 @@ $project/launcher/target/release/pack $data/uimadcad \
 		uimadcad/__init__.py \
 		uimadcad/__main__.py
 
-# desktop implantation
+# platform specific
 case $platform in
 linux)
+	# launcher, must be in release mode to not contain the source code
+	install $project/launcher/madcad.py $bin/madcad
+	install $project/launcher/target/release/liblauncher.so $data/launcher.so
+
 	install -d $prefix/share/applications/
 	install madcad.desktop $prefix/share/applications/
 	install -d $prefix/share/icons/hicolor/scalable/apps
@@ -76,6 +79,15 @@ linux)
 	install -d $prefix/share/mime/packages/
 	install mimetypes/*.xml $prefix/share/mime/packages/
 	#update-mime-database ~/.local/share/mime
+	;;
+windows)
+	# launcher, must be in release mode to not contain the source code
+	install $project/launcher/madcad.py $bin/
+	install $project/launcher/target/release/liblauncher.so $data/launcher.cdylib
+	
+	install -d $prefix/icons
+	install icons/*.svg $prefix/icons/
+	install icons/madcad.ico $prefix/
 	;;
 ?)
 	echo "platform not supported: $platform"
