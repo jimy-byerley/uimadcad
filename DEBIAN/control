@@ -5,7 +5,7 @@ Essential: no
 Section: science
 Priority: optional
 Homepage: https://github.com/jimy-byerley/pymadcad
-Depends: python3 (>=3.6), python3-pymadcad (>=0.5), python3-pyqt5
-Maintainer: James Byerley <jimy.byerley@gmail.com>
+Depends: python3 (>=3.6), python3-pymadcad (>=0.7), python3-pyqt5
+Maintainer: Jimy Byerley <jimy.byerley@gmail.com>
 Installed-Size: $SIZE
 Description: The graphical interface for the MADCAD software.
