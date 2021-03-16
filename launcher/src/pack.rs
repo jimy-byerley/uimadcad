@@ -6,8 +6,7 @@ use std::path::Path;
 use zip::ZipWriter;
 use cryptostream::write;
 use openssl::symm::Cipher;
-use base64::{decode, encode};
-use rand::prelude::*;
+use base64::decode;
 
 fn main() -> Result<(), Box<dyn Error>> {
 	let key: Vec<_> = decode("kjtbxCPw3XPFThb3mKmzfg==")?;

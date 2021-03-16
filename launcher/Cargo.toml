@@ -13,11 +13,12 @@ rand = "^0.7.3"
 
 [dependencies.pyo3]
 version = "^0.13.1"
-features = ["auto-initialize"]
+features = ["extension-module"]
 
-[[bin]]
-name = "madcad"
+[lib]
+name = "launcher"
 path = "src/launcher.rs"
+crate-type = ["cdylib"]
 
 [[bin]]
 name = "pack"

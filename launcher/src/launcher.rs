@@ -7,30 +7,36 @@ use cryptostream::read;
 use openssl::symm::Cipher;
 use base64::decode;
 use pyo3::prelude::*;
+use pyo3::wrap_pyfunction;
+use pyo3::exceptions::PyOSError;
 
-fn main() -> Result<(), Box<dyn Error>> {
+
+#[pymodule]
+fn launcher(py: Python, m: &PyModule) -> PyResult<()> {
+	m.add_function(wrap_pyfunction!(run, m)?)?;
+	Ok(())
+}
+
+#[pyfunction]
+fn run(path: &str) -> PyResult<()> {
+	match run_archive(Path::new(path)) {
+		Ok(()) => Ok(()),
+		Err(e) => Err(PyOSError::new_err(format!("{:?}", e))),
+	}
+}
+
+fn run_archive(path: &Path) -> Result<(), Box<dyn Error>> {
 	let key: Vec<_> = decode("kjtbxCPw3XPFThb3mKmzfg==")?;
 	let iv: Vec<_> = decode("dB0Ej+7zWZWTS5JUCldWMg==")?;
-	let module = "uimadcad";
-	
-	// select the archive path
-	let mut path = std::env::current_exe()?.to_owned();
-	path.pop();
-	path.push(module);
-	if ! path.exists()  {
-		path.pop();
-		path.pop();
-		path.push("share");
-		path.push("madcad");
-		path.push(module);
-	}
 	
 	// open src zip archive
 	let mut archive = ZipArchive::new(
-			File::open(Path::new(&path)) .expect("main archive not found")
+			File::open(path) .expect("main archive not found")
 			) .expect("unable to read main archive");
 	
 	// create the main module
+	let module = path.file_stem() .expect("bad name format for archive") 
+						.to_str() .unwrap();
 	let gil = Python::acquire_gil();
 	let py = gil.python();
 	let package = PyModule::new(py, module)?;
@@ -43,7 +49,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	// load submodules in the archiving order
 	for i in 0..archive.len() {
 		// source data file
-		let mut file = archive.by_index(i)?;
+		let file = archive.by_index(i)?;
 		let name = file.name().to_owned();
 
 		// decrypt file
