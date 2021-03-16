@@ -19,8 +19,9 @@ if __name__ == '__main__':
 	
 	# set icons if not provided by the system
 	if not QIcon.themeName():
+		# assume that the software is a portable version, so the icons are in the same dir as executable
 		path = QIcon.themeSearchPaths()
-		path.append('path to own icons')
+		path.append(dirname(sys.argv[0]) + '/icons')
 		QIcon.setThemeSearchPaths(path)
 	
 	# set locale settings to default to get correct 'repr' of glm types
