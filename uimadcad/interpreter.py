@@ -347,9 +347,11 @@ def astannotate(tree, text):
 		# node specific length calculation
 		if isinstance(node, ast.Name):
 			node.end_position = node.position + len(node.id)
-		elif isinstance(node, ast.Num):
+		if isinstance(node, ast.keyword):
+			node.position, node.end_position = node.value.position, node.value.end_position
+		elif isinstance(node, (ast.Num, ast.Constant)):
 			i = node.position
-			while i < len(text) and text[i].isalnum():	i+=1
+			while i < len(text) and text[i] in '0123456789+-e.rufbx':	i+=1
 			node.end_position = i
 		
 		# generic retreival from the last child
@@ -364,12 +366,28 @@ def astannotate(tree, text):
 			i = node.end_position + len(node.attr)
 			while i < len(text) and text[i].isalnum():	i+=1
 			node.end_position = i
-		elif isinstance(node, (ast.Call,ast.Tuple)):
-			node.end_position = text.find(')', node.end_position)+1
-		elif isinstance(node, (ast.Subscript, ast.List)):
+		elif isinstance(node, (ast.Subscript, ast.List, ast.ListComp)):
 			node.end_position = text.find(']', node.end_position)+1
+		elif isinstance(node, (ast.Dict, ast.Set, ast.DictComp, ast.SetComp)):
+			node.end_position = text.find('}', node.end_position)+1
+		elif isinstance(node, ast.expr):
+			start = node.position
+			if not isinstance(node, ast.Call):
+				start -= 1
+				while start > 0 and text[start] in ' \t\n':	start -= 1
+				if start >= 0 and text[start] != '(':
+					return
+			end = node.end_position
+			if end < len(text) and text[end] == '(':	end += 1
+			while end < len(text) and text[end] in ' \t\n,':	end += 1
+			if end < len(text) and text[end] != ')':
+				return
+			node.position = start
+			node.end_position = end+1 #text.find(')', node.end_position)+1
 	
 	recursive(tree)
+
+
 				
 def astshift(tree, loc, pos):
 	''' shift the position attributes of the tree nodes, as if the parsed text was appent to an other string '''
