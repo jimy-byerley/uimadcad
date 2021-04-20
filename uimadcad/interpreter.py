@@ -200,6 +200,8 @@ class Interpreter:
 						node, 
 						**psts))
 					return ast.Name(name, ast.Load(), **psts)
+				elif isinstance(node, (ast.ListComp, ast.DictComp, ast.SetComp, ast.GeneratorExp, ast.stmt)) and not isinstance(node, ast.Expr):
+					return
 				# capture sub expressions
 				elif isinstance(node, (ast.expr, ast.Expr)):
 					astpropagate(node, capture)
@@ -207,6 +209,8 @@ class Interpreter:
 			
 			# recursive replacement only for children
 			def descend(node):
+				if isinstance(node, (ast.ListComp, ast.DictComp, ast.SetComp, ast.GeneratorExp, ast.stmt)) and not isinstance(node, ast.Expr):
+					return
 				astpropagate(node, capture)
 			
 			capture(statement)
