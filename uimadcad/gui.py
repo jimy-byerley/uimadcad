@@ -232,7 +232,7 @@ class Madcad(QObject):
 	def open_file(self, filename):
 		''' clears the current workspace and load the specified file
 		'''
-		extension = filename[filename.find('.')+1:]
+		extension = os.path.splitext(filename)[1][1:]
 		if extension not in ('py', 'txt'):
 			box = QMessageBox(
 				QMessageBox.Warning, 'bad file type', 
