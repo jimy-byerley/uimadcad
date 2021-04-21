@@ -44,7 +44,7 @@ from . import tooling
 from . import settings
 
 from copy import deepcopy, copy
-from nprint import nprint, nformat, deformat
+from madcad.nprint import nprint, nformat, deformat
 import ast, traceback
 import os, sys
 import re
@@ -396,6 +396,8 @@ class Madcad(QObject):
 			view.hide()
 		
 	def edit(self, name):
+		if name in self.editors:
+			return self.editors[name]
 		obj = self.interpreter.current[name]
 		editor = tricks.editors.get(type(obj))
 		if not editor:
@@ -405,6 +407,7 @@ class Madcad(QObject):
 		except tricks.EditionError as err:
 			print('unable to edit variable', name, ':', err)
 		else:
+			print('editing', name)
 			self.active_sceneview.scene.sync()
 			self.updatescript()
 			return e

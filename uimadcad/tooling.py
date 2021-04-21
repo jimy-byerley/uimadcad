@@ -8,7 +8,7 @@ from PyQt5.QtGui import QIcon, QKeySequence, QTextCursor, QTextDocument
 import os.path
 import ast
 from collections import namedtuple
-from nprint import nformat
+from madcad.nprint import nformat
 
 from madcad import *
 

@@ -98,6 +98,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.update_solidsets()
 		# trigger the signal for dependent widgets
 		self.changed.emit()
+		nprint(self.displays)
 		
 	def touch(self):
 		self.changed.emit()

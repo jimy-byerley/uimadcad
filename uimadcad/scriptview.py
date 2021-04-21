@@ -20,7 +20,7 @@ from .common import *
 from .interpreter import astinterval
 from .settings import ctq
 from . import settings
-from nprint import nprint
+from madcad.nprint import nprint
 from bisect import bisect_left
 import re
 

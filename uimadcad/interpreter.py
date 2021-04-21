@@ -3,7 +3,7 @@ from types import ModuleType
 from copy import copy, deepcopy
 from time import time
 from madcad.mathutils import bisect
-from nprint import nprint
+from madcad.nprint import nprint
 
 
 class InterpreterError(Exception):	pass

@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy,
 							QShortcut,
 							)
 from PyQt5.QtGui import QColor, QPalette, QFont, QFontMetrics, QTextOption, QIcon, QKeySequence
-from nprint import nformat
+from madcad.nprint import nformat
 from madcad import Mesh, Web, note_label
 
 from .common import *
