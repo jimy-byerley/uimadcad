@@ -354,9 +354,9 @@ def astannotate(tree, text):
 			node.end_position = node.position + len(node.id)
 		if isinstance(node, ast.keyword):
 			node.position, node.end_position = node.value.position, node.value.end_position
-		elif isinstance(node, (ast.Num, ast.Constant)):
+		elif isinstance(node, (ast.Num, ast.Str, ast.Constant)):
 			i = node.position
-			if isinstance(node.value, str):
+			if isinstance(node, ast.Constant) and isinstance(node.value, str) or isinstance(node, ast.Str):
 				marker = text[i]
 				if text[i:i+3] == 3*marker:
 					marker = 3*marker
