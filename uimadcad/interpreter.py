@@ -343,6 +343,7 @@ def astannotate(tree, text):
 			currentloc = target
 			currentpos = node.position
 	
+	
 	# find the end of each node
 	def recursive(node):
 		# process subnodes first
@@ -355,8 +356,14 @@ def astannotate(tree, text):
 			node.position, node.end_position = node.value.position, node.value.end_position
 		elif isinstance(node, (ast.Num, ast.Constant)):
 			i = node.position
-			while i < len(text) and text[i] in '0123456789+-e.rufbx':	i+=1
-			node.end_position = i
+			if isinstance(node.value, str):
+				marker = text[i]
+				if text[i:i+3] == 3*marker:
+					marker = 3*marker
+				node.end_position = text.find(marker, i+len(marker)) + len(marker)
+			else:
+				while i < len(text) and text[i] in '0123456789+-e.rufbx':	i+=1
+				node.end_position = i
 		
 		# generic retreival from the last child
 		elif hasattr(node, 'position'):
@@ -374,9 +381,9 @@ def astannotate(tree, text):
 			node.end_position = text.find(']', node.end_position)+1
 		elif isinstance(node, (ast.Dict, ast.Set, ast.DictComp, ast.SetComp)):
 			node.end_position = text.find('}', node.end_position)+1
-		elif isinstance(node, ast.expr):
+		elif isinstance(node, (ast.expr, ast.Tuple)) and not isinstance(node, (ast.Constant, ast.Num)):
 			start = node.position
-			if not isinstance(node, ast.Call):
+			if not isinstance(node, (ast.Call, ast.Tuple)):
 				start -= 1
 				while start > 0 and text[start] in ' \t\n':	start -= 1
 				if start >= 0 and text[start] != '(':
@@ -387,7 +394,7 @@ def astannotate(tree, text):
 			if end < len(text) and text[end] != ')':
 				return
 			node.position = start
-			node.end_position = end+1 #text.find(')', node.end_position)+1
+			node.end_position = end+1
 	
 	recursive(tree)
 
