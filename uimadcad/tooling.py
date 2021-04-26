@@ -241,11 +241,12 @@ def autoname(main, obj):
 def dump(o):
 	''' dump object into script '''
 	if isinstance(o, Var):
-		if o.name:	return o.name
+		if o.name:	
+			return o.name
 		else:		
 			o = o.value
 			if isinstance(o, vec3):
-				return 'vec3({:.4g},\t{:.4g},\t{:.4g})'.format(*o)
+				return 'vec3({:.4g}, {:.4g}, {:.4g})'.format(*o)
 			elif isinstance(o, tuple):
 				return '(' + ',\t'.join(dump(e) for e in o) + ')'
 			elif isinstance(o, Mesh):
@@ -514,7 +515,7 @@ def tool_axis(main):
 				(vec3, 'direction point'),
 			])
 	dir = normalize(dst.value-origin.value)
-	main.insertexpr(format('Axis({}, {})', origin, dir))
+	main.insertexpr(format('Axis({}, {})', origin, Var(dir)))
 	
 def tool_segment(main):
 	args = yield from toolrequest(main, [
