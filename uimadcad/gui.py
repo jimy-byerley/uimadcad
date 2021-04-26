@@ -523,7 +523,8 @@ class Madcad(QObject):
 		# get line indendation
 		cursor.clearSelection()
 		cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
-		indent = cursor.selectedText()
+		indent = cursor.selectedText().replace('\u2029', '\n')
+		indent = indent[:indent.find('\n')]
 		if not indent.isspace():	indent = ''
 		# get end of text
 		cursor = self.active_scriptview.editor.textCursor()
