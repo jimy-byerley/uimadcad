@@ -84,8 +84,9 @@ cage_profile = wire([
 bevel(cage_profile, [1], ('radius',c))
 cage = revolution(2*pi, axis, cage_profile)
 cage.mergeclose()
-booleanwith(cage, inflate(rollers, 0.5*c), False)
-cage = thicken(cage, c) .option(color=vec3(0.3,0.2,0))
+cage = thicken(
+		pierce(cage, inflate(rollers, 0.5*c)), 
+		c) .option(color=vec3(0.3,0.2,0))
 
 part = revolution(4, axis, web([
 			exterior, 

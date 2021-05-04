@@ -49,8 +49,9 @@ bevel(cage_profile, [1,2], ('radius',c), resolution=('div',1))
 
 cage_surf = revolution(2*pi, axis, cage_profile)
 cage_surf.mergeclose()
-boolean.booleanwith(cage_surf, inflate(balls, 0.2*c), False)
-cage = thicken(cage_surf, 0.5*c) .option(color=vec3(0.3,0.2,0))
+cage = thicken(
+		pierce(cage_surf, inflate(balls, 0.2*c)), 
+		0.5*c) .option(color=vec3(0.3,0.2,0))
 
 #top = (
 #	  Wire([
