@@ -295,7 +295,7 @@ class SceneView(madcad.rendering.View):
 			if isinstance(self.parent(), QDockWidget):
 				self.parent().setTitleBarWidget(self.statusbar)
 		# update scene when color changes
-		elif evt.type() == QEvent.PaletteChange and madcad.settings.display['system_theme']:
+		elif evt.type() == QEvent.PaletteChange and madcad.settings.display['system_theme'] and self.scene.ctx:
 			self.scene.sync()
 		return super().changeEvent(evt)
 		
