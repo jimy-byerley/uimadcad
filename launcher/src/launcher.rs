@@ -12,7 +12,7 @@ use pyo3::exceptions::PyOSError;
 
 
 #[pymodule]
-fn launcher(py: Python, m: &PyModule) -> PyResult<()> {
+fn launcher(_py: Python, m: &PyModule) -> PyResult<()> {
 	m.add_function(wrap_pyfunction!(run, m)?)?;
 	Ok(())
 }
@@ -21,7 +21,13 @@ fn launcher(py: Python, m: &PyModule) -> PyResult<()> {
 fn run(path: &str) -> PyResult<()> {
 	match run_archive(Path::new(path)) {
 		Ok(()) => Ok(()),
-		Err(e) => Err(PyOSError::new_err(format!("{:?}", e))),
+		Err(e) => Err(
+			if e.is::<PyErr>() {
+				*e.downcast::<PyErr>().unwrap()
+			}
+			else {
+				PyOSError::new_err(format!("{:?}", e))
+			}),
 	}
 }
 
@@ -70,14 +76,14 @@ fn run_archive(path: &Path) -> Result<(), Box<dyn Error>> {
 					&code, 
 					&format!("{}/{}.py", module, name), 
 					&format!("{}.{}", module, name)
-					) .expect(&name);
+					) ?;
 		package.dict().set_item("__package__", module)?;
 		// register the new sub module
 		package.dict().set_item(&name, sub)?;
 	}
 	
 	println!("run python");
-	py.run(&main, None, None) .ok();	// if python stop on an exception, it's still ok
-	
+	py.run(&main, None, None)?;
+
 	Ok(())
 }
