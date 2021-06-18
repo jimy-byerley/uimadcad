@@ -1,9 +1,7 @@
-#!/bin/sh
+#!/bin/sh -eux
 
 project=$(dirname $0)
 
-# exit on error
-set -eu
 
 while getopts "p:a:h:" arg; do
 	case $arg in 
@@ -23,7 +21,6 @@ while getopts "p:a:h:" arg; do
 	esac
 done
 
-set -x
 
 arch=${arch:-$(arch)}
 platform=${platform:-linux}
@@ -34,10 +31,12 @@ case $platform in
 linux)
 	data=$prefix/share/madcad
 	bin=$prefix/bin
+	binformat=
 	;;
 windows)
 	data=$prefix
 	bin=$prefix
+	binformat=.exe
 	;;
 ?)
 	echo "platform not supported: $platform"
@@ -49,7 +48,7 @@ install -d $bin
 install -d $data
 # main archive
 # files must be inserted in the python importation order to solve the dependency problems
-$project/launcher/target/release/pack $data/uimadcad \
+$project/launcher/target/release/pack$binformat $data/uimadcad \
 		uimadcad/common.py \
 		uimadcad/interpreter.py \
 		uimadcad/settings.py \
@@ -67,7 +66,7 @@ $project/launcher/target/release/pack $data/uimadcad \
 case $platform in
 linux)
 	# launcher, must be in release mode to not contain the source code
-	install $project/launcher/madcad.py $bin/madcad
+	install $project/launcher/madcad-linux.py $bin/madcad
 	install $project/launcher/target/release/liblauncher.so $data/launcher.so
 
 	install -d $prefix/share/applications/
@@ -82,11 +81,12 @@ linux)
 	;;
 windows)
 	# launcher, must be in release mode to not contain the source code
-	install $project/launcher/madcad.py $bin/
-	install $project/launcher/target/release/liblauncher.so $data/launcher.cdylib
+	install $project/launcher/uimadcad-windows.py $bin/uimadcad.py
+	install $project/launcher/madcad.bat $bin/
+	install $project/launcher/target/release/launcher.dll $data/launcher.pyd
 	
 	install -d $prefix/icons
-	install icons/*.svg $prefix/icons/
+# 	install icons/*.svg $prefix/icons/
 	install icons/madcad.ico $prefix/
 	;;
 ?)
