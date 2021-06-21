@@ -85,8 +85,8 @@ windows)
 	install $project/launcher/madcad.bat $bin/
 	install $project/launcher/target/release/launcher.dll $data/launcher.pyd
 	
-	install -d $prefix/icons
-# 	install icons/*.svg $prefix/icons/
+	install -d $prefix/icons/hicolor/scalable/apps
+ 	install icons/*.svg $prefix/icons/hicolor/scalable/apps/
 	install icons/madcad.ico $prefix/
 	;;
 ?)
