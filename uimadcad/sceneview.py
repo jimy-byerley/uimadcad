@@ -28,6 +28,7 @@ from . import tricks, settings
 
 import ast
 from copy import deepcopy, copy
+from weakref import WeakValueDictionary
 
 
 QEventGLContextChange = 215	# opengl context change event type, not yet defined in PyQt5
@@ -57,6 +58,8 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.active_solid = None	# current solid for current space
 		self.executed = True	# flag set to True to enable a full relead of the scene
 		self.displayall = False
+		
+		self.cache = WeakValueDictionary()
 	
 	def __del__(self):
 		try:	self.main.scenes.remove(self)
@@ -107,10 +110,16 @@ class Scene(madcad.rendering.Scene, QObject):
 		if not objs:	return
 		for k,v in objs.items():
 			disp = self.displays.get(k)
-			if self.executed or not disp or id(getattr(disp,'source',None)) != id(v):
+			if self.executed or not disp:
 				self.queue[k] = v
 		self.executed = False
 		self.touch()
+		
+	def display(self, obj):
+		ido = id(obj)
+		if ido not in self.cache:
+			self.cache[ido] = super().display(obj)
+		return self.cache[ido]
 			
 		
 	def update_solidsets(self):
