@@ -18,10 +18,6 @@ class Interpreter:
 		self.text = text	# complete text edited
 		self.extract = extract or (lambda p: p)	# extractor of the ast part to execute
 		
-		self.backups = [(0,env or {})]						# local variables used
-		self.ast = ast.Module(body=[], type_ignores=[])		# last complete ast compiled
-		self.ast_end = 0							# end position of the last ast in the text
-		
 		self.part = None			# last ast parts executed
 		self.part_altered = None	# last ast actually executed, with all alterations meant to retrieve data
 		
@@ -31,6 +27,10 @@ class Interpreter:
 		self.neverused = set()
 		self.ids = {}			# object names indexed by their id
 		self.locations = {}		# objects location intervals indexed by object name
+		
+		self.backups = [(0,env or self.current)]						# local variables used
+		self.ast = ast.Module(body=[], type_ignores=[])		# last complete ast compiled
+		self.ast_end = 0							# end position of the last ast in the text
 	
 	def change(self, position, oldsize, newcontent):
 		''' change a part of the text, invalidating all backups and AST statements after position '''
@@ -164,7 +164,7 @@ class Interpreter:
 			if isinstance(statement, ast.Return):
 				statement = tree.body[i] = ast.Assign(
 										[ast.Name(
-											'__return__', 
+											'return', 
 											ast.Store(),
 											lineno=statement.lineno,
 											col_offset=statement.col_offset,

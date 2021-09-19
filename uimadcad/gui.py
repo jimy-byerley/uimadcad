@@ -351,6 +351,7 @@ class Madcad(QObject):
 		self.exectarget = cursor.position()
 		
 		self.execution_label('RUNNING')
+		self.interpreter.backups[0][1]['__file__'] = self.currentfile or './untitled.py'
 		#print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text))
 		try:
 			res = self.interpreter.execute(self.exectarget, autobackup=True)
