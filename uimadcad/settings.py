@@ -1,6 +1,7 @@
 import os, yaml
 from os.path import dirname, exists
 from madcad.mathutils import *	
+import madcad
 from PyQt5.QtGui import QColor
 
 execution = {
@@ -40,12 +41,12 @@ scriptview = {
 	'comment_color': fvec3(0.5, 0.5, 0.5),
 	}
 
-home = os.getenv('HOME')
+configdir = madcad.settings.configdir
 locations = {
-	'config': home+'/.config/madcad',
-	'uisettings': home+'/.config/madcad/uimadcad.yaml',
-	'pysettings': home+'/.config/madcad/pymadcad.yaml',
-	'startup': home+'/.config/madcad/startup.py',
+	'config': configdir+'/madcad',
+	'uisettings': configdir+'/madcad/uimadcad.yaml',
+	'pysettings': configdir+'/madcad/pymadcad.yaml',
+	'startup': configdir+'/madcad/startup.py',
 	}
 
 

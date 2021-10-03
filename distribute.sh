@@ -1,10 +1,8 @@
-#!/bin/sh
+#!/bin/sh -eux
 
 version=0.5
 target=$(dirname $0)
 
-# exit on error
-set -eu
 
 while getopts "a:h:" arg
 do
