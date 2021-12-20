@@ -8,8 +8,7 @@ StartupNotify=true
 Terminal=false
 MimeType=application/madcad
 
-Path=/home/jimy/cad/uimadcad
-Exec=/usr/bin/python3 -m uimadcad
+Exec=/home/jimy/cad/uimadcad/madcad
 
 Comment[fr_FR]=Logicel de CAO basé sur les scripts
 
