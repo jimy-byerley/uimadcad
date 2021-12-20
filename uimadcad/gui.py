@@ -318,14 +318,17 @@ class Madcad(QObject):
 		self.editzone[1] += added - removed
 		# get the added text
 		cursor = QTextCursor(self.script)
-		cursor.setPosition(position)
-		if not position and removed:	
-			# because Qt moves the insertion position and put removed to 1 sometimes when inserting at position 0
-			cursor.setPosition(position+added-removed, cursor.KeepAnchor)
-		else:
-			cursor.setPosition(position+added, cursor.KeepAnchor)
+		cursor.setPosition(position+added)
+		# there is an odd behavior with Qt in the case where we past text at position 0: Qt is telling that added is 1 character more than what it should be.
+		# when so, the end position can then be out of text and QTextCursor reset it to 0, this will detect it.
+		if cursor.position() != position+added:
+			added -= 1
+			cursor.setPosition(position+added)
+		# select added text
+		cursor.setPosition(position, cursor.KeepAnchor)
 		# transform it to fit the common standards
 		newtext = cursor.selectedText().replace('\u2029', '\n')
+		
 		# apply change to the interpeter
 		self.interpreter.change(position, removed, newtext)
 		
