@@ -38,8 +38,8 @@ class Scene(madcad.rendering.Scene, QObject):
 	
 	def __init__(self, main, *args, **kwargs):
 		# data graph setup
-		madcad.rendering.Scene.__init__(self, *args, **kwargs)
 		QObject.__init__(self)
+		madcad.rendering.Scene.__init__(self, *args, **kwargs)
 		self.main = main
 		main.scenes.append(self)
 		main.executed.connect(self._executed)
@@ -59,7 +59,8 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.executed = True	# flag set to True to enable a full relead of the scene
 		self.displayall = False
 		
-		self.cache = WeakValueDictionary()
+		self.cache = WeakValueDictionary()	# prevent loading multiple times the same object
+		self.recursion_check = set()  # prevent reference-loop in groups (groups are taken from the execution env, so the user may not want to display it however we are trying to)
 	
 	def __del__(self):
 		try:	self.main.scenes.remove(self)
@@ -98,6 +99,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		super().sync(newscene)
 		# perform other actions on sync
 		self.dequeue()
+		
 		self.update_solidsets()
 		# trigger the signal for dependent widgets
 		self.changed.emit()
@@ -105,9 +107,9 @@ class Scene(madcad.rendering.Scene, QObject):
 	def touch(self):
 		self.changed.emit()
 		super().touch()
-	
+		
 	def update(self, objs):
-		if not objs:	return
+		if not objs:    return
 		for k,v in objs.items():
 			disp = self.displays.get(k)
 			if self.executed or not disp:
@@ -115,16 +117,35 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.executed = False
 		self.touch()
 		
+	def display(self, obj):		# NOTE will prevent different group from showing the same object, this is not desirable
+		ido = id(obj)
+		if ido in self.recursion_check:
+			raise Exception('recursion error')
+		
+		if ido not in self.cache:
+			self.recursion_check.add(ido)
+			self.cache[ido] = super().display(obj)
+			self.cache[ido].source = obj
+			self.recursion_check.remove(ido)
+		return self.cache[ido]
+		
 	def display(self, obj):
 		ido = id(obj)
-		if ido not in self.cache:
-			self.cache[ido] = super().display(obj)
-		return self.cache[ido]
-			
+		if ido in self.recursion_check:
+			raise Exception('recursion error')
+		
+		self.recursion_check.add(ido)
+		disp = super().display(obj)
+		disp.source = obj
+		self.recursion_check.remove(ido)
+		return disp
 		
 	def update_solidsets(self):
 		''' update the association of variables to solids '''
-		self.poses = {}	# pose for each variable name
+		# remove current object references, to allow deallocating their memory
+		for name in self.poses:
+			if isinstance(name, str):
+				self.poses[name] = None
 		
 		ast_name = (ast.Name, ast.NamedExpr) if hasattr(ast, 'NamedExpr') else ast.Name
 		sets = []	# sets of variables going together
@@ -177,16 +198,11 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 	def _updateposes(self, _):
 		for name,disp in self.displays.items():
-			if name in self.additions or hasattr(disp, 'source') and isinstance(disp.source, (Solid,Kinematic)):	
+			if hasattr(disp, 'source') and isinstance(disp.source, (Solid,Kinematic)):	
 				continue
 			obj = self.poses.get(name, self.active_solid)
 			if obj:
 				disp.world = obj.world * obj.pose
-	
-	def display(self, obj):
-		disp = super().display(obj)
-		disp.source = obj
-		return disp
 
 	def items(self):
 		''' yield recursively all couples (key, display) in the scene, including subscenes '''
@@ -354,7 +370,9 @@ class SceneView(madcad.rendering.View):
 	def showdetail(self, key, position=None):
 		''' display a detail window for the ident given (grp,sub) '''
 		if key in self.main.details:	
+			self.main.details[key].activateWindow()
 			return
+		
 		disp = self.scene.item(key)
 		if not disp or not hasattr(disp, 'source') or not isinstance(disp.source, (Mesh,Web)):
 			return
@@ -364,8 +382,8 @@ class SceneView(madcad.rendering.View):
 		detail.show()
 	
 		if position:
-			if position.x() < self.width()//2:	offsetx = -200
-			else:								offsetx = 50
+			if position.x() < self.width()//2:	offsetx = -400
+			else:								offsetx = 100
 			detail.move(self.mapToGlobal(position) + QPoint(offsetx,0))
 		
 		detail.show()
@@ -512,4 +530,16 @@ class Grid(GridDisplay):
 		self.center = view.navigation.center
 		super().render(view)
 
+#class Relative(Display):
+	#def __init__(self, scene, ref, obj):
+		#self.ref = scene.item(ref)
+		#self.content = scene.display(obj)
+		
+	#def stack(self, scene): 
+		#for sub,target,priority,func in self.content.stack(scene):
+			#yield ((0, *sub), target, priority, func)
+	
+	#def 
+		
+		
 
