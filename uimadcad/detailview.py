@@ -61,8 +61,11 @@ class DetailView(QWidget):
 		
 		if disp and hasattr(disp, 'source') and isinstance(disp.source, (Mesh,Web)):
 			sub = self.key[-1]
+			markerkey = ('marker', self.key)
 			self.info(disp.source.groups[sub])
-			self.scene.additions[('marker',self.key)] = note_label(disp.source.group(sub), text=str(sub), style='circle')
+			self.scene.additions[markerkey] = note_label(disp.source.group(sub), text=str(sub), style='circle')
+			if len(self.key) > 2:
+				self.scene.poses[markerkey] = self.scene.item(self.key[:-1])
 			self.scene.sync()
 		else:
 			self.close()
