@@ -411,7 +411,6 @@ class Madcad(QObject):
 		except tricks.EditionError as err:
 			print('unable to edit variable', name, ':', err)
 		else:
-			print('editing', name)
 			self.active_sceneview.scene.sync()
 			self.updatescript()
 			return e

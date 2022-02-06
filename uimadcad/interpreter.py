@@ -22,13 +22,13 @@ class Interpreter:
 		self.part_altered = None	# last ast actually executed, with all alterations meant to retrieve data
 		
 		self.target = 0
-		self.current = {}		# current env (after last execution)
+		self.current = env or {}		# current env (after last execution)
 		self.reused = set()
 		self.neverused = set()
 		self.ids = {}			# object names indexed by their id
 		self.locations = {}		# objects location intervals indexed by object name
 		
-		self.backups = [(0,env or self.current)]						# local variables used
+		self.backups = [(0, self.current)]						# local variables used
 		self.ast = ast.Module(body=[], type_ignores=[])		# last complete ast compiled
 		self.ast_end = 0							# end position of the last ast in the text
 	
