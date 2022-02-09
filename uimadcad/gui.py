@@ -16,7 +16,7 @@ from PyQt5.QtCore import (
 		QStringListModel,
 		)
 from PyQt5.QtWidgets import (
-		QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction,
+		QApplication, QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction, QShortcut,
 		QPlainTextDocumentLayout, 
 		QPushButton, QLabel, QComboBox,
 		QMainWindow, QDockWidget, QFileDialog, QMessageBox, QDialog
@@ -74,7 +74,6 @@ class Madcad(QObject):
 		self.active_sceneview = None
 		self.active_scriptview = None
 		self.active_errorview = None
-		self.active_solid = None
 		self.active_editor = None
 		self.active_tool = None
 		
@@ -100,6 +99,7 @@ class Madcad(QObject):
 		self.script.setDocumentLayout(QPlainTextDocumentLayout(self.script))
 		self.script.contentsChange.connect(self._contentsChange)
 		self.mod = Modification()
+		self.base = mat4(1)
 		self.scenesmenu = SceneList(self)
 		self.interpreter = Interpreter()
 		self.scopes = []
@@ -831,6 +831,12 @@ class MainWindow(QMainWindow):
 		tooling.create_toolbars(self.main, self)
 		self._file_changed()
 		
+		shortcut = QShortcut(QKeySequence('Ctrl+Tab'), self)
+		shortcut.activated.connect(self._change_view)
+		
+		shortcut = QShortcut(QKeySequence('Space'), self)
+		shortcut.activated.connect(self._change_scriptview)
+		
 		# insert components to docker
 		#center = QWidget()
 		#center.resize(0,0)
@@ -848,6 +854,15 @@ class MainWindow(QMainWindow):
 	def closeEvent(self, evt):
 		self.main.close()
 		evt.accept()
+		
+	def _change_view(self):
+		if self.main.active_scriptview.editor.hasFocus():
+			self.main.active_sceneview.setFocus(True)
+		else:
+			self.main.active_scriptview.editor.setFocus(True)
+		
+	def _change_scriptview(self):
+		self.main.active_scriptview.editor.setFocus(True)
 		
 	def _file_changed(self):
 		self.setWindowFilePath(self.main.currentfile or '')
