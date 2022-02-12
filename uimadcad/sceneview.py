@@ -4,9 +4,10 @@ from PyQt5.QtCore import (
 		QAbstractListModel,
 		)
 from PyQt5.QtWidgets import (
-		QWidget, QStyleFactory, QSizePolicy, QHBoxLayout, 
-		QPlainTextEdit, QComboBox, QDockWidget, QPushButton, QToolBar, QAction, 
-		QPlainTextDocumentLayout,
+		QWidget, QStyleFactory, QSizePolicy, QHBoxLayout, QVBoxLayout, 
+		QComboBox, QDockWidget, QPushButton, QLabel, QSizeGrip,
+		QToolBar, QAction, 
+		QPlainTextEdit, QPlainTextDocumentLayout,
 		)
 from PyQt5.QtGui import (
 		QFont, QFontMetrics, 
@@ -46,10 +47,10 @@ class Scene(madcad.rendering.Scene, QObject):
 		main.scenesmenu.layoutChanged.emit()
 		
 		# scene data
-		self.composition = QTextDocument()
-		self.composition.setDocumentLayout(QPlainTextDocumentLayout(self.composition))
+		self.composition = SceneComposition(self)
 		
-		self.forceddisplays = set()		# variable names to always display
+		self.showset = set()		# variable names to always display
+		self.hideset = set()		# variable names to never display
 		self.additions = {		# systematic scene additions
 			'__grid__': Displayable(Grid),
 			'__updateposes__': Step('screen', -1, self._updateposes),
@@ -78,8 +79,8 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 		# display objects that are requested by the user, or that are never been used (lastly generated)
 		for name,obj in it.current.items():
-			if name in newscene:	continue
-			if name in self.forceddisplays or name in it.neverused or self.displayall and name in it.locations:
+			if name in self.hideset:	continue
+			if name in self.showset or name in it.neverused or self.displayall and name in it.locations:
 				if displayable(obj):
 					newscene[name] = obj
 		
@@ -293,6 +294,7 @@ class SceneView(madcad.rendering.View):
 		action = QAction('all', main, checkable=True)
 		action.toggled.connect(main._display_all)
 		self.quick.addAction(action)
+		self.quick.addAction(QIcon.fromTheme('view-fullscreen'), 'adapt view to centent', self.adapt)
 		self.quick.addAction(QIcon.fromTheme('lock'), 'lock solid', main.lock_solid)
 		self.quick.addAction(QIcon.fromTheme('madcad-solid'), 'set active solid', main.set_active_solid)
 		self.quick.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main.deselectall)
@@ -416,6 +418,11 @@ class SceneView(madcad.rendering.View):
 		self.scene.changed.connect(self.update)
 		self.update()
 		
+	def adapt(self):
+		box = self.scene.selectionbox() or self.scene.box()
+		self.center(box.center)
+		self.adjust(box)
+		
 
 class SceneViewBar(QWidget):
 	''' statusbar for a sceneview, containing scene management tools '''
@@ -446,30 +453,30 @@ class SceneViewBar(QWidget):
 			self.sceneview.separate_scene()
 			self.composition.scene = self.sceneview.scene
 			scenes.setCurrentIndex(len(sceneview.main.scenes)-1)
-			
-		def viewadapt(self):
-			scene = sceneview.scene
-			box = scene.selectionbox() or scene.box()
-			sceneview.center(box.center)
-			sceneview.adjust(box)
 		
-		btn_compose = btn('madcad-compose', help='force some objects to display')
-		self.composition = SceneComposition(sceneview.scene, parent=btn_compose)
-		btn_compose.clicked.connect(self.show_composition)
+		self.compose = btn('madcad-compose', help='force some objects to display')
+		self.compose.clicked.connect(self.show_composition)
 		
 		layout = QHBoxLayout()
 		layout.addWidget(self.scenes)
 		layout.addWidget(btn('list-add', separate_scene, 'duplicate scene'))
 		layout.addWidget(QWidget())
-		layout.addWidget(btn('view-fullscreen', viewadapt, 'adapt view to centent'))
-		layout.addWidget(btn_compose)
+		layout.addWidget(self.compose)
 		layout.addWidget(btn('dialog-close-icon', sceneview.close, 'close view'))
 		self.setLayout(layout)
 	
 	def show_composition(self):
-		self.composition.show()
-		self.composition.activateWindow()
-		self.composition.setFocus()
+		composition = self.sceneview.scene.composition
+		# show the composition window
+		composition.show()
+		composition.activateWindow()
+		composition.setFocus()
+		# place it below the button
+		psize = self.compose.size()
+		composition.move(self.compose.mapToGlobal(QPoint(0,0)) + QPoint(
+				psize.width()-composition.width(), 
+				psize.height(),
+				))
 		
 class SceneList(QAbstractListModel):
 	''' model for the scene list of the scene status bar '''
@@ -485,53 +492,61 @@ class SceneList(QAbstractListModel):
 		return len(self.main.scenes)
 
 
-class SceneComposition(QPlainTextEdit):
+class PlainTextEdit(QPlainTextEdit):
 	''' text view to specify objects main.currentenv we want to append to main.scene '''
+	def __init__(self, parent=None):
+		super().__init__(parent)
+		self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+		
+	def sizeHint(self):
+		return QSize(20, self.document().lineCount())*self.document().defaultFont().pointSize()
+
+class SceneComposition(QWidget):
 	def __init__(self, scene, parent=None):
 		super().__init__(parent)
-		self.setWindowFlags(Qt.Popup | Qt.Tool | Qt.FramelessWindowHint)
-		
-		self.document().contentsChange.connect(self._contentsChange)
-		margins = self.viewportMargins()
-		height = (
-			QFontMetrics(self.currentCharFormat().font()).height()
-			+ margins.top() + margins.bottom()
-			+ 2*self.contentOffset().y()
-			)
-		self.setMinimumHeight(height)
-		self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-		
+		self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
 		self.scene = scene
 		
-	@propertywrite
-	def scene(self, scene):
-		self.document().contentsChange.disconnect(self._contentsChange)
-		self.setDocument(scene.composition)
-		self.document().contentsChange.connect(self._contentsChange)
+		layout = QVBoxLayout()
+		
+		layout.addWidget(QLabel('show'))
+		
+		self.showlist = PlainTextEdit()
+		self.showlist.setPlaceholderText('no variables to show')
+		self.showlist.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+		self.showlist.document().contentsChange.connect(self._contentsChange)
+		layout.addWidget(self.showlist)
+		
+		layout.addWidget(QLabel('hide'))
+		
+		self.hidelist = PlainTextEdit()
+		self.hidelist.setPlaceholderText('no variables to hide')
+		self.hidelist.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+		self.hidelist.document().contentsChange.connect(self._contentsChange)
+		layout.addWidget(self.hidelist)
+		
+		layout.addWidget(QSizeGrip(self))
+		
+		self.setLayout(layout)
+		self.setFocusProxy(self.showlist)
+		
+	def auto_resize(self):
+		pointsize = self.showlist.document().defaultFont().pointSize()
+		self.setMinimumSize(QSize(20,20)*pointsize)
+		self.resize(30*pointsize, (self.showlist.document().lineCount() + self.hidelist.document().lineCount()+10) * pointsize*2)
 	
-	def _contentsChange(self, item):
-		self._scene.forceddisplays.clear()
-		self._scene.forceddisplays.update(self.toPlainText().split())
-		self.resize(
-			self.width(), 
-			self.document().defaultFont().pointSize() * (self.document().lineCount()+1)*2)
-		self._scene.sync()
+	def _contentsChange(self):
+		self.scene.showset = set(self.showlist.document().toPlainText().split())
+		self.scene.hideset = set(self.hidelist.document().toPlainText().split())
+		self.scene.sync()
+	
+	def changeEvent(self, evt):
+		if not self.isActiveWindow():
+			self.setVisible(False)
+		
+		
 
-	def focusOutEvent(self, evt):
-		super().focusOutEvent(evt)
-		self.setVisible(False)
-			
-	def setVisible(self, visible):
-		super().setVisible(visible)
-		parent = self.parent()
-		if visible and parent:
-			psize = parent.size()
-			self.resize(100, self.document().defaultFont().pointSize()*(self.document().lineCount()+1)*2)
-			self.move(parent.mapToGlobal(QPoint(0,0)) + QPoint(
-					psize.width()-self.width(), 
-					psize.height(),
-					))
-					
+
 class Grid(GridDisplay):
 	def __init__(self, scene, **kwargs):
 		super().__init__(scene, fvec3(0), **kwargs)
@@ -544,16 +559,4 @@ class Grid(GridDisplay):
 		self.center = view.navigation.center
 		super().render(view)
 
-#class Relative(Display):
-	#def __init__(self, scene, ref, obj):
-		#self.ref = scene.item(ref)
-		#self.content = scene.display(obj)
-		
-	#def stack(self, scene): 
-		#for sub,target,priority,func in self.content.stack(scene):
-			#yield ((0, *sub), target, priority, func)
-	
-	#def 
-		
-		
 
