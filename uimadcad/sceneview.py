@@ -5,7 +5,7 @@ from PyQt5.QtCore import (
 		)
 from PyQt5.QtWidgets import (
 		QWidget, QStyleFactory, QSizePolicy, QHBoxLayout, QVBoxLayout, 
-		QComboBox, QDockWidget, QPushButton, QLabel, QSizeGrip,
+		QComboBox, QDockWidget, QPushButton, QLabel, QSizeGrip, QCheckBox,
 		QToolBar, QAction, 
 		QPlainTextEdit, QPlainTextDocumentLayout,
 		)
@@ -277,22 +277,27 @@ class SceneView(madcad.rendering.View):
 		self.quick.setOrientation(Qt.Vertical)
 		action = QAction('points', main, checkable=True)
 		action.setChecked(madcad.settings.scene['display_points'])
+		action.setToolTip('display points')
 		action.toggled.connect(main._display_points)
 		self.quick.addAction(action)
 		action = QAction('wire', main, checkable=True)
 		action.setChecked(madcad.settings.scene['display_wire'])
+		action.setToolTip('display wire')
 		action.toggled.connect(main._display_wire)
 		self.quick.addAction(action)
 		action = QAction('groups', main, checkable=True)
 		action.setChecked(madcad.settings.scene['display_groups'])
+		action.setToolTip('display groups')
 		action.toggled.connect(main._display_groups)
 		self.quick.addAction(action)
 		action = QAction('faces', main, checkable=True)
 		action.setChecked(madcad.settings.scene['display_faces'])
+		action.setToolTip('display faces')
 		action.toggled.connect(main._display_faces)
 		self.quick.addAction(action)
-		action = QAction('all', main, checkable=True)
-		action.toggled.connect(main._display_all)
+		#action = QAction('all', main, checkable=True)
+		#action.setToolTip('display all variables')
+		#action.toggled.connect(main._display_all)
 		self.quick.addAction(action)
 		self.quick.addAction(QIcon.fromTheme('view-fullscreen'), 'adapt view to centent', self.adapt)
 		self.quick.addAction(QIcon.fromTheme('lock'), 'lock solid', main.lock_solid)
@@ -501,6 +506,7 @@ class PlainTextEdit(QPlainTextEdit):
 	def sizeHint(self):
 		return QSize(20, self.document().lineCount())*self.document().defaultFont().pointSize()
 
+
 class SceneComposition(QWidget):
 	def __init__(self, scene, parent=None):
 		super().__init__(parent)
@@ -511,8 +517,12 @@ class SceneComposition(QWidget):
 		
 		layout.addWidget(QLabel('show'))
 		
+		btn = QCheckBox('show all')
+		btn.toggled.connect(scene.main._display_all)
+		layout.addWidget(btn)
+		
 		self.showlist = PlainTextEdit()
-		self.showlist.setPlaceholderText('no variables to show')
+		self.showlist.setPlaceholderText('variable names separated by spaces or newlines')
 		self.showlist.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
 		self.showlist.document().contentsChange.connect(self._contentsChange)
 		layout.addWidget(self.showlist)
@@ -520,7 +530,7 @@ class SceneComposition(QWidget):
 		layout.addWidget(QLabel('hide'))
 		
 		self.hidelist = PlainTextEdit()
-		self.hidelist.setPlaceholderText('no variables to hide')
+		self.hidelist.setPlaceholderText('variable names separated by spaces or newlines')
 		self.hidelist.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
 		self.hidelist.document().contentsChange.connect(self._contentsChange)
 		layout.addWidget(self.hidelist)
@@ -532,7 +542,7 @@ class SceneComposition(QWidget):
 		
 	def auto_resize(self):
 		pointsize = self.showlist.document().defaultFont().pointSize()
-		self.setMinimumSize(QSize(20,20)*pointsize)
+		self.setMinimumSize(QSize(15,15)*pointsize)
 		self.resize(30*pointsize, (self.showlist.document().lineCount() + self.hidelist.document().lineCount()+10) * pointsize*2)
 	
 	def _contentsChange(self):
