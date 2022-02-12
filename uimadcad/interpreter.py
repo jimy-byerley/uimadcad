@@ -10,7 +10,6 @@ class InterpreterError(Exception):	pass
 
 class Interpreter:
 	''' script interpreter using caching '''
-	# TODO: make this class thread-safe
 	backupstep = 0.2
 
 	def __init__(self, text='', env=None, extract=None, name='custom-interpreter'):

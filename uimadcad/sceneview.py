@@ -144,7 +144,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		''' update the association of variables to solids '''
 		# remove current object references, to allow deallocating their memory
 		for name in self.poses:
-			if isinstance(name, str):
+			if isinstance(name, str) and name not in self.main.interpreter.current:
 				self.poses[name] = None
 		
 		ast_name = (ast.Name, ast.NamedExpr) if hasattr(ast, 'NamedExpr') else ast.Name
@@ -174,6 +174,11 @@ class Scene(madcad.rendering.Scene, QObject):
 				sets.append(used)
 		search_statements(self.main.interpreter.part_altered)
 		
+		# the default pose for any object in the code executed, is the current local pose
+		for u in sets:
+			for name in u:
+				self.poses[name] = self.main.interpreter.name
+		
 		# process SolidDisplays all across the scene
 		def recur(level):
 			for disp in level:
@@ -200,9 +205,18 @@ class Scene(madcad.rendering.Scene, QObject):
 		for name,disp in self.displays.items():
 			if hasattr(disp, 'source') and isinstance(disp.source, (Solid,Kinematic)):	
 				continue
-			obj = self.poses.get(name, self.active_solid)
-			if obj:
-				disp.world = obj.world * obj.pose
+			
+			obj = self.poses.get(name)
+			# solve dynamic pose binding (when a string is put instead of a solid)
+			last = None
+			while isinstance(obj, str) and last is not obj:	
+				# the active solid can override a binding to the local pose
+				if self.active_solid and obj == self.main.interpreter.name and disp is not self.active_solid:
+					obj = self.active_solid
+				else:
+					obj, last = self.poses.get(obj), obj
+				
+			disp.world = obj.pose if obj else fmat4(1)
 
 	def items(self):
 		''' yield recursively all couples (key, display) in the scene, including subscenes '''

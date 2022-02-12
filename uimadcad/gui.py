@@ -444,6 +444,8 @@ class Madcad(QObject):
 	def _enterfunction(self):
 		''' start editing definition of function used under cursor '''
 		cursor = self.active_scriptview.editor.textCursor()
+		callname = self.posvar(cursor.position())
+		
 		try:	it, callnode, defnode = self.interpreter.enter(cursor.position())
 		except ValueError:	
 			return
@@ -451,6 +453,10 @@ class Madcad(QObject):
 			print('invalid context for this function')
 			return
 		
+		# set the function local pose in the scene
+		self.active_sceneview.scene.poses[it.name] = self.active_sceneview.scene[callname]
+		
+		# setup the zone edition
 		newzone = [defnode.body[0].position-2, defnode.end_position]
 		self.scopes.append([
 						self.interpreter, 		# former it
@@ -465,6 +471,7 @@ class Madcad(QObject):
 		self.exectarget = defnode.end_position
 		self.execute()
 		
+		# set the cursor to the return statement
 		cursor.setPosition(self.exectarget)
 		self.active_scriptview.editor.setTextCursor(cursor)
 		self.active_scriptview.editor.ensureCursorVisible()
@@ -475,7 +482,9 @@ class Madcad(QObject):
 		''' stop editing the current function definition, returning to the higher scope '''
 		if not self.scopes:
 			return
+			
 		for scope in reversed(self.scopes):
+			# report the changes to the parent interpreter
 			it, newzone, *_ = scope
 			initsize = self.scopes[-1][2]
 			it.change(self.editzone[0], initsize, self.interpreter.text[self.editzone[0]:self.editzone[1]])
@@ -486,10 +495,15 @@ class Madcad(QObject):
 			else:
 				scope[1] = [newzone[0], newzone[1]+shift]
 			scope[3] += shift
+			
+			# undefine the local pose of the former function
+			self.active_sceneview.scene.poses[it.name] = None
 		
+		# setup the zone edition
 		self.interpreter, self.editzone, _, self.exectarget, *_ = self.scopes.pop()
 		self.execute()
 		
+		# set the cursor to the calling expression
 		cursor = self.active_scriptview.editor.textCursor()
 		cursor.setPosition(self.exectarget)
 		self.active_scriptview.editor.setTextCursor(cursor)
@@ -750,7 +764,8 @@ class Madcad(QObject):
 				i = id(obj.source)
 				if (obj.selected and obj.source 
 				and i not in seen 
-				and	i in it.ids):
+				and	i in it.ids
+				and it.ids[i] in it.locations):
 					seen.add(i)
 					zone = it.locations[it.ids[i]]
 					cursor.setPosition(zone.position)
