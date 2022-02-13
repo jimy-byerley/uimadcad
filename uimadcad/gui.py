@@ -454,7 +454,8 @@ class Madcad(QObject):
 			return
 		
 		# set the function local pose in the scene
-		self.active_sceneview.scene.poses[it.name] = self.active_sceneview.scene[callname]
+		for scene in self.scenes:
+			scene.poses[it.name] = scene[callname]
 		
 		# setup the zone edition
 		newzone = [defnode.body[0].position-2, defnode.end_position]
@@ -497,7 +498,8 @@ class Madcad(QObject):
 			scope[3] += shift
 			
 			# undefine the local pose of the former function
-			self.active_sceneview.scene.poses[it.name] = None
+			for scene in self.scenes:
+				scene.poses[it.name] = None
 		
 		# setup the zone edition
 		self.interpreter, self.editzone, _, self.exectarget, *_ = self.scopes.pop()
