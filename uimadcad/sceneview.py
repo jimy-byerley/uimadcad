@@ -248,6 +248,29 @@ def scene_unroll(scene):
 			if hasattr(disp, '__iter__'):	
 				yield from recur(disp)
 	yield from recur(scene.displays.values())		
+	
+	
+def format_scenekey(scene, key, root=True):
+	''' return a string representing the access to the object represented by a display in a scene 
+	
+		Example:
+			
+			>>> format_scenekey(..., root=True)
+			cage.group(4)
+			>>> format_scenekey(..., root=False)
+			['cage'].group(4)
+	'''
+	if root:	name = str(key[0])
+	else:		name = '[{}]'.format(repr(key[0]))
+	node = scene
+	for i in range(len(key)-1):
+		node = node[key[i]]
+		if isinstance(node, (SolidDisplay,WebDisplay)):
+			access = '.group({})'
+		else:
+			access = '[{}]'
+		name += access.format(repr(key[i+1]))
+	return name
 
 
 class SceneView(madcad.rendering.View):
@@ -306,6 +329,11 @@ class SceneView(madcad.rendering.View):
 		self.quick.addAction(QIcon.fromTheme('edit-node'), 'graphical edit object', main._edit)
 		self.quick.setGeometry(0,0, 40, 300)
 		self.quick.hide()
+		
+		self.selection_label = QLabel(self)
+		self.selection_label.setFont(QFont(*settings.scriptview['font']))
+		self.selection_label.move(self.quick.width()*2, 0)
+		self.selection_label.setToolTip('last selection')
 	
 		self.statusbar = SceneViewBar(self)
 		self.scene.changed.connect(self.update)
@@ -370,6 +398,7 @@ class SceneView(madcad.rendering.View):
 					disp.selected = any(sub.selected	for sub in disp)
 			self.update()
 			self.main.updatescript()
+			self.set_selection_label(format_scenekey(self.scene, key))
 			evt.accept()
 		
 		# show details
@@ -386,7 +415,11 @@ class SceneView(madcad.rendering.View):
 				else:
 					self.main.edit(name)
 				evt.accept()
-		
+	
+	def set_selection_label(self, text):
+		pointsize = self.selection_label.font().pointSize()
+		self.selection_label.setText(text)
+		self.selection_label.resize(pointsize*len(text), pointsize*2)
 	
 	def showdetail(self, key, position=None):
 		''' display a detail window for the ident given (grp,sub) '''

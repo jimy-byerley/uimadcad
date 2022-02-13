@@ -649,6 +649,7 @@ class Madcad(QObject):
 				disp.vertices.flags &= 0x11111110
 				disp.vertices.flags_updated = True
 		self.active_sceneview.update()
+		self.active_sceneview.set_selection_label('')
 		self.updatescript()
 		
 	def set_active_solid(self):
