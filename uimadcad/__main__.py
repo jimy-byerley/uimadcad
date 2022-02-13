@@ -19,7 +19,7 @@ if __name__ == '__main__':
 	# set icons if not provided by the system
 	if not QIcon.themeName():
 		# assume that the software is a portable version, so the icons are in the same dir as executable
-		QIcon.setThemeName('breeze')
+		#QIcon.setThemeName('breeze')
 		path = QIcon.themeSearchPaths()
 		path.append(os.path.abspath(os.path.dirname(sys.argv[0]) + '/icons'))
 		QIcon.setThemeSearchPaths(path)
