@@ -396,9 +396,10 @@ class SceneView(madcad.rendering.View):
 			for disp in reversed(stack):
 				if hasattr(disp, '__iter__'):
 					disp.selected = any(sub.selected	for sub in disp)
+			if disp.selected:
+				self.set_selection_label(format_scenekey(self.scene, key))
 			self.update()
 			self.main.updatescript()
-			self.set_selection_label(format_scenekey(self.scene, key))
 			evt.accept()
 		
 		# show details
@@ -489,7 +490,6 @@ class SceneViewBar(QWidget):
 			
 		def separate_scene():
 			self.sceneview.separate_scene()
-			self.composition.scene = self.sceneview.scene
 			scenes.setCurrentIndex(len(sceneview.main.scenes)-1)
 		
 		self.compose = btn('madcad-compose', help='force some objects to display')

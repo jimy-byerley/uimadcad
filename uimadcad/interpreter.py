@@ -52,7 +52,7 @@ class Interpreter:
 		if i == len(self.backups) or self.backups[i][0] > position:	i -= 1
 		return i
 	
-	def execute(self, target=-1, autobackup=False):
+	def execute(self, target=-1, autobackup=False, onstep=None):
 		''' execute the code from last backups to the target string position '''
 		if target < 0:	target += len(self.text)
 		self.target = target
@@ -92,7 +92,7 @@ class Interpreter:
 			env = copyvars(backenv, locations.keys())
 			
 			starttime = time()
-			for stmt in processed.body:
+			for i, stmt in enumerate(processed.body):
 				code = compile(ast.Module(
 									body=[stmt], 
 									type_ignores=[]), 
@@ -105,6 +105,9 @@ class Interpreter:
 				except Exception as err:
 					error = err
 					break
+					
+				if onstep:
+					onstep(i/len(processed.body))
 				
 				# autobackup
 				t = time()

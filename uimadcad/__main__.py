@@ -1,6 +1,7 @@
 
 if __name__ == '__main__':
 	from uimadcad.gui import *
+	from uimadcad.apputils import *
 
 	import sys, os, locale
 	from PyQt5.QtCore import Qt, QTimer
@@ -9,10 +10,8 @@ if __name__ == '__main__':
 	
 	# set Qt opengl context sharing to avoid reinitialization of scenes everytime, (this is for pymadcad display)
 	QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
-	#print('start qt ...')
 	# setup Qt application
 	app = QApplication(sys.argv)
-	#print('ok')
 	app.setApplicationName('madcad')
 	app.setApplicationVersion(version)
 	app.setApplicationDisplayName('madcad v{}'.format(version))
@@ -39,4 +38,5 @@ if __name__ == '__main__':
 	
 	QTimer.singleShot(100, startup)
 	main.show()
-	sys.exit(app.exec())
+	
+	qtmain(app)

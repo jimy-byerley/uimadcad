@@ -18,7 +18,7 @@ from PyQt5.QtCore import (
 from PyQt5.QtWidgets import (
 		QApplication, QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction, QShortcut,
 		QPlainTextDocumentLayout, 
-		QPushButton, QLabel, QComboBox,
+		QPushButton, QLabel, QComboBox, QProgressBar,
 		QMainWindow, QDockWidget, QFileDialog, QMessageBox, QDialog
 		)
 from PyQt5.QtGui import (
@@ -39,6 +39,7 @@ from .sceneview import Scene, SceneView, SceneList, scene_unroll
 from .errorview import ErrorView
 from .detailview import DetailView
 from .tooling import ToolAssist, ToolError, Modification
+from .apputils import *
 from . import tricks
 from . import tooling
 from . import settings
@@ -79,6 +80,7 @@ class Madcad(QObject):
 		
 		self.exectrigger = 1
 		self.exectarget = 0
+		self.execthread = None
 		self.editzone = [0,1]
 		self.editors = {}
 		self.details = {}
@@ -108,6 +110,7 @@ class Madcad(QObject):
 		self.scenes = []	# objets a afficher sur les View
 		self.views = []		# widgets d'affichage (textview, sceneview, graphicview, ...)
 		self.assist = ToolAssist(self)
+		self.progressbar = ComputationProgress(self)
 		self.mainwindow = None
 		
 		self.startup()
@@ -347,6 +350,11 @@ class Madcad(QObject):
 		''' execute the script until the line exectarget 
 			updating the scene and the execution label
 		'''
+		if self.execthread:
+			self.execthread.join()
+		
+		self.progressbar.show()
+		
 		# place the exec target at the end of line
 		cursor = QTextCursor(self.script)
 		cursor.setPosition(self.exectarget)
@@ -355,22 +363,36 @@ class Madcad(QObject):
 		
 		self.execution_label('RUNNING')
 		self.interpreter.backups[0][1]['__file__'] = self.currentfile or './untitled.py'
-		#print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text))
-		try:
-			res = self.interpreter.execute(self.exectarget, autobackup=True)
-		except InterpreterError as report:
-			err = report.args[0]
-			#traceback.print_tb(err.__traceback__)
-			#print(type(err).__name__, ':', err, err.__traceback__)
-			self.showerror(err)
-			self.execution_label('<p style="color:#ff5555">FAILED</p>')
-		else:
-			self.execution_label('<p style="color:#55ff22">COMPUTED</p>')
-			self.hideerror()
-		self.currentenv = self.interpreter.current
-		self.update_endzone()
-		self.updatescript()
-		self.executed.emit()				
+		
+		def job():
+			#print('-- execute script --\n{}\n-- end --'.format(self.interpreter.text))
+			try:
+				res = self.interpreter.execute(self.exectarget, 
+							autobackup=True, 
+							onstep=lambda x: qtschedule(lambda: self.progressbar.set_state(x)),
+							)
+			except InterpreterError as report:
+				@qtschedule
+				def show():
+					self.showerror(report.args[0])
+					self.execution_label('<p style="color:#ff5555">FAILED</p>')
+			else:
+				@qtschedule
+				def show():
+					self.execution_label('<p style="color:#55ff22">COMPUTED</p>')
+					self.hideerror()
+			self.currentenv = self.interpreter.current	
+			self.execthread = None
+			
+			@qtschedule
+			def update():
+				if not self.execthread:
+					self.progressbar.hide()
+				self.update_endzone()
+				self.updatescript()
+				self.executed.emit()
+		
+		self.execthread = spawn(job)
 	
 	def reexecute(self):
 		''' reexecute all the script '''
@@ -830,8 +852,6 @@ class MainWindow(QMainWindow):
 	exectarget_changed = pyqtSignal()
 	executed = pyqtSignal()
 	
-	# BEGIN --- paneling and initialization ---
-	
 	def __init__(self, main, parent=None):
 		super().__init__(parent)
 		# window setup
@@ -856,10 +876,6 @@ class MainWindow(QMainWindow):
 		shortcut.activated.connect(self._change_scriptview)
 		
 		# insert components to docker
-		#center = QWidget()
-		#center.resize(0,0)
-		#center.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
-		#self.setCentralWidget(center)
 		self.addDockWidget(Qt.LeftDockWidgetArea, dock(ScriptView(main), 'script view'))
 		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(main), 'scene view'))
 		self.addDockWidget(Qt.LeftDockWidgetArea, dock(self.main.assist, 'tool assist'))
@@ -883,7 +899,12 @@ class MainWindow(QMainWindow):
 		self.main.active_scriptview.editor.setFocus(True)
 		
 	def _file_changed(self):
-		self.setWindowFilePath(self.main.currentfile or '')
+		if self.main.currentfile:
+			self.setWindowFilePath(self.main.currentfile)
+			self.setWindowTitle(os.path.split(self.main.currentfile)[1] + ' [*]')
+		else:
+			self.setWindowFilePath('')
+			self.setWindowTitle('[*]')
 	
 	def _create_menus(self):
 		main = self.main
@@ -1061,3 +1082,35 @@ class MainWindow(QMainWindow):
 		menu.addAction('adapt to selection +')
 	
 	
+class ComputationProgress(QWidget):
+	def __init__(self, main, parent=None):
+		super().__init__(parent)
+		self.main = main
+		
+		layout = QVBoxLayout()
+		
+		layout.addWidget(QLabel('computing ...'))
+		
+		self.bar = QProgressBar()
+		self.bar.setRange(0,100)
+		self.bar.setValue(0)
+		layout.addWidget(self.bar)
+		
+		self.setLayout(layout)
+		
+	def set_state(self, rate):
+		self.bar.setValue(rate*100)
+		
+	def show(self):
+		if self.main.mainwindow:
+			parent = self.main.mainwindow
+			#self.progressbar.setParent(self.mainwindow)
+			self.resize(parent.width()/2, self.height())
+			self.move(parent.mapToGlobal(QPoint(
+				(parent.width()-self.width()) //2, 
+				(parent.height()-self.height()) //2,
+				)))
+			self.setWindowOpacity(0.6)
+			self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+		super().show()
+		
