@@ -59,7 +59,6 @@ def qtmain(app=None):
 	global qttasks_timer, qtstopped
 	
 	if not app:	
-		QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
 		app = QApplication(sys.argv)
 	
 	locale.setlocale(locale.LC_ALL, 'C')

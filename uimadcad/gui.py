@@ -31,6 +31,7 @@ from PyQt5.QtGui import (
 from madcad import *
 from madcad.rendering import Display, Group, Turntable, Orbit, Displayable
 import madcad.settings
+from madcad.nprint import nprint, nformat, deformat
 
 from .common import *
 from .interpreter import Interpreter, InterpreterError, astinterval, astatpos
@@ -45,7 +46,7 @@ from . import tooling
 from . import settings
 
 from copy import deepcopy, copy
-from madcad.nprint import nprint, nformat, deformat
+from threading import Thread
 import ast, traceback
 import os, sys
 import re
@@ -299,8 +300,6 @@ class Madcad(QObject):
 		if file:
 			self.save(file)
 	
-	def _screenshot(self):	pass
-	
 	def _open_uimadcad_settings(self):
 		open_file_external(settings.locations['uisettings'])
 	
@@ -373,15 +372,15 @@ class Madcad(QObject):
 							)
 			except InterpreterError as report:
 				@qtschedule
-				def show():
-					self.showerror(report.args[0])
+				def show(err=report.args[0]):
+					self.showerror(err)
 					self.execution_label('<p style="color:#ff5555">FAILED</p>')
 			else:
 				@qtschedule
 				def show():
 					self.execution_label('<p style="color:#55ff22">COMPUTED</p>')
 					self.hideerror()
-			self.currentenv = self.interpreter.current	
+			self.currentenv = self.interpreter.current
 			self.execthread = None
 			
 			@qtschedule
@@ -392,7 +391,8 @@ class Madcad(QObject):
 				self.updatescript()
 				self.executed.emit()
 		
-		self.execthread = spawn(job)
+		self.execthread = Thread(target=job)
+		self.execthread.start()
 	
 	def reexecute(self):
 		''' reexecute all the script '''
@@ -915,7 +915,6 @@ class MainWindow(QMainWindow):
 		menu.addAction(QIcon.fromTheme('document-save'), 'save', main._save, QKeySequence('Ctrl+S'))
 		menu.addAction(QIcon.fromTheme('document-save-as'), 'save as', main._save_as, QKeySequence('Ctrl+Shift+S'))
 		menu.addAction(QIcon.fromTheme('document-export'), 'save a copy', main._save_copy, QKeySequence('Ctrl+E'))
-		menu.addAction(QIcon.fromTheme('insert-image'), 'screenshot +', main._screenshot, QKeySequence('Ctrl+I'))
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('preferences-other'), 'interface settings', main._open_uimadcad_settings)
 		menu.addAction(QIcon.fromTheme('text-x-generic'), 'pymadcad settings', main._open_pymadcad_settings)

@@ -113,7 +113,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		if not objs:    return
 		for k,v in objs.items():
 			disp = self.displays.get(k)
-			if self.executed or not disp:
+			if self.executed or not disp or type(getattr(disp, 'source', None)) != type(v):	# with a normal scene, self.executed would be the only condition, but scene elements like editors can be inserted by the interface
 				self.queue[k] = v
 		self.executed = False
 		self.touch()
@@ -136,9 +136,9 @@ class Scene(madcad.rendering.Scene, QObject):
 			raise Exception('recursion error')
 		
 		self.recursion_check.add(ido)
-		disp = super().display(obj)
+		try:		disp = super().display(obj)
+		finally:	self.recursion_check.remove(ido)
 		disp.source = obj
-		self.recursion_check.remove(ido)
 		return disp
 		
 	def update_solidsets(self):
@@ -339,6 +339,11 @@ class SceneView(madcad.rendering.View):
 		self.scene.changed.connect(self.update)
 	
 	def closeEvent(self, event):
+		# never close the first openned view, this avoids a Qt bug deleting the context, or something similar
+		if next((view for view in self.main.views if isinstance(view, SceneView)), None) is self:
+			event.ignore()
+			return
+		
 		self.main.views.remove(self)
 		if self.main.active_sceneview is self:
 			self.main.active_sceneview = None
@@ -473,7 +478,6 @@ class SceneViewBar(QWidget):
 		scenes.setFrame(False)
 		def callback(i):
 			self.sceneview.set_scene(self.sceneview.main.scenes[i])
-			self.composition.scene = self.sceneview.scene
 		scenes.activated.connect(callback)
 		scenes.setModel(sceneview.main.scenesmenu)
 		scenes.setCurrentIndex(sceneview.main.scenes.index(sceneview.scene))

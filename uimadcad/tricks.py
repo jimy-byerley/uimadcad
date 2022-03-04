@@ -69,6 +69,7 @@ class PointEditor(EditorNode):
 		if not re.fullmatch(format_vec3, self.text()):
 			raise EditionError("the current expression format cannot be edited")
 		self.point = fvec3(self.main.interpreter.current[self.name])
+		print('create editor')
 	
 	def dump(self):
 		return 'vec3({:.4g}, {:.4g}, {:.4g})'.format(*self.point)

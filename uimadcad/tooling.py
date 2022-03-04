@@ -400,7 +400,7 @@ def createaxis(main):
 def create_toolbars(main, widget):
 	tools = widget.addToolBar('creation')
 	tools.setObjectName('toolbar-creation')
-	tools.addAction(main.createaction('import', tool_import, 	'madcad-import'))
+	tools.addAction(main.createaction('import', tool_import, 	'document-import'))
 	tools.addAction(main.createaction('solid', tool_solid, 'madcad-solid'))
 	#tools.addAction(main.createaction('manual triangulated meshing', tool_meshing, 'madcad-meshing'))
 	#tools.addAction(QIcon.fromTheme('madcad-splined'), 'manual splined meshing')
