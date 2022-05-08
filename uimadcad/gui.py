@@ -52,8 +52,6 @@ import os, sys
 import re
 
 
-version = '0.5'
-
 
 class Madcad(QObject):
 	'''
