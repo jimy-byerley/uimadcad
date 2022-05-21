@@ -1,6 +1,6 @@
 #!/bin/sh -eu
 
-version=0.5
+version=0.6
 target=$(dirname $0)
 
 
@@ -39,6 +39,16 @@ case $format in
 tar)
 	cd $(dirname $prefix)
 	tar cf madcad_${version}_${arch}.tar.gz ${platform}_${arch}
+	;;
+	
+zip)
+	package=$target/dist/madcad
+	rm -fr $package
+	mv $prefix $package
+	(
+		cd $(dirname $package)
+		7z a madcad_${version}_${arch}.zip madcad
+	)
 	;;
 	
 deb)

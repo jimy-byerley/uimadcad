@@ -7,4 +7,4 @@ where python || (
 	exit
 )
 
-python %0\..\uimadcad.py
+python %0\..\madcad

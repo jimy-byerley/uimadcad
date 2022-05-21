@@ -22,9 +22,17 @@ done
 
 set -x
 
+case $(uname -s) in
+Linux*)	  host=linux ;;
+Darwin*)  host=mac ;;
+CYGWIN*)  host=windows ;;
+MINGW*)   host=windows ;;
+*)        host=unknown ;;
+esac
+
 project=$(realpath $(dirname $0))
 arch=${arch:-$(arch)}
-platform=${platform:-linux}
+platform=${platform:-$host}
 prefix=${prefix:-$project/dist/${platform}_${arch}}
 release=release 
 # NOTE launcher must be in release mode to not contain the source code
@@ -41,7 +49,8 @@ windows)
 	data=$prefix
 	bin=$prefix
 	binformat=.exe
-	cargotarget=$arch-pc-windows-gnu
+	cargotarget=$arch-pc-windows-msvc
+	export PATH=/c/Strawberry/perl/bin:$PATH
 	;;
 ?)
 	echo "platform not supported: $platform"
@@ -51,20 +60,21 @@ esac
 
 
 # compile the launcher
-host=$(uname)
-if [ "$(arch)" = "$arch" && "$platform" = "${host,,}" ] 
+if [ "$(arch)" = "$arch" ] && [ "$platform" = "$host" ] 
 then	cargotarget=
 fi
+
 (
 	cd launcher
 	cargo build --release
 
 	if [ -n "$cargotarget" ]
-	then	
+	then
 		export PYO3_CROSS_PYTHON_VERSION=3.9
 		export PYO3_CROSS_INCLUDE_DIR="$project/../cross/python-$PYO3_CROSS_PYTHON_VERSION-$arch/include"
 		export PYO3_CROSS_LIB_DIR="$project/../cross/python-$PYO3_CROSS_PYTHON_VERSION-$arch/lib"
 		#$project/../cross/setup.sh $PYO3_CROSS_PYTHON_VERSION $arch
+		
 		cargo build --release --target $cargotarget
 	fi
 )
@@ -99,22 +109,23 @@ linux)
 	install $project/launcher/target/$cargotarget/$release/liblauncher.so $data/launcher.so
 
 	install -d $prefix/share/applications/
-	install madcad.desktop $prefix/share/applications/
+	install $project/madcad.desktop $prefix/share/applications/
 	install -d $prefix/share/icons/hicolor/scalable/apps
-	install icons/*.svg $prefix/share/icons/hicolor/scalable/apps/
+	install $project/icons/*.svg $prefix/share/icons/hicolor/scalable/apps/
 	install -d $prefix/share/icons/hicolor/scalable/mimetypes
-	install mimetypes/*.svg $prefix/share/icons/hicolor/scalable/mimetypes/
+	install $project/mimetypes/*.svg $prefix/share/icons/hicolor/scalable/mimetypes/
 	install -d $prefix/share/mime/packages/
-	install mimetypes/*.xml $prefix/share/mime/packages/
+	install $project/mimetypes/*.xml $prefix/share/mime/packages/
 	#update-mime-database ~/.local/share/mime
 	;;
 windows)
 	install $project/launcher/madcad.bat $bin/
 	install $project/launcher/target/$cargotarget/$release/launcher.dll $data/launcher.pyd
 	
-	install -d $prefix/icons/hicolor/scalable/apps
- 	install icons/*.svg $prefix/icons/hicolor/scalable/apps/
-	install icons/madcad.ico $prefix/
+	install -d $prefix/icons/breeze
+	python minimal-theme.py $project/icons/list.txt $project/breeze $prefix/icons/breeze
+ 	install $project/icons/*.svg $prefix/icons/breeze/actions/symbolic/
+	install $project/icons/madcad.ico $prefix/
 	;;
 ?)
 	echo "platform not supported: $platform"
