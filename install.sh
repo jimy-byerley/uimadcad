@@ -122,6 +122,8 @@ windows)
 	install $project/launcher/madcad.bat $bin/
 	install $project/launcher/target/$cargotarget/$release/launcher.dll $data/launcher.pyd
 	
+	cp -r $project/themes $prefix/themes
+	
 	install -d $prefix/icons/breeze
 	python minimal-theme.py $project/icons/list.txt $project/breeze $prefix/icons/breeze
  	install $project/icons/*.svg $prefix/icons/breeze/actions/symbolic/

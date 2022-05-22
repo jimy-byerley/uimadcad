@@ -16,6 +16,8 @@ view = {
 	'enable_floating': False,	# floating dockable windows, may have performance issues with big meshes
 	'window_size': [900,500],
 	'quick_toolbars': True,		# display the quickaccess toolbars
+	'color_preset': 'system',
+	'stylesheet': 'breeze',
 	}
 
 scriptview = {
@@ -41,11 +43,43 @@ scriptview = {
 	'comment_color': fvec3(0.5, 0.5, 0.5),
 	}
 
+color_presets = {
+	'dark red': {
+		'base': fvec3(0,0,0),
+		'background': fvec3(20,21,22)/255,
+		'text': fvec3(1,1,1),
+		'decoration': fvec3(200,200,200)/255,
+		'colored': fvec3(255,50,0)/255,
+		},
+	'dark green': {
+		'base': fvec3(0,0,0),
+		'background': fvec3(20,22,25)/255,
+		'text': fvec3(1,1,1),
+		'decoration': fvec3(200,240,230)/255,
+		'colored': fvec3(100,255,200)/255,
+		},
+	'grey orange': {
+		'base': fvec3(45,48,50)/255,
+		'background': fvec3(60,65,70)/255,
+		'text': fvec3(1,1,1),
+		'decoration': fvec3(200,200,200)/255,
+		'colored': fvec3(255,200,50)/255,
+		},
+	'light blue': {
+		'base': fvec3(1,1,1),
+		'background': fvec3(1,1,1),
+		'text': fvec3(0,0,0),
+		'decoration': fvec3(30,40,50)/255,
+		'colored': fvec3(0,100,200),
+		},
+	}
+
 configdir = madcad.settings.configdir
 locations = {
 	'config': configdir+'/madcad',
 	'uisettings': configdir+'/madcad/uimadcad.yaml',
 	'pysettings': configdir+'/madcad/pymadcad.yaml',
+	'colors_presets': configdir+'/madcad/color-presets.yaml',
 	'startup': configdir+'/madcad/startup.py',
 	}
 
@@ -59,7 +93,7 @@ def qtc(c):
 	
 def ctq(c):
 	''' convert a fvec3 to QColor '''
-	return QColor(*(255*c))
+	return QColor(*ivec3(255*c))
 
 def install():
 	''' create and fill the config directory if not already existing '''
@@ -115,7 +149,7 @@ def use_qt_colors():
 	normal = clamp(mix(qtc(palette.Text), fvec3(0.5), -0.1), fvec3(0), fvec3(1))
 	darken = 0.9 + 0.1*(norminf(normal)-norminf(background))
 	
-	second = qtc(palette.Highlight)
+	second = qtc(palette.Highlight) +1e-3
 	second = clamp(second / norminf(second) * darken, fvec3(0), fvec3(1)) **2
 	accent = mix(second, fvec3(1, 1, 0)*norminf(second), 0.65)
 	accent = clamp(accent, fvec3(0), fvec3(1))
@@ -136,3 +170,55 @@ def use_qt_colors():
 		'comment_color': mix(normal, background, 0.6),
 		})
 
+def use_preset_colors(name=None):
+	from PyQt5.QtWidgets import QApplication
+	from PyQt5.QtGui import QPalette
+	
+	if not name:	name = view['color_preset']
+	colors = color_presets.get(name)
+	
+	if not colors:
+		return QPalette()
+	
+	# complete the minimal color set
+	if 'background' not in colors:		colors['background'] = colors['Window']
+	if 'base' not in colors:			colors['base'] = colors['Base']
+	if 'text' not in colors:			colors['text'] = colors['Text']
+	if 'decoration' not in colors:		colors['decoration'] = colors['Dark']
+	if 'colored' not in colors:			colors['colored'] = colors['highlight']
+	
+	# complete the palette colors with the colors of the minimal set
+	if 'Window' not in colors:			colors['Window'] = colors['background']
+	if 'WindowText' not in colors:		colors['WindowText'] = mix(colors['background'], colors['decoration'], 0.8)
+	if 'Base' not in colors:			colors['Base'] = colors['base']
+	if 'AlternateBase' not in colors:	colors['AlternateBase'] = mix(colors['base'], colors['decoration'], 0.05)
+	if 'Highlight' not in colors:		colors['Highlight'] = colors['colored']
+	if 'Light' not in colors:			colors['Light'] = mix(colors['background'], colors['decoration'], 0.8)
+	if 'Midlight' not in colors:		colors['Midlight'] = mix(colors['background'], colors['decoration'], 0.5)
+	if 'Dark' not in colors:			colors['Dark'] = mix(colors['background'], colors['decoration'], 0.3)
+	if 'Mid' not in colors:				colors['Mid'] = mix(colors['background'], colors['decoration'], 0.1)
+	if 'Shadow' not in colors:			colors['Shadow'] = mix(colors['background'], colors['decoration'], 0.05)
+	
+	if 'Text' not in colors:			colors['Text'] = colors['text']
+	if 'BrightText' not in colors:		colors['BrightText'] = mix(colors['colored'], colors['text'], 0.5)
+	if 'HighlightedText' not in colors:	colors['HighlightedText'] = mix(colors['background'], colors['colored'], 0.05)
+	
+	if 'Button' not in colors:			colors['Button'] = mix(colors['background'], colors['decoration'], 0.7)
+	if 'ButtonText' not in colors:		colors['ButtonText'] = mix(colors['background'], colors['decoration'], 0.8)
+	
+	if 'Link' not in colors:			colors['Link'] = colors['colored']
+	if 'LinkVisited' not in colors:		colors['LinkVisited'] = mix(colors['background'], colors['colored'], 0.7)
+	
+	if 'PlaceholderText' not in colors:	colors['PlaceholderText'] = mix(colors['background'], colors['text'], 0.4)
+	if 'ToolTipBase' not in colors:		colors['ToolTipBase'] = colors['background']
+	if 'ToolTipText' not in colors:		colors['ToolTipText'] = colors['decoration']
+	
+	# update the system palette with the theme colors
+	palette = QPalette()
+	for name, value in colors.items():
+		if hasattr(QPalette, name) and isinstance(getattr(QPalette, name), int):
+			palette.setColor(getattr(QPalette, name), ctq(value))
+	
+	app = QApplication.instance()
+	app.setPalette(palette)
+	app.setStyleSheet(app.styleSheet())

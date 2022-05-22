@@ -946,13 +946,18 @@ class MainWindow(QMainWindow):
 		menu.addAction(action)
 		menu.addSeparator()
 		
-		themes = menu.addMenu('theme preset')
-		themes.addAction('system +')
-		themes.addAction('blue +')
-		themes.addAction('orange +')
-		themes.addAction('grey +')
-		themes.addAction('white +')
-		themes.addAction('dark +')
+		style = menu.addMenu('style sheet')
+		themepath = os.path.abspath(os.path.dirname(sys.argv[0]) + '/themes')
+		for name in os.listdir(themepath):
+			radix,ext = os.path.splitext(name)
+			if ext == '.qss':
+				style.addAction(name, lambda name=name: QApplication.instance().setStyleSheet(open(themepath+'/'+name, 'r').read()))
+				
+		theme = menu.addMenu('color preset')
+		for name in settings.color_presets:
+			theme.addAction(name, lambda name=name: settings.use_preset_colors(name))
+		
+		menu.addAction('reload colors', lambda: exec(open(themepath+'/colors.palette', 'r').read(), globals()))
 		
 		layouts = menu.addMenu('layout preset')
 		layouts.addAction('simple +')
