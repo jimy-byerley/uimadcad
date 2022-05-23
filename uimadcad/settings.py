@@ -21,7 +21,7 @@ view = {
 	'enable_floating': False,	# floating dockable windows, may have performance issues with big meshes
 	'window_size': [900,500],
 	'quick_toolbars': True,		# display the quickaccess toolbars
-	'color_preset': 'dark-red',
+	'color_preset': 'system',
 	'stylesheet': 'breeze-artificial',
 	}
 
@@ -144,7 +144,7 @@ def use_qt_colors():
 		})
 	
 def list_color_presets(name=None):
-	names = []
+	names = ['system']
 	for name in os.listdir(ressourcedir +'/themes'):
 		radix, ext = os.path.splitext(name)
 		if ext == '.yaml':
@@ -175,11 +175,16 @@ def use_color_preset(name=None):
 	if 'Base' not in colors:			colors['Base'] = colors['base']
 	if 'AlternateBase' not in colors:	colors['AlternateBase'] = mix(colors['base'], colors['decoration'], 0.05)
 	if 'Highlight' not in colors:		colors['Highlight'] = colors['colored']
-	if 'Light' not in colors:			colors['Light'] = mix(colors['background'], colors['decoration'], 0.8)
-	if 'Midlight' not in colors:		colors['Midlight'] = mix(colors['background'], colors['decoration'], 0.5)
+	#if 'Light' not in colors:			colors['Light'] = mix(colors['background'], colors['decoration'], 0.8)
+	#if 'Midlight' not in colors:		colors['Midlight'] = mix(colors['background'], colors['decoration'], 0.5)
+	#if 'Dark' not in colors:			colors['Dark'] = mix(colors['background'], colors['decoration'], 0.3)
+	#if 'Mid' not in colors:				colors['Mid'] = mix(colors['background'], colors['decoration'], 0.1)
+	#if 'Shadow' not in colors:			colors['Shadow'] = mix(colors['background'], colors['decoration'], 0.05)
+	if 'Light' not in colors:			colors['Light'] = mix(colors['background'], colors['decoration'], 0.05)
+	if 'Midlight' not in colors:		colors['Midlight'] = mix(colors['background'], colors['decoration'], 0.1)
 	if 'Dark' not in colors:			colors['Dark'] = mix(colors['background'], colors['decoration'], 0.3)
-	if 'Mid' not in colors:				colors['Mid'] = mix(colors['background'], colors['decoration'], 0.1)
-	if 'Shadow' not in colors:			colors['Shadow'] = mix(colors['background'], colors['decoration'], 0.05)
+	if 'Mid' not in colors:				colors['Mid'] = mix(colors['background'], colors['decoration'], 0.5)
+	if 'Shadow' not in colors:			colors['Shadow'] = mix(colors['background'], colors['decoration'], 0.8)
 	
 	if 'Text' not in colors:			colors['Text'] = colors['text']
 	if 'BrightText' not in colors:		colors['BrightText'] = mix(colors['colored'], colors['text'], 0.5)

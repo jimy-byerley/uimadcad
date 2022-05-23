@@ -4,7 +4,7 @@
 
 /*QGroupBox {
   background-color: palette(alternate-base);
-  border: 1px solid palette(midlight);
+  border: 1px solid palette(mid);
   margin-top: 25px;
 }
 
@@ -17,7 +17,7 @@ QGroupBox::title {
  */
 
 QMainWindow > QToolBar {
-	border: 1px solid palette(mid);
+	border: 1px solid palette(midlight);
 	border-radius: 3px;
 }
 QToolBar::separator {
@@ -28,7 +28,7 @@ QToolBar::handle {
 	background: palette(dark);
 }
 QToolBar::handle:hover {
-	background: palette(midlight);
+	background: palette(mid);
 }
 
 /*
@@ -51,7 +51,7 @@ QTabBar::tab:selected, QTabBar::tab:hover {
 }
 
 QTabBar::tab:selected:disabled {
-  border-bottom: 2px solid palette(light);
+  border-bottom: 2px solid palette(shadow);
 }
 
 /*
@@ -94,7 +94,7 @@ QScrollBar::sub-line:horizontal {
 
 /*QScrollBar {
 	background: palette(base);
-	border: 1px solid palette(mid);
+	border: 1px solid palette(midlight);
 }
 QScrollBar:vertical {
 	width: 16px;
@@ -105,7 +105,7 @@ QScrollBar:horizontal {
 	margin: 0px;
 }
 QScrollBar::handle {
-	background: palette(midlight);
+	background: palette(mid);
 	border-radius: 2px;
 }
 QScrollBar::handle:vertical {
@@ -121,7 +121,7 @@ QScrollBar::handle:horizontal {
 
 QScrollBar {
 	background: palette(base);
-	border: 1px solid palette(mid);
+	border: 1px solid palette(midlight);
 	border-radius: 5px;
 }
 QScrollBar:vertical {
@@ -137,7 +137,7 @@ QScrollBar:horizontal {
 	margin: 0px 20px 2px 20px;
 }
 QScrollBar::handle {
-	background: palette(midlight);
+	background: palette(mid);
 	border-radius: 4px;
 }
 QScrollBar::handle:vertical {
@@ -155,7 +155,7 @@ QScrollBar::handle:horizontal {
 
 QSlider::handle:horizontal {
   border-radius: 5px;
-  background-color: palette(light);
+  background-color: palette(shadow);
   max-height: 20px;
 }
 
@@ -168,12 +168,12 @@ QSlider::sub-page:horizontal {
 }
 
 QSlider::sub-page:horizontal:disabled {
-  background-color: palette(light);
+  background-color: palette(shadow);
 }
 
 QTableView {
   background-color: palette(link-visited);
-  alternate-background-color: palette(midlight);
+  alternate-background-color: palette(mid);
 }
 
 
@@ -190,7 +190,7 @@ QCheckBox::indicator, QMenu::indicator {
 }
 QCheckBox::indicator:unchecked, QMenu::indicator:unchecked { background: palette(alternate-base) }
 QCheckBox::indicator:checked, QMenu::indicator:checked { background: palette(highlight) }
-QCheckBox::indicator:indeterminate, QMenu::indicator:indeterminate { background: palette(midlight) }
+QCheckBox::indicator:indeterminate, QMenu::indicator:indeterminate { background: palette(mid) }
 QCheckBox::indicator:hover, QMenu::indicator:selected { border-color: palette(highlight) }
 
 
@@ -211,7 +211,7 @@ QToolButton {
 	color: palette(window-text);
 }
 QPushButton:hover, QToolButton:hover, QComboBox:hover { 
-	background: palette(mid); 
+	background: palette(midlight); 
 	border: 1px solid palette(highlight);
 }
 QPushButton:checked, QToolButton:checked { background: palette(dark); }
@@ -227,9 +227,9 @@ QPlainTextEdit:hover, QLineEdit:hover { border-color: palette(highlight); }
 
 
 QToolTip {
-    background-color: palette(shadow);
+    background-color: palette(light);
     color: palette(highlight);
-    border: 1px solid palette(mid);
+    border: 1px solid palette(midlight);
 	border-radius: 5px;
     padding: 2px;
 	opacity: 200;
@@ -248,7 +248,7 @@ QMenuBar::item, QMenu::item {
 }
 QMenu {
 	padding-top: 10px;
-	border: 1px solid palette(shadow);
+	border: 1px solid palette(light);
 	border-radius: 1px;
 	border-left: 1px solid palette(dark);
 }
@@ -256,7 +256,7 @@ QMenu::item {
 	padding: 4px 24px 4px 28px;
 }
 QMenu::item:selected {
-	background: palette(mid);
+	background: palette(midlight);
 }
 QMenuBar::separator, QMenu::separator {
 	height: 1px;
@@ -295,10 +295,10 @@ QComboBox {
 	padding-right: 5px;
 }
 QComboBox::item {
-	background: palette(shadow);
+	background: palette(light);
 }
 QComboBox::item:selected {
-	background: palette(mid);
+	background: palette(midlight);
 }
 QComboBox::drop-down {
 	subcontrol-origin: padding;
@@ -322,7 +322,7 @@ QDockWidget::title, QDockWidget, QDockWidget::separator {
 }
 
 QMainWindow::separator:vertical {
-	background: palette(mid);
+	background: palette(midlight);
 	width: 1px; 
 	margin-left: 5px;
 	margin-right: 5px;
@@ -330,7 +330,7 @@ QMainWindow::separator:vertical {
 	margin-bottom: 50px;
 }
 QMainWindow::separator:horizontal {
-	background: palette(mid);
+	background: palette(midlight);
 	height: 1px; 
 	margin-top: 5px;
 	margin-bottom: 5px;
