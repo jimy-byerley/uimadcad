@@ -8,10 +8,10 @@ import textwrap
 from madcad.nprint import nprint
 
 from .common import *
+from . import settings
 
 class ErrorView(QWidget):
 	tabsize = 4
-	font = QFont('NotoMono', 7)
 	
 	def __init__(self, main, exception=None, parent=None):
 		super().__init__(parent)
@@ -21,6 +21,7 @@ class ErrorView(QWidget):
 		self._sourcebtn = QPushButton('source')
 		self.main = main
 		self.exception = exception
+		self.font = QFont(*settings.scriptview['font'])
 		
 		self._keepchk.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
 		
@@ -47,7 +48,7 @@ class ErrorView(QWidget):
 		self._text.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
 		self._text.setTextInteractionFlags(Qt.TextBrowserInteraction)
 		self._text.setWordWrapMode(QTextOption.WrapMode.NoWrap)
-		self._text.setTabStopDistance(self.tabsize * QFontMetrics(self.font).maxWidth())
+		self._text.setTabStopDistance(settings.scriptview['tabsize'] * QFontMetrics(self.font).maxWidth())
 		self._text.setCurrentCharFormat(charformat(font=self.font))
 		# configure the label
 		self._label.setFont(self.font)
