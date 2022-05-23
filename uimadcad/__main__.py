@@ -1,52 +1,3 @@
-def qpalette_gray():
-	''' return a QPalette for gray theme '''
-	palette = QPalette()
-	
-	palette .setColor(QPalette.Window, QColor(53,53,53))
-	palette .setColor(QPalette.WindowText, Qt.white)
-	palette .setColor(QPalette.Base, QColor(25,25,25))
-	palette .setColor(QPalette.AlternateBase, QColor(53,53,53))
-	palette .setColor(QPalette.ToolTipBase, Qt.white)
-	palette .setColor(QPalette.ToolTipText, Qt.white)
-	palette .setColor(QPalette.Text, Qt.white)
-	palette .setColor(QPalette.Button, QColor(53,53,53))
-	palette .setColor(QPalette.ButtonText, Qt.white)
-	palette .setColor(QPalette.BrightText, Qt.red)
-	palette .setColor(QPalette.Link, QColor(42, 130, 218))
-
-	palette .setColor(QPalette.Highlight, QColor(42, 130, 218))
-	palette .setColor(QPalette.HighlightedText, Qt.black)
-	
-	return palette
-	
-def qpalette_black():
-	''' return a QPalette for a black theme '''
-	palette = QPalette()
-	
-	palette .setColor(QPalette.Window, QColor(10,11,18))
-	palette .setColor(QPalette.WindowText, QColor(190,207,210))
-	palette .setColor(QPalette.Base, QColor(10,11,18))
-	palette .setColor(QPalette.AlternateBase, QColor(18,19,31))
-	palette .setColor(QPalette.ToolTipBase, Qt.white)
-	palette .setColor(QPalette.ToolTipText, Qt.white)
-	palette .setColor(QPalette.Text, QColor(212,231,234))
-	palette .setColor(QPalette.Button, QColor(10,11,18))
-	palette .setColor(QPalette.ButtonText, QColor(190,207,210))
-	palette .setColor(QPalette.BrightText, Qt.red)
-	palette .setColor(QPalette.Link, QColor(46,139,139))
-
-	palette .setColor(QPalette.Highlight, QColor(0,150,150))
-	palette .setColor(QPalette.HighlightedText, QColor(15,16,25))
-	
-	palette.setColor(QPalette.Active, QPalette.Button, QColor(10,11,18))
-	palette.setColor(QPalette.Inactive, QPalette.Button, QColor(10,11,18))
-	palette.setColor(QPalette.Disabled, QPalette.ButtonText, Qt.darkGray)
-	palette.setColor(QPalette.Disabled, QPalette.WindowText, Qt.darkGray)
-	palette.setColor(QPalette.Disabled, QPalette.Text, Qt.darkGray)
-	palette.setColor(QPalette.Disabled, QPalette.Light, QColor(53, 53, 53))
-	
-	return palette
-
 
 if __name__ == '__main__':
 
@@ -87,7 +38,6 @@ if __name__ == '__main__':
 	
 	# set icons if not provided by the system
 	if not QIcon.themeName() and sys.platform == 'win32':
-		print('no icon theme set')
 		# assume that the software is a portable version, so the icons are in the same dir as executable
 		path = QIcon.themeSearchPaths()
 		path.append(ressourcedir + '/icons')

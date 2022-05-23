@@ -954,8 +954,6 @@ class MainWindow(QMainWindow):
 		for name in settings.list_color_presets():
 			theme.addAction(name, lambda name=name: settings.use_color_preset(name))
 		
-		menu.addAction('reload colors', lambda: exec(open(themepath+'/colors.palette', 'r').read(), globals()))
-		
 		layouts = menu.addMenu('layout preset')
 		layouts.addAction('simple +')
 		layouts.addAction('side toolbar +')
