@@ -947,15 +947,12 @@ class MainWindow(QMainWindow):
 		menu.addSeparator()
 		
 		style = menu.addMenu('style sheet')
-		themepath = os.path.abspath(os.path.dirname(sys.argv[0]) + '/themes')
-		for name in os.listdir(themepath):
-			radix,ext = os.path.splitext(name)
-			if ext == '.qss':
-				style.addAction(name, lambda name=name: QApplication.instance().setStyleSheet(open(themepath+'/'+name, 'r').read()))
+		for name in settings.list_stylesheets():
+			style.addAction(name, lambda name=name: settings.use_stylesheet(name))
 				
 		theme = menu.addMenu('color preset')
-		for name in settings.color_presets:
-			theme.addAction(name, lambda name=name: settings.use_preset_colors(name))
+		for name in settings.list_color_presets():
+			theme.addAction(name, lambda name=name: settings.use_color_preset(name))
 		
 		menu.addAction('reload colors', lambda: exec(open(themepath+'/colors.palette', 'r').read(), globals()))
 		

@@ -3,6 +3,11 @@ from os.path import dirname, exists
 from madcad.mathutils import *	
 import madcad
 from PyQt5.QtGui import QColor
+from PyQt5.QtWidgets import QApplication, QStyleFactory
+from PyQt5.QtGui import QPalette
+
+from .common import ressourcedir
+
 
 execution = {
 	'onstartup': True,			# execution at program startup
@@ -16,8 +21,8 @@ view = {
 	'enable_floating': False,	# floating dockable windows, may have performance issues with big meshes
 	'window_size': [900,500],
 	'quick_toolbars': True,		# display the quickaccess toolbars
-	'color_preset': 'system',
-	'stylesheet': 'breeze',
+	'color_preset': 'dark-red',
+	'stylesheet': 'breeze-artificial',
 	}
 
 scriptview = {
@@ -43,37 +48,6 @@ scriptview = {
 	'comment_color': fvec3(0.5, 0.5, 0.5),
 	}
 
-color_presets = {
-	'dark red': {
-		'base': fvec3(0,0,0),
-		'background': fvec3(20,21,22)/255,
-		'text': fvec3(1,1,1),
-		'decoration': fvec3(200,200,200)/255,
-		'colored': fvec3(255,50,0)/255,
-		},
-	'dark green': {
-		'base': fvec3(0,0,0),
-		'background': fvec3(20,22,25)/255,
-		'text': fvec3(1,1,1),
-		'decoration': fvec3(200,240,230)/255,
-		'colored': fvec3(100,255,200)/255,
-		},
-	'grey orange': {
-		'base': fvec3(45,48,50)/255,
-		'background': fvec3(60,65,70)/255,
-		'text': fvec3(1,1,1),
-		'decoration': fvec3(200,200,200)/255,
-		'colored': fvec3(255,200,50)/255,
-		},
-	'light blue': {
-		'base': fvec3(1,1,1),
-		'background': fvec3(1,1,1),
-		'text': fvec3(0,0,0),
-		'decoration': fvec3(30,40,50)/255,
-		'colored': fvec3(0,100,200),
-		},
-	}
-
 configdir = madcad.settings.configdir
 locations = {
 	'config': configdir+'/madcad',
@@ -82,7 +56,6 @@ locations = {
 	'colors_presets': configdir+'/madcad/color-presets.yaml',
 	'startup': configdir+'/madcad/startup.py',
 	}
-
 
 settings = {'execution':execution, 'view':view, 'scriptview':scriptview}
 
@@ -169,16 +142,25 @@ def use_qt_colors():
 		'string_color': second,
 		'comment_color': mix(normal, background, 0.6),
 		})
+	
+def list_color_presets(name=None):
+	names = []
+	for name in os.listdir(ressourcedir +'/themes'):
+		radix, ext = os.path.splitext(name)
+		if ext == '.yaml':
+			names.append(radix)
+	return names
 
-def use_preset_colors(name=None):
-	from PyQt5.QtWidgets import QApplication
-	from PyQt5.QtGui import QPalette
+def use_color_preset(name=None):	
+	if not name:	
+		name = view['color_preset']
 	
-	if not name:	name = view['color_preset']
-	colors = color_presets.get(name)
-	
-	if not colors:
-		return QPalette()
+	file = ressourcedir +'/themes/'+ name + '.yaml'
+	if not os.path.exists(file):
+		return
+	colors = yaml.safe_load(open(file, 'r'))
+	for key, value in colors.items():
+		colors[key] = fvec3(value)
 	
 	# complete the minimal color set
 	if 'background' not in colors:		colors['background'] = colors['Window']
@@ -222,3 +204,25 @@ def use_preset_colors(name=None):
 	app = QApplication.instance()
 	app.setPalette(palette)
 	app.setStyleSheet(app.styleSheet())
+
+
+def list_stylesheets(name=None):
+	names = QStyleFactory.keys()
+	for name in os.listdir(ressourcedir +'/themes'):
+		radix, ext = os.path.splitext(name)
+		if ext == '.qss':
+			names.append(radix)
+	return names
+
+def use_stylesheet(name=None):
+	if not name:
+		name = view['stylesheet']
+	
+	app = QApplication.instance()
+	if name in QStyleFactory.keys():
+		app.setStyle(name)
+		app.setStyleSheet('')
+	else:
+		app.setStyle('fusion')
+		app.setStyleSheet(open(ressourcedir+'/themes/'+name+'.qss', 'r').read())
+

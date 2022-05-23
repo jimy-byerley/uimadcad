@@ -58,6 +58,7 @@ if __name__ == '__main__':
 	
 	from uimadcad import version
 	from uimadcad.apputils import *
+	from uimadcad.common import ressourcedir
 	
 	# set Qt opengl context sharing to avoid reinitialization of scenes everytime, (this is for pymadcad display)
 	QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
@@ -85,32 +86,16 @@ if __name__ == '__main__':
 	from uimadcad.gui import *
 	
 	# set icons if not provided by the system
-	if not QIcon.themeName():
+	if not QIcon.themeName() and sys.platform == 'win32':
 		print('no icon theme set')
-		print('living in', os.path.abspath(os.path.dirname(sys.argv[0]) + '/icons'))
 		# assume that the software is a portable version, so the icons are in the same dir as executable
 		path = QIcon.themeSearchPaths()
-		path.append(os.path.abspath(os.path.dirname(sys.argv[0]) + '/icons'))
+		path.append(ressourcedir + '/icons')
 		QIcon.setThemeSearchPaths(path)
-		QIcon.setThemeName('breeze')
-		#print('still nothing set')
-		
-	if sys.platform == 'win32':
-		from PyQt5.QtWidgets import QStyleFactory
-		print('available themes', QStyleFactory.keys())
-		QIcon.setThemeName('breeze')
-		#app.setStyle('fusion')
-		#app.setPalette(qpalette_black())
-		#import qdarkstyle
-		#from qdarkstyle.dark.palette import DarkPalette
-		#from qdarkstyle.light.palette import LightPalette
-		#app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5', palette=DarkPalette))
-		#app.setStyleSheet(qdarkstyle.load_stylesheet())
-		#import PyQt5_stylesheets
-		#app.setStyleSheet(PyQt5_stylesheets.load_stylesheet_pyqt5(style="style_Dark"))
-		app.setStyleSheet(open(os.path.abspath(os.path.dirname(sys.argv[0]) + '/themes/pseudo-breeze.qss')).read())
-		
-		
+		QIcon.setThemeName('breeze')		
+	
+	settings.use_color_preset()
+	settings.use_stylesheet()
 	
 	# set locale settings to default to get correct 'repr' of glm types
 	locale.setlocale(locale.LC_NUMERIC, 'C')

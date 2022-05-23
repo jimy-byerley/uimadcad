@@ -4,6 +4,15 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QTextCharFormat, QTextCursor, QColor
 from PyQt5.QtWidgets import QDockWidget, QTextEdit
 
+import sys, os
+
+# determine the current software's ressource directory
+bindir = os.path.dirname(os.path.abspath(sys.argv[0]))
+if os.path.basename(bindir) == 'bin':
+	ressourcedir = os.path.abspath(bindir + '/../share/madcad')
+else:
+	ressourcedir = bindir
+
 
 def propertywrite(func):
 	''' decorator to create a property with only a write function '''
