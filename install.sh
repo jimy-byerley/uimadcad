@@ -101,6 +101,9 @@ $project/launcher/target/release/pack$binformat $data/uimadcad \
 
 # the main executable
 install $project/launcher/uimadcad.py $bin/madcad
+install -d $data/themes/
+install $project/themes/*.qss $data/themes/
+install $project/themes/*.yaml $data/themes/
 	
 # platform specific
 case $platform in
@@ -112,6 +115,7 @@ linux)
 	install $project/madcad.desktop $prefix/share/applications/
 	install -d $prefix/share/icons/hicolor/scalable/apps
 	install $project/icons/*.svg $prefix/share/icons/hicolor/scalable/apps/
+	
 	install -d $prefix/share/icons/hicolor/scalable/mimetypes
 	install $project/mimetypes/*.svg $prefix/share/icons/hicolor/scalable/mimetypes/
 	install -d $prefix/share/mime/packages/
@@ -121,8 +125,6 @@ linux)
 windows)
 	install $project/launcher/madcad.bat $bin/
 	install $project/launcher/target/$cargotarget/$release/launcher.dll $data/launcher.pyd
-	
-	cp -r $project/themes $prefix/themes
 	
 	install -d $prefix/icons/breeze
 	python minimal-theme.py $project/icons/list.txt $project/breeze $prefix/icons/breeze
