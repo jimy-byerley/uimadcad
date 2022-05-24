@@ -7,11 +7,16 @@ from PyQt5.QtWidgets import QDockWidget, QTextEdit
 import sys, os
 
 # determine the current software's ressource directory
-bindir = os.path.dirname(os.path.abspath(sys.argv[0]))
-if os.path.basename(bindir) == 'bin':
-	ressourcedir = os.path.abspath(bindir + '/../share/madcad')
+if os.path.exists(__file__):
+	# we are running from source code
+	ressourcedir = os.path.abspath(__file__ + '/../..')
 else:
-	ressourcedir = bindir
+	# we are running from the launcher
+	bindir = os.path.dirname(os.path.abspath(sys.argv[0]))
+	if os.path.basename(bindir) == 'bin':
+		ressourcedir = os.path.abspath(bindir + '/../share/madcad')
+	else:
+		ressourcedir = bindir
 
 
 def propertywrite(func):
