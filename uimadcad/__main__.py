@@ -44,6 +44,7 @@ if __name__ == '__main__':
 		QIcon.setThemeSearchPaths(path)
 		QIcon.setThemeName('breeze')		
 	
+	settings.load()
 	settings.use_color_preset()
 	settings.use_stylesheet()
 	

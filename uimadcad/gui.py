@@ -124,7 +124,6 @@ class Madcad(QObject):
 		''' set madcad in the startup state (software openning state) '''
 		settings.install()
 		madcad.settings.install()
-		settings.load()
 		# create or load config
 		if madcad.settings.display['system_theme']:
 			madcad.settings.use_qt_colors()
