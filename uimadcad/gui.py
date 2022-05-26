@@ -680,12 +680,16 @@ class Madcad(QObject):
 		
 	def lock_solid(self):
 		view = self.active_sceneview
+		locked = False
 		for manip in scene_unroll(view.scene):
 			if isinstance(manip, kinematic.Kinemanip):
 				for i,disp in manip.displays.items():
 					if isinstance(disp, Solid.display) and disp.selected:
 						solid = manip.solids[i]
 						manip.lock(view.scene, solid, not manip.islocked(solid))
+						locked = True
+		if not locked:
+			view.scene.options['lock_solids'] = not view.scene.options['lock_solids']
 		view.update()
 	
 	# END
