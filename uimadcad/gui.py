@@ -554,38 +554,73 @@ class Madcad(QObject):
 		return cursor
 	
 	def insertexpr(self, text, format=True):
-		# get line before cursor
 		cursor = self.active_scriptview.editor.textCursor()
-		cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
-		line = cursor.selectedText()
-		# get line indendation
-		cursor.clearSelection()
-		cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
-		indent = cursor.selectedText().replace('\u2029', '\n')
-		indent = indent[:indent.find('\n')]
-		if not indent.isspace():	indent = ''
-		# get end of text
-		cursor = self.active_scriptview.editor.textCursor()
-		cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
-		cursor.movePosition(QTextCursor.PreviousCharacter, QTextCursor.KeepAnchor)
-		cursor.movePosition(QTextCursor.PreviousWord, QTextCursor.KeepAnchor)
-		previous = cursor.selectedText().replace('\u2029', '\n').rstrip()
 		
-		if previous and previous[-1] in '[(':
-			indent += '\t'
-		block = ''
-		if line and not line.isspace() and (	len(line) > 30 
-											or '\n' in text
-											or	previous and previous[-1] not in ',=+-*/(['	):
-			block += '\n'+indent
-		block += text.replace('\n', '\n'+indent)
-		if previous and previous[-1] in '([,':
-			block += ','
-		if '\n' in text:
-			block += '\n'+indent
+		# replace selection if any
+		if cursor.hasSelection():
+			# pick interval in document
+			start, stop = cursor.selectionStart(), cursor.selectionEnd()
+			# pick indentation
+			cursor.clearSelection()
+			cursor.movePosition(QTextCursor.StartOfLine)
+			cursor.movePosition(QTextCursor.EndOfWord, QTextCursor.KeepAnchor)
+			indent = cursor.selectedText()
+			assert not indent or indent.isspace(), repr(indent)
+			# insert
+			self.mod[start:stop] = text.replace('\n', '\n'+indent)
 		
-		# report changes
-		self.mod[self.active_scriptview.editor.textCursor().position()] = block
+		else:
+			# pick position to insert
+			place = cursor.position()
+			
+			cursor.movePosition(QTextCursor.PreviousWord)
+			cursor.movePosition(QTextCursor.EndOfWord)
+			cursor.movePosition(QTextCursor.PreviousCharacter, QTextCursor.KeepAnchor)
+			last = cursor.selectedText()
+			
+			# pick the indentation
+			cursor.movePosition(QTextCursor.StartOfLine)
+			cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
+			indent = cursor.selectedText()
+			
+			if not indent.isspace():
+				indent = ''
+						
+			# insert in an expression
+			if last in ',=+-*/([':
+				
+				# pick the number of parenthesis in the current line
+				cursor.setPosition(place)
+				cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
+				line = cursor.selectedText()
+				openning = line.count('(') + line.count('[') + line.count('{') - line.count('}') - line.count(']') - line.count(')')
+				
+				if openning > 0:
+					indent += '\t'
+				elif openning < 0:
+					indent = indent[:-1]
+					
+				if last in ',([{':
+					text = '\n'+text+','
+					
+				self.mod[place] = text.replace('\n', '\n'+indent)
+				
+			# insert in an empty line
+			elif not last or last in '\u2029 \t':
+				# check if there is something at the end of line
+				cursor.setPosition(place)
+				cursor.movePosition(QTextCursor.EndOfLine, QTextCursor.KeepAnchor)
+				if cursor.selectedText().isspace():
+					text += '\n'
+			
+				self.mod[place] = text.replace('\n', '\n'+indent)
+				
+			# break line and insert new statement
+			else:
+				indent = '\t' * len(self.scopes)
+				self.mod[place] = '\n'+indent + text.replace('\n', '\n'+indent) + '\n'+indent
+				
+			
 	
 	def insertstmt(self, text):
 		# check if there is already something on the line
@@ -844,6 +879,9 @@ def open_file_external(file):
 	else:
 		raise EnvironmentError('unable to open a textfile on platform {}'.format(os.platform))
 
+
+
+
 class MainWindow(QMainWindow):
 	''' The main window of the gui. 
 		Only here to organize the other top-level widgets
@@ -884,6 +922,14 @@ class MainWindow(QMainWindow):
 		# use state to get the proper layout until we have a proper state backup
 		self.restoreState(b'\x00\x00\x00\xff\x00\x00\x00\x00\xfd\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x01\xf8\x00\x00\x03l\xfc\x02\x00\x00\x00\x02\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x03l\x00\x00\x00\x84\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00z\x01\x00\x00\x03\x00\x00\x00\x01\x00\x00\x03\xbc\x00\x00\x03l\xfc\x02\x00\x00\x00\x01\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x03l\x00\x00\x00\x94\x01\x00\x00\x03\x00\x00\x00\x00\x00\x00\x03l\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x08\x00\x00\x00\x08\xfc\x00\x00\x00\x0b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x03\x00\x00\x00 \x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00c\x00r\x00e\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00$\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00a\x00n\x00n\x00o\x00t\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x01\x84\x00\x00\x00T\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x16\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00w\x00e\x00b\x03\x00\x00\x01\xd8\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x03\x00\x00\x00\x18\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00m\x00e\x00s\x00h\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00&\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00c\x00o\x00n\x00s\x00t\x00r\x00a\x00i\x00n\x00t\x00s\x03\x00\x00\x00R\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00&\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00a\x00m\x00e\x00l\x00i\x00r\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x02^\x00\x00\x01\x0e\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00')
 		self.resize(*settings.view['window_size'])
+		
+		self.main.progressbar.setParent(self)
+			
+	def resizeEvent(self, evt):
+		self.main.progressbar.move(
+			self.width()//2 - self.main.progressbar.width()//2,
+			self.height()//2 - self.main.progressbar.height()//2,
+			)
 	
 	
 	def closeEvent(self, evt):
