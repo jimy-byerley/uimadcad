@@ -143,6 +143,12 @@ class Var(object):
 	__slots__ = 'value', 'name'
 	def __init__(self, value=None, name=None):
 		self.value, self.name = value, name
+		
+	def __repr__(self):
+		return '<Var {}: {}>'.format(
+				repr(self.name) if self.name else'anonymous', 
+				repr(self.value),
+				)
 	
 def dispvar(main, disp):
 	if hasattr(disp, 'source') and disp.source:
@@ -365,7 +371,10 @@ def select(main, req):
 def createpoint(main):
 	evt = yield from waitclick()
 	view = main.active_sceneview
-	p = view.ptfrom(evt.pos(), view.navigation.center)
+	if view.scene.options['display_faces']:
+		p = view.ptat(evt.pos()) or view.ptfrom(evt.pos(), view.navigation.center)
+	else:
+		p = view.ptfrom(evt.pos(), view.navigation.center)
 	solid = view.scene.active_solid
 	if solid:
 		p = vec3(mat4(affineInverse(solid.world * solid.pose)) * vec4(p,1))
@@ -492,15 +501,15 @@ def tool_meshing(main):
 	main.insertexpr('Mesh(\n\tpoints=[],\n\tfaces=[])')
 
 def tool_mergeclose(main):
-	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
+	args = yield from toolrequest(main, [(lambda o: isinstance(o, (Web,Wire,Mesh)), 'mesh to process')], create=False)
 	main.insertstmt(format('{}.mergeclose()', args[0]))
 	
 def tool_stripbuffers(main):
-	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
+	args = yield from toolrequest(main, [(lambda o: isinstance(o, (Web,Wire,Mesh)), 'mesh to process')], create=False)
 	main.insertstmt(format('{}.finish()', args[0]))
 	
 def tool_flip(main):
-	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
+	args = yield from toolrequest(main, [(lambda o: isinstance(o, (Web,Wire,Mesh)), 'mesh to process')], create=False)
 	main.insertstmt(format('{}.flip()', args[0]))
 
 def tool_point(main):
@@ -578,7 +587,7 @@ def tool_note(main):
 	acquirevar(main, var)
 		
 	def asktext():
-		return QInputDialog.getText(main.mainwindow, 'text note', 'enter text:')[0]
+		return repr(QInputDialog.getText(main.mainwindow, 'text note', 'enter text:')[0])
 		
 	if isinstance(var.value, (Mesh,Web,Wire)):
 		expr = format('note_leading({}.group({}), text={})', var, item[-1], asktext())
