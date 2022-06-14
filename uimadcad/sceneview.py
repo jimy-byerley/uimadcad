@@ -173,7 +173,8 @@ class Scene(madcad.rendering.Scene, QObject):
 					assigned = True
 			if not assigned:
 				sets.append(used)
-		search_statements(self.main.interpreter.part_altered)
+		if self.main.interpreter.part_altered:
+			search_statements(self.main.interpreter.part_altered)
 		
 		# the default pose for any object in the code executed, is the current local pose
 		for u in sets:
@@ -217,7 +218,7 @@ class Scene(madcad.rendering.Scene, QObject):
 				else:
 					obj, last = self.poses.get(obj), obj
 				
-			disp.world = obj.pose if obj else fmat4(1)
+			disp.world = obj.world if obj else fmat4(1)
 
 	def items(self):
 		''' yield recursively all couples (key, display) in the scene, including subscenes '''
