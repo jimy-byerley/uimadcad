@@ -82,7 +82,7 @@ class ScriptView(QWidget):
 	def __init__(self, main, parent=None):
 		# current widget aspects
 		super().__init__(parent)
-		self.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Expanding))
+		#self.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Expanding))
 		
 		self.main = main
 		self.font = QFont(*settings.scriptview['font'])
@@ -223,11 +223,26 @@ class ScriptView(QWidget):
 		
 	def _updatezone(self):
 		main = self.main
-		below = main.posvar(self.editor.textCursor().position())
+		cursor = self.editor.textCursor()
+		
+		if cursor.hasSelection():
+			start, stop = cursor.selectionStart(), cursor.selectionEnd()
+			for location in main.interpreter.locations.values():
+				zone = astinterval(location)
+				if start <= zone[0] <= stop or start <= zone[1] <= stop:
+					start = min(start, zone[0])
+					stop = max(stop, zone[0])
+			below = (start, stop)
+		else:
+			below = main.posvar(cursor.position())
+			if below:
+				below = astinterval(main.interpreter.locations[below])
+				
 		if below:
-			main.displayzones[id(self)] = astinterval(main.interpreter.locations[below])
+			main.displayzones[id(self)] = below
 		else:
 			main.displayzones.pop(id(self), None)
+		
 		main.updatescript()
 		if main.active_sceneview:
 			main.active_sceneview.scene.sync()
