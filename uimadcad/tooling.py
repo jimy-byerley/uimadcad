@@ -143,6 +143,12 @@ class Var(object):
 	__slots__ = 'value', 'name'
 	def __init__(self, value=None, name=None):
 		self.value, self.name = value, name
+		
+	def __repr__(self):
+		return '<Var {}: {}>'.format(
+				repr(self.name) if self.name else'anonymous', 
+				repr(self.value),
+				)
 	
 def dispvar(main, disp):
 	if hasattr(disp, 'source') and disp.source:
@@ -365,7 +371,10 @@ def select(main, req):
 def createpoint(main):
 	evt = yield from waitclick()
 	view = main.active_sceneview
-	p = view.ptfrom(evt.pos(), view.navigation.center)
+	if view.scene.options['display_faces']:
+		p = view.ptat(evt.pos()) or view.ptfrom(evt.pos(), view.navigation.center)
+	else:
+		p = view.ptfrom(evt.pos(), view.navigation.center)
 	solid = view.scene.active_solid
 	if solid:
 		p = vec3(mat4(affineInverse(solid.world * solid.pose)) * vec4(p,1))
@@ -398,9 +407,13 @@ def createaxis(main):
 
 
 def create_toolbars(main, widget):
+	tools = widget.addToolBar('io')
+	tools.setObjectName('toolbar-io')
+	tools.addAction(main.createaction('import', tool_import, 	'document-import'))
+	tools.addAction(main.createtool('export', tool_export, 	'document-export'))
+	
 	tools = widget.addToolBar('creation')
 	tools.setObjectName('toolbar-creation')
-	tools.addAction(main.createaction('import', tool_import, 	'document-import'))
 	tools.addAction(main.createaction('solid', tool_solid, 'madcad-solid'))
 	#tools.addAction(main.createaction('manual triangulated meshing', tool_meshing, 'madcad-meshing'))
 	#tools.addAction(QIcon.fromTheme('madcad-splined'), 'manual splined meshing')
@@ -485,6 +498,18 @@ def tool_import(main):
 	if not objname.isidentifier():	objname = 'imported'
 	main.insertstmt('{} = read({})'.format(objname, repr(filename)))
 	
+def tool_export(main):
+	args = yield from toolrequest(main, [(object, 'object to export')])
+	
+	filename = QFileDialog.getSaveFileName(main.mainwindow, 'export as', 
+						os.curdir, 
+						'ply files (*.ply);;stl files (*.stl);;obj files (*.obj);;pickle files (*.pickle)',
+						)[0]
+	if not filename:
+		raise ToolError('no file selected')
+	
+	main.insertstmt(format('io.write({}, {})', args[0], repr(filename)))
+	
 def tool_solid(main):
 	main.insertexpr('Solid()')
 	
@@ -492,15 +517,15 @@ def tool_meshing(main):
 	main.insertexpr('Mesh(\n\tpoints=[],\n\tfaces=[])')
 
 def tool_mergeclose(main):
-	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
+	args = yield from toolrequest(main, [(lambda o: isinstance(o, (Web,Wire,Mesh)), 'mesh to process')], create=False)
 	main.insertstmt(format('{}.mergeclose()', args[0]))
 	
 def tool_stripbuffers(main):
-	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
+	args = yield from toolrequest(main, [(lambda o: isinstance(o, (Web,Wire,Mesh)), 'mesh to process')], create=False)
 	main.insertstmt(format('{}.finish()', args[0]))
 	
 def tool_flip(main):
-	args = yield from toolrequest(main, [(Mesh, 'mesh to process')], create=False)
+	args = yield from toolrequest(main, [(lambda o: isinstance(o, (Web,Wire,Mesh)), 'mesh to process')], create=False)
 	main.insertstmt(format('{}.flip()', args[0]))
 
 def tool_point(main):
@@ -578,7 +603,7 @@ def tool_note(main):
 	acquirevar(main, var)
 		
 	def asktext():
-		return QInputDialog.getText(main.mainwindow, 'text note', 'enter text:')[0]
+		return repr(QInputDialog.getText(main.mainwindow, 'text note', 'enter text:')[0])
 		
 	if isinstance(var.value, (Mesh,Web,Wire)):
 		expr = format('note_leading({}.group({}), text={})', var, item[-1], asktext())
@@ -687,8 +712,8 @@ def tool_tangent(main):
 				(lambda o: hasattr(o, 'slv_tangent'), 'primitive 2'),
 				])
 	common = None
-	for v1 in args[0].slvvars:
-		for v2 in args[1].slvvars:
+	for v1 in args[0].value.slvvars:
+		for v2 in args[1].value.slvvars:
 			if getattr(args[0], v1) is getattr(args[1], v2):
 				common = v1, v2
 	main.insertexpr(format('Tangent({}, {}, {}.{})', args[0], args[1], args[0], common[0]))

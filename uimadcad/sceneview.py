@@ -57,6 +57,7 @@ class Scene(madcad.rendering.Scene, QObject):
 			}
 		self.poses = {}			# solid per variable for poses, non associated solids are not in that dict
 		self.active_solid = None	# current solid for current space
+		self.active_selection = None	# key of the last selected display
 		self.executed = True	# flag set to True to enable a full relead of the scene
 		self.displayall = False
 		
@@ -173,7 +174,8 @@ class Scene(madcad.rendering.Scene, QObject):
 					assigned = True
 			if not assigned:
 				sets.append(used)
-		search_statements(self.main.interpreter.part_altered)
+		if self.main.interpreter.part_altered:
+			search_statements(self.main.interpreter.part_altered)
 		
 		# the default pose for any object in the code executed, is the current local pose
 		for u in sets:
@@ -217,7 +219,7 @@ class Scene(madcad.rendering.Scene, QObject):
 				else:
 					obj, last = self.poses.get(obj), obj
 				
-			disp.world = obj.pose if obj else fmat4(1)
+			disp.world = obj.world if obj else fmat4(1)
 
 	def items(self):
 		''' yield recursively all couples (key, display) in the scene, including subscenes '''
@@ -330,10 +332,13 @@ class SceneView(madcad.rendering.View):
 		self.quick.setGeometry(0,0, 40, 300)
 		self.quick.hide()
 		
-		self.selection_label = QLabel(self)
+		self.selection_label = QPushButton(self)
 		self.selection_label.setFont(QFont(*settings.scriptview['font']))
 		self.selection_label.move(self.quick.width()*2, 0)
-		self.selection_label.setToolTip('last selection')
+		self.selection_label.setToolTip('last selection, click to scroll to it')
+		self.selection_label.setFlat(True)
+		self.selection_label.clicked.connect(self.scroll_selection)
+		self.selection_label.hide()
 	
 		self.statusbar = SceneViewBar(self)
 		self.scene.changed.connect(self.update)
@@ -402,7 +407,8 @@ class SceneView(madcad.rendering.View):
 				if hasattr(disp, '__iter__'):
 					disp.selected = any(sub.selected	for sub in disp)
 			if disp.selected:
-				self.set_selection_label(format_scenekey(self.scene, key))
+				self.scene.active_selection = key
+				self.update_active_selection()
 			self.update()
 			self.main.updatescript()
 			evt.accept()
@@ -422,10 +428,16 @@ class SceneView(madcad.rendering.View):
 					self.main.edit(name)
 				evt.accept()
 	
-	def set_selection_label(self, text):
-		pointsize = self.selection_label.font().pointSize()
-		self.selection_label.setText(text)
-		self.selection_label.resize(pointsize*len(text), pointsize*2)
+	def update_active_selection(self):
+		if self.scene.active_selection:
+			text = format_scenekey(self.scene, self.scene.active_selection)
+		
+			pointsize = self.selection_label.font().pointSize()
+			self.selection_label.setText(text)
+			self.selection_label.resize(pointsize*len(text), pointsize*2)
+			self.selection_label.show()
+		else:
+			self.selection_label.hide()
 	
 	def showdetail(self, key, position=None):
 		''' display a detail window for the ident given (grp,sub) '''
@@ -466,6 +478,20 @@ class SceneView(madcad.rendering.View):
 		box = self.scene.selectionbox() or self.scene.box()
 		self.center(box.center)
 		self.adjust(box)
+		
+	def scroll_selection(self):
+		if not self.scene.active_selection or not self.main.active_scriptview:	
+			return
+		try:	disp = self.scene.item(self.scene.active_selection)
+		except KeyError:	
+			self.active_selection = None
+			self.update_active_selection()
+			return
+		it = self.main.interpreter
+		if not hasattr(disp, 'source') or id(disp.source) not in it.ids:	
+			return
+		self.main.active_scriptview.seek_position(it.locations[it.ids[id(disp.source)]].position)
+		self.main.active_scriptview.editor.setFocus(True)
 		
 
 class SceneViewBar(QWidget):

@@ -80,6 +80,8 @@ class Interpreter:
 		ast_target = astatpos(scope, target)
 		# ast until target
 		part = scope.body[ast_current:ast_target]
+		# pick possible backup points
+		stops = set(stmt.end_position  for stmt in part)
 		# remaining expressions before target in the AST
 		if ast_target < len(scope.body):
 			part += astexpruntil(scope.body[ast_target], target)
@@ -109,9 +111,8 @@ class Interpreter:
 				if onstep:
 					onstep(i/len(processed.body))
 				
-				# autobackup
-				t = time()
-				if t - starttime > self.backupstep:
+				# autobackup if this is between 2 statements
+				if stmt.end_position in stops and time() - starttime > self.backupstep:
 					self.backups[self.lastbackup(stmt.position)+1
 								:self.lastbackup(target)+1] = [(stmt.end_position, copyvars(env, locations.keys()))]
 					starttime = time()
@@ -436,9 +437,9 @@ def astatpos(tree, pos):
 	''' get the AST node from a list of nodes, that contains the given text location '''
 	for i,statement in enumerate(tree.body):
 		if statement.position >= pos:		
-			return max(0, i)
-		if hasattr(statement, 'end_position') and statement.end_position > pos:		
-			return max(0, i)
+			return i
+		if hasattr(statement, 'end_position') and statement.end_position > pos:
+			return i
 	return len(tree.body)
 		
 def astloc(node):

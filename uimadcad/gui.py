@@ -14,18 +14,21 @@ from PyQt5.QtCore import (
 		Qt, QSize, QRect, QPoint, QPointF,
 		QEvent, pyqtSignal, QObject, 
 		QStringListModel,
+		QUrl,
 		)
 from PyQt5.QtWidgets import (
 		QApplication, QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction, QShortcut,
 		QPlainTextDocumentLayout, 
 		QPushButton, QLabel, QComboBox, QProgressBar,
-		QMainWindow, QDockWidget, QFileDialog, QMessageBox, QDialog
+		QMainWindow, QDockWidget, QFileDialog, QMessageBox, QDialog,
+		QWhatsThis,
 		)
 from PyQt5.QtGui import (
 		QFont, QFontMetrics, 
 		QColor, QPalette,
 		QIcon, QKeySequence, 
 		QTextOption, QTextDocument, QTextCursor,
+		QDesktopServices,
 		)
 
 from madcad import *
@@ -47,12 +50,11 @@ from . import settings
 
 from copy import deepcopy, copy
 from threading import Thread
+from functools import partial
 import ast, traceback
 import os, sys
 import re
 
-
-version = '0.5'
 
 
 class Madcad(QObject):
@@ -87,6 +89,7 @@ class Madcad(QObject):
 		self.details = {}
 		self.hiddens = set()
 		self.displayzones = {}
+		self.lastinsert = None
 		
 		# madcad ressources (and widgets)
 		self.standardcameras = {
@@ -126,7 +129,6 @@ class Madcad(QObject):
 		''' set madcad in the startup state (software openning state) '''
 		settings.install()
 		madcad.settings.install()
-		settings.load()
 		# create or load config
 		if madcad.settings.display['system_theme']:
 			madcad.settings.use_qt_colors()
@@ -221,6 +223,12 @@ class Madcad(QObject):
 	
 	# END
 	# BEGIN --- file management system ---
+	
+	def _new(self):
+		if sys.argv[0].endswith('.py'):
+			os.system('{} {}'.format(sys.executable, sys.argv[0]))
+		else:
+			os.system(sys.argv[0])
 	
 	def _open(self):
 		''' callback for the button 'open'
@@ -557,40 +565,90 @@ class Madcad(QObject):
 		return cursor
 	
 	def insertexpr(self, text, format=True):
-		# get line before cursor
-		cursor = self.active_scriptview.editor.textCursor()
-		cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
-		line = cursor.selectedText()
-		# get line indendation
-		cursor.clearSelection()
-		cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
-		indent = cursor.selectedText().replace('\u2029', '\n')
-		indent = indent[:indent.find('\n')]
-		if not indent.isspace():	indent = ''
-		# get end of text
-		cursor = self.active_scriptview.editor.textCursor()
-		cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
-		cursor.movePosition(QTextCursor.PreviousCharacter, QTextCursor.KeepAnchor)
-		cursor.movePosition(QTextCursor.PreviousWord, QTextCursor.KeepAnchor)
-		previous = cursor.selectedText().replace('\u2029', '\n').rstrip()
+		# take note of that insertion
+		self.lastinsert = partial(self.insertexpr, text[:])
 		
-		if previous and previous[-1] in '[(':
-			indent += '\t'
-		block = ''
-		if line and not line.isspace() and (	len(line) > 30 
-											or '\n' in text
-											or	previous and previous[-1] not in ',=+-*/(['	):
-			block += '\n'+indent
-		block += text.replace('\n', '\n'+indent)
-		if previous and previous[-1] in '([,':
-			block += ','
-		if '\n' in text:
-			block += '\n'+indent
+		cursor = self.active_scriptview.editor.textCursor()
+		original = text
 		
-		# report changes
-		self.mod[self.active_scriptview.editor.textCursor().position()] = block
+		# replace selection if any
+		if cursor.hasSelection():
+			# pick interval in document
+			start, stop = cursor.selectionStart(), cursor.selectionEnd()
+			# pick indentation
+			cursor.clearSelection()
+			cursor.movePosition(QTextCursor.StartOfLine)
+			cursor.movePosition(QTextCursor.EndOfWord, QTextCursor.KeepAnchor)
+			indent = cursor.selectedText()
+			assert not indent or indent.isspace(), repr(indent)
+			# insert
+			self.mod[start:stop] = text.replace('\n', '\n'+indent)
+		
+		else:
+			# pick position to insert
+			place = cursor.position()
+			
+			cursor.movePosition(QTextCursor.PreviousWord, QTextCursor.KeepAnchor)
+			if '\u2029' in cursor.selectedText():
+				last = '\n'
+			else:
+				cursor.movePosition(QTextCursor.EndOfWord)
+				if cursor.position() > place:
+					cursor.setPosition(place)
+				cursor.movePosition(QTextCursor.PreviousCharacter, QTextCursor.KeepAnchor)
+				last = cursor.selectedText()
+			
+			# pick the indentation
+			cursor.setPosition(place)
+			cursor.movePosition(QTextCursor.StartOfLine)
+			cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
+			indent = cursor.selectedText()
+			
+			if not indent.isspace():
+				indent = ''
+						
+			# insert in an expression
+			if last in ',=+-*/([':
+				
+				# pick the number of parenthesis in the current line
+				cursor.setPosition(place)
+				cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
+				line = cursor.selectedText()
+				openning = line.count('(') + line.count('[') + line.count('{') - line.count('}') - line.count(']') - line.count(')')
+				
+				if openning > 0:
+					indent += '\t'
+				elif openning < 0:
+					indent = indent[:-1]
+					
+				if last in ',([{':
+					text = '\n'+text+','
+					
+				self.mod[place] = text.replace('\n', '\n'+indent)
+				
+			# insert in an empty line
+			elif not last or last in '\u2029\n \t':
+				# check if there is something at the end of line
+				cursor.setPosition(place)
+				cursor.movePosition(QTextCursor.EndOfLine, QTextCursor.KeepAnchor)
+				suite = cursor.selectedText()
+				if suite and not suite.isspace():
+					text += '\n'
+				
+				self.mod[place] = text.replace('\n', '\n'+indent)
+				
+			# break line and insert new statement
+			else:
+				indent = '\t' * len(self.scopes)
+				self.mod[place] = '\n'+indent + text.replace('\n', '\n'+indent)
+				
+			
 	
 	def insertstmt(self, text):
+		# take note of that insertion
+		self.lastinsert = partial(self.insertstmt, text[:])
+		print('lastinsert', self.lastinsert)
+	
 		# check if there is already something on the line
 		cursor = self.active_scriptview.editor.textCursor()
 		cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
@@ -608,6 +666,12 @@ class Madcad(QObject):
 		# insertion
 		block += (text+'\n').replace('\n', '\n'+indent)
 		self.mod[self.active_scriptview.editor.textCursor().position()] = block
+		
+	def redo_insert(self):
+		if self.lastinsert:
+			self.lastinsert()
+			self.mod.commit(self.script)
+			self.mod.clear()
 		
 	def _commentline(self):
 		editor = self.active_scriptview.editor
@@ -670,8 +734,9 @@ class Madcad(QObject):
 			if type(disp).__name__ in ('SolidDisplay', 'WebDisplay'):
 				disp.vertices.flags &= 0x11111110
 				disp.vertices.flags_updated = True
+		self.active_sceneview.scene.active_selection = None
 		self.active_sceneview.update()
-		self.active_sceneview.set_selection_label('')
+		self.active_sceneview.update_active_selection()
 		self.updatescript()
 		
 	def set_active_solid(self):
@@ -683,12 +748,16 @@ class Madcad(QObject):
 		
 	def lock_solid(self):
 		view = self.active_sceneview
+		locked = False
 		for manip in scene_unroll(view.scene):
 			if isinstance(manip, kinematic.Kinemanip):
 				for i,disp in manip.displays.items():
 					if isinstance(disp, Solid.display) and disp.selected:
 						solid = manip.solids[i]
 						manip.lock(view.scene, solid, not manip.islocked(solid))
+						locked = True
+		if not locked:
+			view.scene.options['lock_solids'] = not view.scene.options['lock_solids']
 		view.update()
 	
 	# END
@@ -843,6 +912,9 @@ def open_file_external(file):
 	else:
 		raise EnvironmentError('unable to open a textfile on platform {}'.format(os.platform))
 
+
+
+
 class MainWindow(QMainWindow):
 	''' The main window of the gui. 
 		Only here to organize the other top-level widgets
@@ -869,6 +941,7 @@ class MainWindow(QMainWindow):
 		tooling.create_toolbars(self.main, self)
 		self._file_changed()
 		
+		# keyboard shortcuts to switch focus between views
 		shortcut = QShortcut(QKeySequence('Ctrl+Tab'), self)
 		shortcut.activated.connect(self._change_view)
 		
@@ -881,8 +954,16 @@ class MainWindow(QMainWindow):
 		self.addDockWidget(Qt.LeftDockWidgetArea, dock(self.main.assist, 'tool assist'))
 		
 		# use state to get the proper layout until we have a proper state backup
-		self.restoreState(b'\x00\x00\x00\xff\x00\x00\x00\x00\xfd\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x01\xf8\x00\x00\x03l\xfc\x02\x00\x00\x00\x02\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x03l\x00\x00\x00\x84\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00z\x01\x00\x00\x03\x00\x00\x00\x01\x00\x00\x03\xbc\x00\x00\x03l\xfc\x02\x00\x00\x00\x01\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x03l\x00\x00\x00\x94\x01\x00\x00\x03\x00\x00\x00\x00\x00\x00\x03l\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x08\x00\x00\x00\x08\xfc\x00\x00\x00\x0b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x03\x00\x00\x00 \x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00c\x00r\x00e\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00$\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00a\x00n\x00n\x00o\x00t\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x01\x84\x00\x00\x00T\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x16\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00w\x00e\x00b\x03\x00\x00\x01\xd8\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x03\x00\x00\x00\x18\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00m\x00e\x00s\x00h\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00&\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00c\x00o\x00n\x00s\x00t\x00r\x00a\x00i\x00n\x00t\x00s\x03\x00\x00\x00R\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00&\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00a\x00m\x00e\x00l\x00i\x00r\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x02^\x00\x00\x01\x0e\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00')
+		self.restoreState(b'\x00\x00\x00\xff\x00\x00\x00\x00\xfd\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x01\r\x00\x00\x01\xd8\xfc\x02\x00\x00\x00\x02\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x01\xd8\x00\x00\x00\x87\x01\x00\x00\x03\xfb\xff\xff\xff\xff\x00\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00z\x01\x00\x00\x03\x00\x00\x00\x01\x00\x00\x02*\x00\x00\x01\xd8\xfc\x02\x00\x00\x00\x01\xfb\xff\xff\xff\xff\x01\x00\x00\x00\x1c\x00\x00\x01\xd8\x00\x00\x00\x94\x01\x00\x00\x03\x00\x00\x00\x00\x00\x00\x01\xd8\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x08\x00\x00\x00\x08\xfc\x00\x00\x00\n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x04\x00\x00\x00\x14\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00i\x00o\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00 \x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00c\x00r\x00e\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x00R\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00$\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00a\x00n\x00n\x00o\x00t\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x01@\x00\x00\x00T\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x16\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00w\x00e\x00b\x03\x00\x00\x01\x8c\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x03\x00\x00\x00\x18\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00m\x00e\x00s\x00h\x03\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00&\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00c\x00o\x00n\x00s\x00t\x00r\x00a\x00i\x00n\x00t\x00s\x03\x00\x00\x00R\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00&\x00t\x00o\x00o\x00l\x00b\x00a\x00r\x00-\x00a\x00m\x00e\x00l\x00i\x00r\x00a\x00t\x00i\x00o\x00n\x03\x00\x00\x01\x8c\x00\x00\x01\x0e\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00')
 		self.resize(*settings.view['window_size'])
+		
+		self.main.progressbar.setParent(self)
+			
+	def resizeEvent(self, evt):
+		self.main.progressbar.move(
+			self.width()//2 - self.main.progressbar.width()//2,
+			self.height()//2 - self.main.progressbar.height()//2,
+			)
 	
 	
 	def closeEvent(self, evt):
@@ -910,7 +991,7 @@ class MainWindow(QMainWindow):
 		main = self.main
 		menubar = self.menuBar()
 		menu = menubar.addMenu('&File')
-		menu.addAction(QIcon.fromTheme('document-new'), 'new +', lambda:None, QKeySequence('Ctrl+N'))
+		menu.addAction(QIcon.fromTheme('document-new'), 'new', main._new, QKeySequence('Ctrl+N'))
 		menu.addAction(QIcon.fromTheme('document-open'), 'open', main._open, QKeySequence('Ctrl+O'))
 		menu.addAction(QIcon.fromTheme('document-save'), 'save', main._save, QKeySequence('Ctrl+S'))
 		menu.addAction(QIcon.fromTheme('document-save-as'), 'save as', main._save_as, QKeySequence('Ctrl+Shift+S'))
@@ -923,18 +1004,13 @@ class MainWindow(QMainWindow):
 		menu = menubar.addMenu('&Edit')
 		menu.addAction(QIcon.fromTheme('edit-undo'), 'undo', main.script.undo, QKeySequence('Ctrl+Z'))
 		menu.addAction(QIcon.fromTheme('edit-redo'), 'redo', main.script.redo, QKeySequence('Ctrl+Shift+Z'))
+		menu.addAction(QIcon.fromTheme('edit-past-in-place'), 'redo', main.redo_insert, QKeySequence('Ctrl+Y'))
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('media-playback-start'), 'execute', main.execute, QKeySequence('Ctrl+Return'))
 		menu.addAction(QIcon.fromTheme('view-refresh'), 'reexecute all', main.reexecute, QKeySequence('Ctrl+Shift+Return'))
 		menu.addAction(QIcon.fromTheme('go-bottom'), 'target to cursor', main._targettocursor, QKeySequence('Ctrl+T'))
 		menu.addAction(QIcon.fromTheme('go-jump'), 'edit function', main._enterfunction, QKeySequence('Ctrl+G'))
 		menu.addAction(QIcon.fromTheme('draw-arrow-back'), 'return to upper context', main._returnfunction, QKeySequence('Ctrl+Shift+G'))
-		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('format-indent-more'), 'disable line', main._commentline, QKeySequence('Ctrl+D'))
-		menu.addAction(QIcon.fromTheme('format-indent-less'), 'enable line', main._uncommentline, QKeySequence('Ctrl+Shift+D'))
-		menu.addAction(QIcon.fromTheme('view-list-tree'), 'disable line dependencies +', lambda: None, QKeySequence('Alt+D'))
-		menu.addAction('create function +', main._createfunction, QKeySequence('Alt+G'))
-		menu.addAction('create list +', main._createlist, QKeySequence('Alt+L'))
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main.deselectall, shortcut=QKeySequence('Ctrl+A'))
 		menu.addAction(main.createaction('rename object', tooling.act_rename, shortcut=QKeySequence('F2'), icon='edit-rename'))
@@ -948,13 +1024,13 @@ class MainWindow(QMainWindow):
 		menu.addAction(action)
 		menu.addSeparator()
 		
-		themes = menu.addMenu('theme preset')
-		themes.addAction('system +')
-		themes.addAction('blue +')
-		themes.addAction('orange +')
-		themes.addAction('grey +')
-		themes.addAction('white +')
-		themes.addAction('dark +')
+		style = menu.addMenu('style sheet')
+		for name in settings.list_stylesheets():
+			style.addAction(name, lambda name=name: settings.use_stylesheet(name))
+				
+		theme = menu.addMenu('color preset')
+		for name in settings.list_color_presets():
+			theme.addAction(name, lambda name=name: settings.use_color_preset(name))
 		
 		layouts = menu.addMenu('layout preset')
 		layouts.addAction('simple +')
@@ -1047,38 +1123,52 @@ class MainWindow(QMainWindow):
 		action.toggled.connect(main._enable_line_wrapping)
 		menu.addAction(action)
 		menu.addSeparator()
-		menu.addAction(QIcon.fromTheme('zoom-in'), 'increase font size', lambda: main.active_scriptview.fontsize_increase(), shortcut=QKeySequence(QKeySequence.ZoomIn))
+		menu.addAction(QIcon.fromTheme('zoom-in'), 'increase font size', lambda:  main.active_scriptview.fontsize_increase(), shortcut=QKeySequence(QKeySequence.ZoomIn))
 		menu.addAction(QIcon.fromTheme('zoom-out'), 'decrease font size', lambda: main.active_scriptview.fontsize_decrease(), shortcut=QKeySequence(QKeySequence.ZoomOut))
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('edit-find'), 'find +', lambda: None, shortcut=QKeySequence('Ctrl+F'))
 		menu.addAction(QIcon.fromTheme('edit-find-replace'), 'replace +', lambda: None, shortcut=QKeySequence('Ctrl+R'))
-		menu.addAction(QIcon.fromTheme('format-indent-more'), 'increase indendation', lambda: main.active_scriptview.editor.indent_increase(), shortcut=QKeySequence('Tab'))
-		menu.addAction(QIcon.fromTheme('format-indent-less'), 'decrease indentation', lambda: main.active_scriptview.editor.indent_decrease(), shortcut=QKeySequence('Shift+Tab'))
+		menu.addSeparator()
+		menu.addAction(QIcon.fromTheme('format-indent-more'), 'increase indendation', lambda: main.active_scriptview.editor.hasFocus() and main.active_scriptview.editor.indent_increase(), shortcut=QKeySequence('Tab'))
+		menu.addAction(QIcon.fromTheme('format-indent-less'), 'decrease indentation', lambda: main.active_scriptview.editor.hasFocus() and main.active_scriptview.editor.indent_decrease(), shortcut=QKeySequence('Shift+Tab'))
 		menu.addAction(QIcon.fromTheme('view-list-tree'), 'reformat code', main._reformatcode, QKeySequence('Ctrl+Shift+Tab'))
-		
-		menu = menubar.addMenu('&Plot')
-		menu.addAction(QAction('display curve labels +', main, checkable=True))
-		menu.addAction(QAction('display curve points +', main, checkable=True))
-		menu.addAction(QAction('display axis ticks +', main, checkable=True))
-		menu.addAction(QAction('display grid +', main, checkable=True))
 		menu.addSeparator()
-		menu.addAction('adapt to curve +')
-		menu.addAction('zoom on zone +')
-		menu.addAction('stick to zero +')
-		menu.addAction('set ratio to unit +')
-		
-		menu = menubar.addMenu('&Node')
-		menu.addAction(QAction('display defaults +', main, checkable=True))
-		menu.addAction(QAction('display borders +', main, checkable=True))
-		menu.addAction(QAction('display grid +', main, checkable=True))
-		menu.addAction(QAction('simplify with icons +', main, checkable=True))
-		link = menu.addMenu('link shape')
-		link.addAction('cubic +')
-		link.addAction('straight +')
-		link.addAction('bezier +')
+		menu.addAction(QIcon.fromTheme('format-indent-more'), 'disable line', main._commentline, QKeySequence('Ctrl+D'))
+		menu.addAction(QIcon.fromTheme('format-indent-less'), 'enable line', main._uncommentline, QKeySequence('Ctrl+Shift+D'))
+		menu.addAction(QIcon.fromTheme('view-list-tree'), 'disable line dependencies +', lambda: None, QKeySequence('Alt+D'))
 		menu.addSeparator()
-		menu.addAction('center on selection +')
-		menu.addAction('adapt to selection +')
+		menu.addAction('create function +', main._createfunction, QKeySequence('Alt+G'))
+		menu.addAction('create list +', main._createlist, QKeySequence('Alt+L'))
+		
+		#menu = menubar.addMenu('&Plot')
+		#menu.addAction(QAction('display curve labels +', main, checkable=True))
+		#menu.addAction(QAction('display curve points +', main, checkable=True))
+		#menu.addAction(QAction('display axis ticks +', main, checkable=True))
+		#menu.addAction(QAction('display grid +', main, checkable=True))
+		#menu.addSeparator()
+		#menu.addAction('adapt to curve +')
+		#menu.addAction('zoom on zone +')
+		#menu.addAction('stick to zero +')
+		#menu.addAction('set ratio to unit +')
+		
+		#menu = menubar.addMenu('&Node')
+		#menu.addAction(QAction('display defaults +', main, checkable=True))
+		#menu.addAction(QAction('display borders +', main, checkable=True))
+		#menu.addAction(QAction('display grid +', main, checkable=True))
+		#menu.addAction(QAction('simplify with icons +', main, checkable=True))
+		#link = menu.addMenu('link shape')
+		#link.addAction('cubic +')
+		#link.addAction('straight +')
+		#link.addAction('bezier +')
+		#menu.addSeparator()
+		#menu.addAction('center on selection +')
+		#menu.addAction('adapt to selection +')
+		
+		menu = menubar.addMenu('&Help')
+		#menu.addAction(QIcon.fromTheme('help-whatsthis'), 'What is this', lambda: QWhatsThis.enterWhatsThisMode(), shortcut=QKeySequence('Shift+F1'))
+		menu.addAction(QIcon.fromTheme('documentation'), 'pymadcad documentation', lambda: QDesktopServices.openUrl(QUrl('https://pymadcad.readthedocs.org')), shortcut=QKeySequence('F1'))
+		menu.addAction(QIcon.fromTheme('documentation'), 'python documentation', lambda: QDesktopServices.openUrl(QUrl('https://docs.python.org/3')))
+		menu.addAction(QIcon.fromTheme('help-about'), 'madcad website', lambda: QDesktopServices.openUrl(QUrl('https://madcad.netlify.app')))
 	
 	
 class ComputationProgress(QWidget):

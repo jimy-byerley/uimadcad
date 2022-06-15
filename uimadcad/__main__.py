@@ -1,12 +1,15 @@
 
 if __name__ == '__main__':
-	from uimadcad.gui import *
-	from uimadcad.apputils import *
 
+	# import the minimal runtime before checks
 	import sys, os, locale
 	from PyQt5.QtCore import Qt, QTimer
 	from PyQt5.QtGui import QIcon
-	from PyQt5.QtWidgets import QApplication
+	from PyQt5.QtWidgets import QApplication, QErrorMessage, QMessageBox
+	
+	from uimadcad import version
+	from uimadcad.apputils import *
+	from uimadcad.common import ressourcedir
 	
 	# set Qt opengl context sharing to avoid reinitialization of scenes everytime, (this is for pymadcad display)
 	QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
@@ -16,13 +19,34 @@ if __name__ == '__main__':
 	app.setApplicationVersion(version)
 	app.setApplicationDisplayName('madcad v{}'.format(version))
 	
+	# check for the presence of pymadcad (and all its dependencies)
+	try:
+		import madcad
+	except ImportError:
+		dialog = QMessageBox(
+					QMessageBox.Critical, 
+					'pymadcad not found', 
+					'uimadcad is unable to import pymadcad, please make sure you installed it.\nPlease refer to the instructions at https://pymadcad.readthedocs.io/en/latest/installation.html\n\nuimadcad is unable to run without pymadcad.', 
+					QMessageBox.Close)
+		dialog.show()
+		
+		qtmain(app)
+		raise
+
+	# import the rest of uimadcad that depends on pymadcad
+	from uimadcad.gui import *
+	
 	# set icons if not provided by the system
-	if not QIcon.themeName():
+	if not QIcon.themeName() and sys.platform == 'win32':
 		# assume that the software is a portable version, so the icons are in the same dir as executable
-		#QIcon.setThemeName('breeze')
 		path = QIcon.themeSearchPaths()
-		path.append(os.path.abspath(os.path.dirname(sys.argv[0]) + '/icons'))
+		path.append(ressourcedir + '/icons')
 		QIcon.setThemeSearchPaths(path)
+		QIcon.setThemeName('breeze')		
+	
+	settings.load()
+	settings.use_color_preset()
+	settings.use_stylesheet()
 	
 	# set locale settings to default to get correct 'repr' of glm types
 	locale.setlocale(locale.LC_NUMERIC, 'C')

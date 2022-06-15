@@ -1,10 +1,10 @@
-#!/bin/sh -eux
+#!/bin/sh -eu
 
-version=0.5
+version=0.6
 target=$(dirname $0)
 
 
-while getopts "a:h:" arg
+while getopts "p:a:h:" arg
 do
 	case $arg in 
 	a)
@@ -13,8 +13,13 @@ do
 	h)
 		platform=$OPTARG
 		;;
-	?)
-		echo "usage:  $(basename $0) (deb|tar) [-a ARCH] [-h PLATFORM]"
+	p)
+		format=$OPTARG
+		;;
+	*)
+		echo "buid uimadcad and make an installation package out of it"
+		echo
+		echo "usage:  $(basename $0) [-p deb|tar] [-a ARCH] [-h PLATFORM] (deb|tar)"
 		exit 1
 		;;
 	esac
@@ -22,7 +27,7 @@ done
 
 set -x
 
-format=$1
+format=${format:-tar}
 arch=${arch:-$(arch)}
 platform=${platform:-linux}
 prefix=$target/dist/${platform}_${arch}
@@ -34,6 +39,16 @@ case $format in
 tar)
 	cd $(dirname $prefix)
 	tar cf madcad_${version}_${arch}.tar.gz ${platform}_${arch}
+	;;
+	
+zip)
+	package=$target/dist/madcad
+	rm -fr $package
+	mv $prefix $package
+	(
+		cd $(dirname $package)
+		7z a madcad_${version}_${arch}.zip madcad
+	)
 	;;
 	
 deb)

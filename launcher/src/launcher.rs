@@ -70,19 +70,25 @@ fn run_archive(path: &Path) -> Result<(), Box<dyn Error>> {
 		
 		// capture main
 		if name == "__main__"	{ main = code.clone(); }
-		
-		// load module
-		let sub = PyModule::from_code(py, 
-					&code, 
-					&format!("{}/{}.py", module, name), 
-					&format!("{}.{}", module, name)
-					) ?;
-		package.dict().set_item("__package__", module)?;
-		// register the new sub module
-		package.dict().set_item(&name, sub)?;
+		else if name == "__init__"   {
+			py.run(&code,
+				Some(package.dict()),
+				Some(package.dict()),
+				) ?;
+		}
+		else {
+			// load module
+			let sub = PyModule::from_code(py, 
+						&code, 
+						&format!("{}/{}.py", module, name), 
+						&format!("{}.{}", module, name)
+						) ?;
+			package.dict().set_item("__package__", module)?;
+			// register the new sub module
+			package.dict().set_item(&name, sub)?;
+		}
 	}
 	
-	println!("run python");
 	py.run(&main, None, None)?;
 
 	Ok(())
