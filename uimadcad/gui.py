@@ -14,18 +14,21 @@ from PyQt5.QtCore import (
 		Qt, QSize, QRect, QPoint, QPointF,
 		QEvent, pyqtSignal, QObject, 
 		QStringListModel,
+		QUrl,
 		)
 from PyQt5.QtWidgets import (
 		QApplication, QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction, QShortcut,
 		QPlainTextDocumentLayout, 
 		QPushButton, QLabel, QComboBox, QProgressBar,
-		QMainWindow, QDockWidget, QFileDialog, QMessageBox, QDialog
+		QMainWindow, QDockWidget, QFileDialog, QMessageBox, QDialog,
+		QWhatsThis,
 		)
 from PyQt5.QtGui import (
 		QFont, QFontMetrics, 
 		QColor, QPalette,
 		QIcon, QKeySequence, 
 		QTextOption, QTextDocument, QTextCursor,
+		QDesktopServices,
 		)
 
 from madcad import *
@@ -218,6 +221,12 @@ class Madcad(QObject):
 	
 	# END
 	# BEGIN --- file management system ---
+	
+	def _new(self):
+		if sys.argv[0].endswith('.py'):
+			os.system('{} {}'.format(sys.executable, sys.argv[0]))
+		else:
+			os.system(sys.argv[0])
 	
 	def _open(self):
 		''' callback for the button 'open'
@@ -958,7 +967,7 @@ class MainWindow(QMainWindow):
 		main = self.main
 		menubar = self.menuBar()
 		menu = menubar.addMenu('&File')
-		menu.addAction(QIcon.fromTheme('document-new'), 'new +', lambda:None, QKeySequence('Ctrl+N'))
+		menu.addAction(QIcon.fromTheme('document-new'), 'new', main._new, QKeySequence('Ctrl+N'))
 		menu.addAction(QIcon.fromTheme('document-open'), 'open', main._open, QKeySequence('Ctrl+O'))
 		menu.addAction(QIcon.fromTheme('document-save'), 'save', main._save, QKeySequence('Ctrl+S'))
 		menu.addAction(QIcon.fromTheme('document-save-as'), 'save as', main._save_as, QKeySequence('Ctrl+Shift+S'))
@@ -1127,6 +1136,12 @@ class MainWindow(QMainWindow):
 		#menu.addSeparator()
 		#menu.addAction('center on selection +')
 		#menu.addAction('adapt to selection +')
+		
+		menu = menubar.addMenu('&Help')
+		#menu.addAction(QIcon.fromTheme('help-whatsthis'), 'What is this', lambda: QWhatsThis.enterWhatsThisMode(), shortcut=QKeySequence('Shift+F1'))
+		menu.addAction(QIcon.fromTheme('documentation'), 'pymadcad documentation', lambda: QDesktopServices.openUrl(QUrl('https://pymadcad.readthedocs.org')), shortcut=QKeySequence('F1'))
+		menu.addAction(QIcon.fromTheme('documentation'), 'python documentation', lambda: QDesktopServices.openUrl(QUrl('https://docs.python.org/3')))
+		menu.addAction(QIcon.fromTheme('help-about'), 'madcad website', lambda: QDesktopServices.openUrl(QUrl('https://madcad.netlify.app')))
 	
 	
 class ComputationProgress(QWidget):
