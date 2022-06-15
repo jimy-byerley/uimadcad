@@ -309,7 +309,6 @@ class ScriptView(QWidget):
 		''' set cursor and scroll to position '''
 		cursor = QTextCursor(self.editor.document())
 		cursor.setPosition(position)
-		cursor.movePosition(QTextCursor.EndOfLine)
 		self.editor.setTextCursor(cursor)
 		self.editor.ensureCursorVisible()
 
