@@ -407,9 +407,13 @@ def createaxis(main):
 
 
 def create_toolbars(main, widget):
+	tools = widget.addToolBar('io')
+	tools.setObjectName('toolbar-io')
+	tools.addAction(main.createaction('import', tool_import, 	'document-import'))
+	tools.addAction(main.createtool('export', tool_export, 	'document-export'))
+	
 	tools = widget.addToolBar('creation')
 	tools.setObjectName('toolbar-creation')
-	tools.addAction(main.createaction('import', tool_import, 	'document-import'))
 	tools.addAction(main.createaction('solid', tool_solid, 'madcad-solid'))
 	#tools.addAction(main.createaction('manual triangulated meshing', tool_meshing, 'madcad-meshing'))
 	#tools.addAction(QIcon.fromTheme('madcad-splined'), 'manual splined meshing')
@@ -493,6 +497,18 @@ def tool_import(main):
 	objname = os.path.splitext(os.path.basename(filename))[0]
 	if not objname.isidentifier():	objname = 'imported'
 	main.insertstmt('{} = read({})'.format(objname, repr(filename)))
+	
+def tool_export(main):
+	args = yield from toolrequest(main, [(object, 'object to export')])
+	
+	filename = QFileDialog.getSaveFileName(main.mainwindow, 'export as', 
+						os.curdir, 
+						'ply files (*.ply);;stl files (*.stl);;obj files (*.obj);;pickle files (*.pickle)',
+						)[0]
+	if not filename:
+		raise ToolError('no file selected')
+	
+	main.insertstmt(format('io.write({}, {})', args[0], repr(filename)))
 	
 def tool_solid(main):
 	main.insertexpr('Solid()')
@@ -696,8 +712,8 @@ def tool_tangent(main):
 				(lambda o: hasattr(o, 'slv_tangent'), 'primitive 2'),
 				])
 	common = None
-	for v1 in args[0].slvvars:
-		for v2 in args[1].slvvars:
+	for v1 in args[0].value.slvvars:
+		for v2 in args[1].value.slvvars:
 			if getattr(args[0], v1) is getattr(args[1], v2):
 				common = v1, v2
 	main.insertexpr(format('Tangent({}, {}, {}.{})', args[0], args[1], args[0], common[0]))
