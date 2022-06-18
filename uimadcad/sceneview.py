@@ -18,7 +18,7 @@ from PyQt5.QtGui import (
 		)
 
 from madcad import *
-from madcad.rendering import Display, displayable, Displayable, Step, Group
+from madcad.rendering import Display, displayable, Displayable, Step, Group, Turntable, Orbit
 from madcad.displays import SolidDisplay, WebDisplay, GridDisplay
 import madcad
 
@@ -323,13 +323,15 @@ class SceneView(madcad.rendering.View):
 		#action = QAction('all', main, checkable=True)
 		#action.setToolTip('display all variables')
 		#action.toggled.connect(main._display_all)
-		self.quick.addAction(action)
+		#self.quick.addAction(action)
+		self.quick.addSeparator()
 		self.quick.addAction(QIcon.fromTheme('view-fullscreen'), 'adapt view to centent', self.adapt)
+		self.quick.addAction(QIcon.fromTheme('madcad-view-normal'), 'set view normal to mesh', self.normalview)
+		self.quick.addSeparator()
 		self.quick.addAction(QIcon.fromTheme('lock'), 'lock solid', main.lock_solid)
 		self.quick.addAction(QIcon.fromTheme('madcad-solid'), 'set active solid', main.set_active_solid)
 		self.quick.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main.deselectall)
 		self.quick.addAction(QIcon.fromTheme('edit-node'), 'graphical edit object', main._edit)
-		self.quick.setGeometry(0,0, 40, 300)
 		self.quick.hide()
 		
 		self.selection_label = QPushButton(self)
@@ -383,6 +385,10 @@ class SceneView(madcad.rendering.View):
 			self.scene.sync()
 		return super().changeEvent(evt)
 		
+	def resizeEvent(self, evt):
+		super().resizeEvent(evt)
+		self.quick.setGeometry(2, 0, 1+self.quick.sizeHint().width(), self.height())
+		
 	def control(self, key, evt):
 		''' overwrite the Scene method, to implement the edition behaviors '''
 		disp = self.scene.displays
@@ -408,6 +414,9 @@ class SceneView(madcad.rendering.View):
 					disp.selected = any(sub.selected	for sub in disp)
 			if disp.selected:
 				self.scene.active_selection = key
+				self.update_active_selection()
+			elif not disp.selected and self.scene.active_selection == key:
+				self.scene.active_selection = None
 				self.update_active_selection()
 			self.update()
 			self.main.updatescript()
@@ -478,6 +487,51 @@ class SceneView(madcad.rendering.View):
 		box = self.scene.selectionbox() or self.scene.box()
 		self.center(box.center)
 		self.adjust(box)
+		
+	def normalview(self):
+		if not self.scene.active_selection:	return
+		disp = self.scene.item(self.scene.active_selection)
+		if not disp or not disp.source:	return
+		source = disp.source
+		
+		if not isinstance(source, (Mesh,Web,Wire)) and hasattr(source, 'mesh'):
+			source = source.mesh()
+		
+		if isinstance(source, (Mesh,Web,Wire)):
+			mesh = source.group(self.scene.active_selection[-1])
+			center = mesh.barycenter()
+			direction = vec3(fvec3(transpose(self.navigation.matrix())[2]))
+			# set view orthogonal to the closest face normal
+			if isinstance(mesh, Mesh):
+				f = max(mesh.faces, key=lambda f: dot(mesh.facenormal(f), direction))
+				normal = mesh.facenormal(f)
+			# set view normal to the two closest edges
+			elif isinstance(mesh, (Web,Wire)):
+				if isinstance(mesh, Web):	it = mesh.edges
+				else:						it = mesh.edges()
+				es = sorted(it, key=lambda e: abs(dot(mesh.edgedirection(e), direction)))
+				if len(es) > 1:
+					normal = cross(mesh.edgedirection(es[0]), mesh.edgedirection(es[1]))
+				elif len(es):
+					x = mesh.edgedirection(es[0])
+					normal = cross(normalize(cross(x, direction)), x)
+			else:
+				return
+					
+			if dot(direction, normal) > 0:
+				normal = -normal
+			
+			if isinstance(self.navigation, Turntable):
+				self.navigation.center = fvec3(center)
+				self.navigation.yaw = atan2(normal.x, normal.y)
+				self.navigation.pitch = -atan(normal.z, length(normal.xy))
+			elif isinstance(self.navigation, Orbit):
+				self.navigation.center = fvec3(center)
+				self.navigation.orient *= fquat(quat(direction, normal))
+			else:
+				return
+				
+			self.update()
 		
 	def scroll_selection(self):
 		if not self.scene.active_selection or not self.main.active_scriptview:	
