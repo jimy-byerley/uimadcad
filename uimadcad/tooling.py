@@ -430,6 +430,7 @@ def create_toolbars(main, widget):
 	tools = widget.addToolBar('annotation')
 	tools.setObjectName('toolbar-annotation')
 	tools.addAction(main.createtool('annotation', tool_note, 'madcad-annotation'))
+	tools.addAction(main.createtool('boundingbox', tool_bounds, 'madcad-boundingbox'))
 	tools.addAction(QIcon.fromTheme('madcad-cst-distance'), 'distance measure +')
 	tools.addAction(main.createtool('floating text', tool_text, 'insert-text'))
 	tools.addAction(QIcon.fromTheme('insert-image'), 'image +')
@@ -612,6 +613,11 @@ def tool_note(main):
 	else:
 		raise ToolError('unable to place a note on top of {}'.format(type(var.value)))
 	main.insertexpr(expr)
+	
+def tool_bounds(main):
+	args = yield from toolrequest(main, [(lambda o: isinstance(o, (Web,Wire,Mesh)), 'mesh to size')], create=False)
+	main.insertexpr(format('note_bounds({})', args[0]))
+
 	
 def tool_text(main):
 	pos, = yield from toolrequest(main, [(vec3, 'placement point')])
