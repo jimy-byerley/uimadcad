@@ -226,9 +226,9 @@ class Madcad(QObject):
 	
 	def _new(self):
 		if sys.argv[0].endswith('.py'):
-			os.system('{} {}'.format(sys.executable, sys.argv[0]))
+			os.spawnl(os.P_NOWAIT, sys.executable, sys.executable, sys.argv[0])
 		else:
-			os.system(sys.argv[0])
+			os.spawnl(os.P_NOWAIT, sys.argv[0], sys.argv[0])
 	
 	def _open(self):
 		''' callback for the button 'open'
