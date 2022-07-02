@@ -226,9 +226,9 @@ class Madcad(QObject):
 	
 	def _new(self):
 		if sys.argv[0].endswith('.py'):
-			os.system('{} {}'.format(sys.executable, sys.argv[0]))
+			os.spawnl(os.P_NOWAIT, sys.executable, sys.executable, sys.argv[0])
 		else:
-			os.system(sys.argv[0])
+			os.spawnl(os.P_NOWAIT, sys.argv[0], sys.argv[0])
 	
 	def _open(self):
 		''' callback for the button 'open'
@@ -545,19 +545,26 @@ class Madcad(QObject):
 			
 	
 	def _viewcenter(self):
-		scene = self.active_sceneview.scene
-		box = scene.selectionbox() or scene.box()
-		self.active_sceneview.center(box.center)
+		if self.active_sceneview:
+			scene = self.active_sceneview.scene
+			box = scene.selectionbox() or scene.box()
+			self.active_sceneview.center(box.center)
 	
 	def _viewadjust(self):
-		scene = self.active_sceneview.scene
-		box = scene.selectionbox() or scene.box()
-		self.active_sceneview.adjust(box)
+		if self.active_sceneview:
+			scene = self.active_sceneview.scene
+			box = scene.selectionbox() or scene.box()
+			self.active_sceneview.adjust(box)
 	
 	def _viewlook(self):
-		scene = self.active_sceneview.scene
-		box = scene.selectionbox() or scene.box()
-		self.active_sceneview.look(box.center)
+		if self.active_sceneview:
+			scene = self.active_sceneview.scene
+			box = scene.selectionbox() or scene.box()
+			self.active_sceneview.look(box.center)
+		
+	def _viewnormal(self):
+		if self.active_sceneview:
+			self.active_sceneview.normalview()
 	
 	def targetcursor(self):
 		cursor = self.active_scriptview.editor.textCursor()
@@ -998,8 +1005,8 @@ class MainWindow(QMainWindow):
 		menu.addAction(QIcon.fromTheme('document-export'), 'save a copy', main._save_copy, QKeySequence('Ctrl+E'))
 		menu.addSeparator()
 		menu.addAction(QIcon.fromTheme('preferences-other'), 'interface settings', main._open_uimadcad_settings)
-		menu.addAction(QIcon.fromTheme('text-x-generic'), 'pymadcad settings', main._open_pymadcad_settings)
-		menu.addAction(QIcon.fromTheme('text-x-generic'), 'startup file', main._open_startup_file)
+		menu.addAction(QIcon.fromTheme('preferences-other'), 'pymadcad settings', main._open_pymadcad_settings)
+		menu.addAction(QIcon.fromTheme('start-over'), 'startup file', main._open_startup_file)
 		
 		menu = menubar.addMenu('&Edit')
 		menu.addAction(QIcon.fromTheme('edit-undo'), 'undo', main.script.undo, QKeySequence('Ctrl+Z'))
@@ -1079,6 +1086,7 @@ class MainWindow(QMainWindow):
 		menu.addAction('center on object', main._viewcenter, shortcut=QKeySequence('Shift+C'))
 		menu.addAction('adjust to object', main._viewadjust, shortcut=QKeySequence('Shift+A'))
 		menu.addAction('look to object', main._viewlook, shortcut=QKeySequence('Shift+L'))
+		menu.addAction('normal to object', main._viewnormal, shortcut=QKeySequence('Shift+N'))
 		menu.addSeparator()
 		
 		
