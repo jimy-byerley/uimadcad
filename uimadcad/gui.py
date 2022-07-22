@@ -1199,7 +1199,7 @@ class ComputationProgress(QWidget):
 		self.bar.setValue(rate*100)
 		
 	def show(self):
-		if self.main.mainwindow:
+		if self.main.mainwindow and not self.parent():
 			parent = self.main.mainwindow
 			#self.progressbar.setParent(self.mainwindow)
 			self.resize(parent.width()/2, self.height())
