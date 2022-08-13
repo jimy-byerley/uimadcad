@@ -44,6 +44,7 @@ if __name__ == '__main__':
 		QIcon.setThemeSearchPaths(path)
 		QIcon.setThemeName('breeze')		
 	
+	settings.install()
 	settings.load()
 	settings.use_color_preset()
 	settings.use_stylesheet()
@@ -55,10 +56,14 @@ if __name__ == '__main__':
 	madcad = Madcad()
 	main = MainWindow(madcad)
 	
+	def loaded():
+		if not madcad.execthread:
+			madcad.active_sceneview.adapt()
+			madcad.executed.disconnect(loaded)
 	def startup():
 		if len(sys.argv) >= 2 and os.path.exists(sys.argv[1]):
 			madcad.open_file(sys.argv[1])
-		madcad.active_sceneview.adjust()
+		madcad.executed.connect(loaded)
 	
 	QTimer.singleShot(100, startup)
 	main.show()

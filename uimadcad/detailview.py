@@ -9,6 +9,7 @@ from madcad import Mesh, Web, note_label
 
 from .common import *
 from . import settings
+from . import sceneview
 
 
 
@@ -35,7 +36,7 @@ class DetailView(QWidget):
 		scene.main.views.append(self)
 		
 		# set window and ui settings
-		self.setWindowTitle('.'.join(str(k) for k in key))
+		self.setWindowTitle(sceneview.format_scenekey(self.scene, key))
 		self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
 		self.setWindowIcon(QIcon.fromTheme('madcad-grpinfo'))
 		self.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
