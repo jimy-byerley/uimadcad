@@ -252,7 +252,7 @@ def scene_unroll(scene):
 	yield from recur(scene.displays.values())		
 	
 	
-def format_scenekey(scene, key, root=True):
+def format_scenekey(scene, key, root=True, terminal=True):
 	''' return a string representing the access to the object represented by a display in a scene 
 	
 		Example:
@@ -269,6 +269,8 @@ def format_scenekey(scene, key, root=True):
 		node = node[key[i]]
 		if isinstance(node, (SolidDisplay,WebDisplay)):
 			access = '.group({})'
+		elif i == len(key)-2 and terminal:
+			access = ''
 		else:
 			access = '[{}]'
 		name += access.format(repr(key[i+1]))
@@ -493,6 +495,7 @@ class SceneView(madcad.rendering.View):
 		disp = self.scene.item(self.scene.active_selection)
 		if not disp or not disp.source:	return
 		source = disp.source
+		world = disp.world
 		
 		if not isinstance(source, (Mesh,Web,Wire)) and hasattr(source, 'mesh'):
 			source = source.mesh()
@@ -500,7 +503,8 @@ class SceneView(madcad.rendering.View):
 		if isinstance(source, (Mesh,Web,Wire)):
 			mesh = source.group(self.scene.active_selection[-1])
 			center = mesh.barycenter()
-			direction = vec3(fvec3(transpose(self.navigation.matrix())[2]))
+			direction = vec3(transpose(fmat3(world)) * fvec3(transpose(self.navigation.matrix())[2]))
+			
 			# set view orthogonal to the closest face normal
 			if isinstance(mesh, Mesh):
 				f = max(mesh.faces, key=lambda f: dot(mesh.facenormal(f), direction))
@@ -517,9 +521,12 @@ class SceneView(madcad.rendering.View):
 					normal = cross(normalize(cross(x, direction)), x)
 			else:
 				return
-					
+			
 			if dot(direction, normal) > 0:
 				normal = -normal
+				
+			center = mat4(world) * center
+			normal = mat3(fmat3(world)) * normal
 			
 			if isinstance(self.navigation, Turntable):
 				self.navigation.center = fvec3(center)
