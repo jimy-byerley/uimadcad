@@ -1,0 +1,2 @@
+export PYTHONPATH=$PYTHONPATH:$(dirname $0)
+exec python3 -m uimadcad "$@"
