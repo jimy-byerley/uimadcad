@@ -739,8 +739,6 @@ class Madcad(QObject):
 		for disp in scene_unroll(self.active_sceneview.scene):
 			if disp.selected:	disp.selected = False
 			if type(disp).__name__ in ('SolidDisplay', 'WebDisplay'):
-				print(type(disp.vertices.flags))
-				print(disp.vertices.flags)
 				disp.vertices.flags &= 0b11111110
 				disp.vertices.flags_updated = True
 		self.active_sceneview.scene.active_selection = None

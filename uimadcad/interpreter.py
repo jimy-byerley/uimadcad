@@ -270,7 +270,9 @@ class Interpreter:
 			raise InterpreterError(err)
 		env[funcname] = f
 		# put arguments in env
-		env.update(inspect.signature(f).bind(*args, **kwargs).arguments)
+		binding = inspect.signature(f).bind(*args, **kwargs)
+		binding.apply_defaults()
+		env.update(binding.arguments)
 		
 		def extract(part):
 			current = self.extract(part)
