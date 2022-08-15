@@ -149,7 +149,6 @@ class Scene(madcad.rendering.Scene, QObject):
 			if isinstance(name, str) and name not in self.main.interpreter.current:
 				self.poses[name] = None
 		
-		ast_name = (ast.Name, ast.NamedExpr) if hasattr(ast, 'NamedExpr') else ast.Name
 		sets = []	# sets of variables going together
 		# process statements executed in the main flow
 		def search_statements(node):
@@ -163,7 +162,7 @@ class Scene(madcad.rendering.Scene, QObject):
 			used = set()
 			wrote = []
 			for child in ast.walk(node):
-				if isinstance(child, ast_name):
+				if isinstance(child, ast.Name):
 					used.add(child.id)
 					if isinstance(child.ctx, ast.Store):
 						wrote.append(child.id)
