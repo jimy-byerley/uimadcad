@@ -927,10 +927,6 @@ class MainWindow(QMainWindow):
 		Only here to organize the other top-level widgets
 	'''
 	
-	# signals
-	exectarget_changed = pyqtSignal()
-	executed = pyqtSignal()
-	
 	def __init__(self, main, parent=None):
 		super().__init__(parent)
 		# window setup
