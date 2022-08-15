@@ -66,7 +66,7 @@ class DetailView(QWidget):
 			self.info(disp.source.groups[sub])
 			self.scene.additions[markerkey] = note_label(disp.source.group(sub), text=str(sub), style='circle')
 			if len(self.key) > 2:
-				self.scene.poses[markerkey] = self.scene.item(self.key[:-1])
+				self.scene.poses[markerkey] = self.scene.item(self.key)
 			self.scene.sync()
 		else:
 			self.close()
