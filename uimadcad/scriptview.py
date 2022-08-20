@@ -641,7 +641,7 @@ class Highlighter(QSyntaxHighlighter):
 			7: [self.fmt_comment, (re.compile('"'),   self.match_commentend)],
 			}
 			
-	keywords = {'pass', 'and', 'or', 'if', 'elif', 'else', 'for', 'while', 'break', 'continue', 'in', 'not', 'def', 'lambda', 'class', 'yield', 'with', 'try', 'except', 'finally', 'raise', 'from', 'import', 'as', 'with', 'return', 'assert'}
+	keywords = {'pass', 'and', 'or', 'if', 'elif', 'else', 'for', 'while', 'break', 'continue', 'is', 'in', 'not', 'def', 'lambda', 'class', 'yield', 'async', 'await', 'with', 'try', 'except', 'finally', 'raise', 'from', 'import', 'as', 'with', 'return', 'assert'}
 	constants = {'None', 'True', 'False'}
 	def match_word(self, match):
 		word = match.group(1)
