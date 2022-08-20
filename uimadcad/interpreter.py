@@ -306,13 +306,25 @@ def copyvars(vars, deep=(), memo=None):
 	return new
 
 def varusage(node):
+	''' return two set of variable names: those used (read or write) in the given ast tree, and those only read '''
 	used = set()
 	reused = set()
-	for child in ast.walk(node):
-		if isinstance(child, ast.Name): 
-			used.add(child.id)
-			if isinstance(child.ctx, ast.Load):
-				reused.add(child.id)
+	def use(node):
+		if isinstance(node, ast.Assign):
+			for target in node.targets:
+				if isinstance(target, ast.Name):
+					used.add(target.id)
+			astpropagate(node, reuse)
+		else:
+			astpropagate(node, use)
+	def reuse(node):
+		if isinstance(node, ast.Name): 
+			used.add(node.id)
+			if isinstance(node.ctx, ast.Load):
+				reused.add(node.id)
+		else:
+			astpropagate(node, reuse)
+	astpropagate(node, use)
 	return used, reused
 
 def astpropagate(node, process):
@@ -395,7 +407,7 @@ def astannotate(tree, text):
 			end = node.end_position
 			if end < len(text) and text[end] == '(':	end += 1
 			while end < len(text) and text[end] in ' \t\n,':	end += 1
-			if end < len(text) and text[end] != ')':
+			if end >= len(text) or text[end] != ')':
 				return
 			node.position = start
 			node.end_position = end+1
