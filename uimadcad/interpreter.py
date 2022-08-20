@@ -88,10 +88,10 @@ class Interpreter:
 		
 		self.part = part = ast.Module(body=part, type_ignores=[])
 		processed, locations = self.process(part, backenv.keys())
+		env = copy(backenv)
 		
 		error = None
 		if autobackup:
-			env = copyvars(backenv, locations.keys())
 			
 			starttime = time()
 			for i, stmt in enumerate(processed.body):
@@ -114,12 +114,11 @@ class Interpreter:
 				# autobackup if this is between 2 statements
 				if stmt.end_position in stops and time() - starttime > self.backupstep:
 					self.backups[self.lastbackup(stmt.position)+1
-								:self.lastbackup(target)+1] = [(stmt.end_position, copyvars(env, locations.keys()))]
+								:self.lastbackup(target)+1] = [(stmt.end_position, copy(env))]
 					starttime = time()
 				
 		else:
 			code = compile(processed, self.name, 'exec')
-			env = copyvars(backenv, locations.keys())
 			
 			# execute the code
 			try:
