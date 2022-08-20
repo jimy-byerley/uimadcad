@@ -31,9 +31,10 @@ from PyQt5.QtGui import (
 		QDesktopServices,
 		)
 
+import madcad
+import madcad.settings
 from madcad import *
 from madcad.rendering import Display, Group, Turntable, Orbit, Displayable
-import madcad.settings
 from madcad.nprint import nprint, nformat, deformat
 
 from .common import *
@@ -604,18 +605,23 @@ class Madcad(QObject):
 					cursor.setPosition(place)
 				cursor.movePosition(QTextCursor.PreviousCharacter, QTextCursor.KeepAnchor)
 				last = cursor.selectedText()
+				
+			cursor.setPosition(place)
+			cursor.movePosition(QTextCursor.EndOfWord)
+			cursor.movePosition(QTextCursor.PreviousCharacter, QTextCursor.KeepAnchor)
+			next = cursor.selectedText()
 			
 			# pick the indentation
 			cursor.setPosition(place)
 			cursor.movePosition(QTextCursor.StartOfLine)
 			cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
-			indent = cursor.selectedText()
+			indent = cursor.selectedText().replace('\u2029', '')
 			
 			if not indent.isspace():
 				indent = ''
 						
 			# insert in an expression
-			if last in ',=+-*/([':
+			if last in ',=+-*/([{' or next in ')]}':
 				
 				# pick the number of parenthesis in the current line
 				cursor.setPosition(place)
@@ -630,6 +636,8 @@ class Madcad(QObject):
 					
 				if last in ',([{':
 					text = '\n'+text+','
+				elif next in ')]}':
+					text = ',\n'+text
 					
 				self.mod[place] = text.replace('\n', '\n'+indent)
 				
@@ -810,6 +818,9 @@ class Madcad(QObject):
 		self.active_sceneview.scene.touch()
 	def _display_all(self, enable):
 		self.active_sceneview.scene.displayall = enable
+		self.active_sceneview.scene.sync()
+	def _display_none(self, enable):
+		self.active_sceneview.scene.displaynone = enable
 		self.active_sceneview.scene.sync()
 	
 	def execution_label(self, label):
@@ -1207,3 +1218,8 @@ class ComputationProgress(QWidget):
 			self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
 		super().show()
 		
+
+def show(*args, **kwargs):
+	qtschedule(partial(madcad.rendering.show, *args, **kwargs))
+
+madcad.show = show

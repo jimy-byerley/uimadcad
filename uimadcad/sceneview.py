@@ -60,6 +60,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.active_selection = None	# key of the last selected display
 		self.executed = True	# flag set to True to enable a full relead of the scene
 		self.displayall = False
+		self.displaynone = False
 		
 		self.cache = WeakValueDictionary()	# prevent loading multiple times the same object
 		self.recursion_check = set()  # prevent reference-loop in groups (groups are taken from the execution env, so the user may not want to display it however we are trying to)
@@ -81,7 +82,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		# display objects that are requested by the user, or that are never been used (lastly generated)
 		for name,obj in it.current.items():
 			if name in self.hideset:	continue
-			if name in self.showset or name in it.neverused or self.displayall and name in it.locations:
+			if name in self.showset or self.displayall or (name in it.neverused and not self.displaynone) and name in it.locations:
 				if displayable(obj):
 					newscene[name] = obj
 		
@@ -651,6 +652,10 @@ class SceneComposition(QWidget):
 		layout.addWidget(self.showlist)
 		
 		layout.addWidget(QLabel('hide'))
+		
+		btn = QCheckBox('hide all')
+		btn.toggled.connect(scene.main._display_none)
+		layout.addWidget(btn)
 		
 		self.hidelist = PlainTextEdit()
 		self.hidelist.setPlaceholderText('variable names separated by spaces or newlines')
