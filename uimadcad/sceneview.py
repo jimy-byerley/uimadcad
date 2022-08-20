@@ -131,13 +131,13 @@ class Scene(madcad.rendering.Scene, QObject):
 			self.recursion_check.remove(ido)
 		return self.cache[ido]
 		
-	def display(self, obj):
+	def display(self, obj, former=None):
 		ido = id(obj)
 		if ido in self.recursion_check:
 			raise Exception('recursion error')
 		
 		self.recursion_check.add(ido)
-		try:		disp = super().display(obj)
+		try:		disp = super().display(obj, former)
 		finally:	self.recursion_check.remove(ido)
 		disp.source = obj
 		return disp
