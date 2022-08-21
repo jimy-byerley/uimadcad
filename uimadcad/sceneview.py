@@ -18,7 +18,7 @@ from PyQt5.QtGui import (
 		)
 
 from madcad import *
-from madcad.rendering import Display, displayable, Displayable, Step, Group, Turntable, Orbit
+from madcad.rendering import Display, displayable, Displayable, Step, Group, Turntable, Orbit, Perspective, Orthographic
 from madcad.displays import SolidDisplay, WebDisplay, GridDisplay
 import madcad
 
@@ -305,22 +305,22 @@ class SceneView(madcad.rendering.View):
 		action = QAction('points', main, checkable=True)
 		action.setChecked(madcad.settings.scene['display_points'])
 		action.setToolTip('display points')
-		action.toggled.connect(main._display_points)
+		action.toggled.connect(lambda enable: self.set_option('display_points', enable))
 		self.quick.addAction(action)
 		action = QAction('wire', main, checkable=True)
 		action.setChecked(madcad.settings.scene['display_wire'])
 		action.setToolTip('display wire')
-		action.toggled.connect(main._display_wire)
+		action.toggled.connect(lambda enable: self.set_option('display_wire', enable))
 		self.quick.addAction(action)
 		action = QAction('groups', main, checkable=True)
 		action.setChecked(madcad.settings.scene['display_groups'])
 		action.setToolTip('display groups')
-		action.toggled.connect(main._display_groups)
+		action.toggled.connect(lambda enable: self.set_option('display_groups', enable))
 		self.quick.addAction(action)
 		action = QAction('faces', main, checkable=True)
 		action.setChecked(madcad.settings.scene['display_faces'])
 		action.setToolTip('display faces')
-		action.toggled.connect(main._display_faces)
+		action.toggled.connect(lambda enable: self.set_option('display_faces', enable))
 		self.quick.addAction(action)
 		#action = QAction('all', main, checkable=True)
 		#action.setToolTip('display all variables')
@@ -329,6 +329,7 @@ class SceneView(madcad.rendering.View):
 		self.quick.addSeparator()
 		self.quick.addAction(QIcon.fromTheme('view-fullscreen'), 'adapt view to centent', self.adapt)
 		self.quick.addAction(QIcon.fromTheme('madcad-view-normal'), 'set view normal to mesh', self.normalview)
+		self.quick.addAction(QIcon.fromTheme('madcad-projection'), 'switch projection perspective/orthographic', self.projectionswitch)
 		self.quick.addSeparator()
 		self.quick.addAction(QIcon.fromTheme('lock'), 'lock solid', main.lock_solid)
 		self.quick.addAction(QIcon.fromTheme('madcad-solid'), 'set active solid', main.set_active_solid)
@@ -539,6 +540,17 @@ class SceneView(madcad.rendering.View):
 				return
 				
 			self.update()
+			
+	def projectionswitch(self):
+		if isinstance(self.projection, Perspective):
+			self.projection = Orthographic()
+		else:
+			self.projection = Perspective()
+		self.update()
+		
+	def set_option(self, option, value):
+		self.scene.options[option] = value
+		self.scene.touch()
 		
 	def scroll_selection(self):
 		if not self.scene.active_selection or not self.main.active_scriptview:	

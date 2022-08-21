@@ -799,29 +799,40 @@ class Madcad(QObject):
 				view.quick.setHidden(not enable)
 	
 	def _display_faces(self, enable):
-		self.active_sceneview.scene.options['display_faces'] = enable
-		self.active_sceneview.scene.touch()
+		if self.active_sceneview:
+			self.active_sceneview.scene.options['display_faces'] = enable
+			self.active_sceneview.scene.touch()
 	def _display_groups(self, enable):
-		self.active_sceneview.scene.options['display_groups'] = enable
-		self.active_sceneview.scene.touch()
+		if self.active_sceneview:
+			self.active_sceneview.scene.options['display_groups'] = enable
+			self.active_sceneview.scene.touch()
 	def _display_wire(self, enable):
-		self.active_sceneview.scene.options['display_wire'] = enable
-		self.active_sceneview.scene.touch()
+		if self.active_sceneview:
+			self.active_sceneview.scene.options['display_wire'] = enable
+			self.active_sceneview.scene.touch()
 	def _display_points(self, enable):
-		self.active_sceneview.scene.options['display_points'] = enable
-		self.active_sceneview.scene.touch()
+		if self.active_sceneview:
+			self.active_sceneview.scene.options['display_points'] = enable
+			self.active_sceneview.scene.touch()
 	def _display_grid(self, enable):
-		self.active_sceneview.scene.options['display_grid'] = enable
-		self.active_sceneview.scene.touch()
+		if self.active_sceneview:
+			self.active_sceneview.scene.options['display_grid'] = enable
+			self.active_sceneview.scene.touch()
 	def _display_annotations(self, enable):
-		self.active_sceneview.scene.options['display_annotations'] = enable
-		self.active_sceneview.scene.touch()
+		if self.active_sceneview:
+			self.active_sceneview.scene.options['display_annotations'] = enable
+			self.active_sceneview.scene.touch()
 	def _display_all(self, enable):
-		self.active_sceneview.scene.displayall = enable
-		self.active_sceneview.scene.sync()
+		if self.active_sceneview:
+			self.active_sceneview.scene.displayall = enable
+			self.active_sceneview.scene.sync()
 	def _display_none(self, enable):
-		self.active_sceneview.scene.displaynone = enable
-		self.active_sceneview.scene.sync()
+		if self.active_sceneview:
+			self.active_sceneview.scene.displaynone = enable
+			self.active_sceneview.scene.sync()
+	def _switchprojection(self):
+		if self.active_sceneview:
+			self.active_sceneview.projectionswitch()
 	
 	def execution_label(self, label):
 		for view in self.views:
@@ -1090,6 +1101,7 @@ class MainWindow(QMainWindow):
 		action.toggled.connect(main._display_all)
 		menu.addAction(action)
 		menu.addSeparator()
+		menu.addAction('switch projection', main._switchprojection, shortcut=QKeySequence('Shift+S'))
 		menu.addAction('center on object', main._viewcenter, shortcut=QKeySequence('Shift+C'))
 		menu.addAction('adjust to object', main._viewadjust, shortcut=QKeySequence('Shift+A'))
 		menu.addAction('look to object', main._viewlook, shortcut=QKeySequence('Shift+L'))
