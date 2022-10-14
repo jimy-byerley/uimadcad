@@ -1,6 +1,6 @@
 #!/bin/sh -eu
 
-version=0.6
+version=0.7
 target=$(dirname $0)
 
 
