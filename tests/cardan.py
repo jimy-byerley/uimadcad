@@ -1,13 +1,11 @@
 from madcad import *
-
-rint = 1
-rext = 3
-margin = 0.1*rint
+from itertools import accumulate
+settings.primitives['curve_resolution'] = ('rad', 0.1)
 
 def cardan_sphereprofile(maxangle=0.5):
 	s = icosphere(O, 1)
 	d = vec3(cos(maxangle), 0, sin(maxangle))
-	a = normalize(d+Y)
+	a = normalize(d+1*Y)
 	return wire([
 		ArcCentered(Axis(O, d*vec3(-1,1,1)), a*vec3(-1,-1,1), a*vec3(-1,1,1)),
 		ArcCentered(Axis(O, -Y), a*vec3(-1,1,1), a),
@@ -15,137 +13,171 @@ def cardan_sphereprofile(maxangle=0.5):
 		ArcCentered(Axis(O, Y), a*vec3(1,-1,1), a*vec3(-1,-1,1)),
 		])
 
-thickness = 0.58
-profile = cardan_sphereprofile(0.5) .transform(rext*thickness*0.95)
+def cardan_side(rint, rext, rtop, thickness, height):
+	margin = 0.1*rint
+	profile = cardan_sphereprofile(0.5) .transform(rext*thickness*0.95)
+	
+	body = union(
+			icosphere(O, rext),
+			revolution(2*pi, Axis(O,Z), wire([
+				Softened([
+					vec3(rext*0.9, 0, height*0.2),
+					vec3(rext*0.6, 0, height*0.4),
+					vec3(rtop*1.5, 0, height*0.7),
+					vec3(rtop*1.5, 0, height-0.5*rtop)]),
+				Wire([ 
+					vec3(rtop*1.5, 0, height-0.5*rtop), 
+					vec3(rtop*1.1, 0, height), 
+					vec3(rtop, 0, height), 
+					vec3(rtop, 0, height*0.55),
+					vec3(0, 0, height*0.55),
+					]).segmented(),
+				])) .flip() .qualify('junction'),
+			)
+	body.mergeclose()
 
-#body = icosphere(O, rext) .transform(rint*0.3*Z)
-body = union(
-		icosphere(O, rext),
-		revolution(2*pi, Axis(O,Z), Softened([
-				vec3(2.706, 0, 1.147),
-				vec3(1.959, -1.56e-08, 2.209),
-				vec3(1.221, -1.454e-07, 3.298),
-				vec3(1.175, -4.856e-07, 6.152)])) .flip(),
-		) #.transform(rint*0.3*Z)
+	shape = intersection(
+		inflate(extrusion(mat3(5), profile.flip()), -margin),
+		body + icosphere(O, thickness*rext).flip(),
+		)
+	
+	rscrew = stfloor(0.6*rtop)/2
+	
+	pocket = extrusion(rext*Y, flatsurface(convexoutline(web([
+		Circle(Axis(vec3(0, rtop*1.8, rext*thickness + 2*rscrew), Y), 2.7*rscrew),
+		Segment(
+			vec3(+rtop, rtop*1.5, height),
+			vec3(-rtop, rtop*1.5, height)),
+		])))).orient()
+	pocket = union(pocket, 
+				extrusion(rtop*Y, flatsurface(
+					Circle(Axis(vec3(0, rtop*1.35, height - 1.5*rtop), -Y), 2.7*rscrew)
+				)))
+	removal = union(
+				pocket + pocket.transform(scaledir(Y, -1)).flip(),
+				(	  cylinder(
+						vec3(0, rext, rext*thickness + 2*rscrew), 
+						vec3(0, -rext, rext*thickness + 2*rscrew), 
+						rscrew*1.2)
+					+ cylinder(
+						vec3(0, rext, height - 1.5*rtop), 
+						vec3(0, -rext, height - 1.5*rtop), 
+						rscrew*1.2)
+					).qualify('hole'),
+				)
+	shape = difference(shape, removal)
+	
+	hole = revolution(2*pi, Axis(O,Y), wire([
+		vec3(rint+0.1*rext, rext, 0),
+		vec3(rint, rext-rint*0.3, 0),
+		vec3(rint, 0, 0),
+		]).segmented().flip()) .qualify('axis', 'joint')
+	result = intersection(
+			shape, 
+			hole + hole.transform(scaledir(Y,-1)).flip(),
+			)
+	result = result.finish()
 
-shape = intersection(
-	inflate(extrusion(mat3(5), profile.flip()), -margin),
-#	union(
-#		inflate(extrusion(mat3(5), profile.flip()), -margin),
-#		icosphere(O, rext+margin) .flip(),
-#		),
-	body + icosphere(O, thickness*rext).flip(),
-	)
+	sep = square((O+1e-5*Y,Y), rext*5)
+	return Solid(
+		right = difference(result, sep),
+		left = intersection(result, sep),
+		b1 = bolt(
+				vec3(0, rtop*1.8, rext*thickness + 2*rscrew), 
+				vec3(0, -rtop*1.8, rext*thickness + 2*rscrew), 
+				rscrew),
+		b3 = bolt(
+				vec3(0, rtop*1.3, height - 1.5*rtop), 
+				vec3(0, -rtop*1.3, height - 1.5*rtop), 
+				rscrew),
+		annotations = [
+			note_radius(result.group('axis')),
+			note_radius(result.group('hole')),
+			],
+		)
 
-from madcad.recent import convexhull, convexoutline
-s = flatsurface(convexoutline(web(
-	Circle(Axis(rext*Y,Y), 1.5*rint),
-	Circle(Axis(rext*Y+rext*Z, Y), 0.7*rint),
-	)))
-s.check()
-r = extrusion(scaledir(Y,-1), s.flip())
-r.check()
-shape = shape.replace(union(shape.group((4,5)), r))
+def bolt(a, b, radius, washera=False, washerb=False):
+	dir = normalize(b-a)
+	rwasher = washer(2*radius)
+	thickness = rwasher['part'].box().width.z
+	rscrew = screw(radius*2, distance(a,b) + 3*radius)
+	rnut = nut(radius*2)
+	return Solid(
+			screw = rscrew.place((Pivot, rscrew['axis'], Axis(a-thickness*dir, -dir))), 
+			nut = rnut.place((Pivot, rnut['bottom'], Axis(b+thickness*dir, -dir))),
+			w1 = rwasher.place((Pivot, rnut['top'], Axis(b-0.5*thickness*dir, -dir))),
+			w2 = rwasher.place((Pivot, rnut['top'], Axis(a+0.5*thickness*dir, dir))),
+			)
 
-hole = revolution(2*pi, Axis(O,Y), wire([
-	vec3(rint+0.1*rext, rext, 0),
-	vec3(rint, rext*0.9, 0),
-	vec3(rint, 0, 0),
-	]).segmented().flip())
-result = intersection(
-		shape, 
-		hole + hole.transform(scaledir(Y,-1)).flip(),
-		).finish()
+def moyeu(brext, rext, thickness, brint=None, slot=False):
+	if not brint:
+		brint = brext - stceil(1/8*brext)
+	
+	xint = sqrt((thickness*rext)**2 - brext**2)
+	profile = Wire([ 
+		(rext - 0.2*brext)*X, 
+		(rext - 0.2*brext)*X + 0.99*brint*Z, 
+		xint*X - 0.2*brext*X + 0.99*brint*Z,
+		xint*X - 0.2*brext*X + 1.1*brext*Z,
+		xint*X - 0.3*brext*X + 1.1*brext*Z
+		]) .segmented()
+	profile.qualify('axis', select=1)
+	chamfer(profile, [1], ('radius', 0.1*brext))
+	tip = revolution(2*pi, Axis(O,X), profile)
+	tip.finish()
 
-upper = Solid(content=result)
+	if slot:
+		tip = difference(tip, union(
+			brick(vec3(xint-0.15*rint, -0.1*rint, 0.1*rint), vec3(rext, 0.1*rint, 2*rint)),
+			brick(vec3(xint-0.1*rint, -rint, 0.5*rint), vec3(rext*2, rint, 2*rint)),
+			))
+
+	tubes = repeat(tip, 4, rotatearound(pi/2, Axis(O,Z))) 
+	moyeu = tubes + junction(
+		tubes.flip(),
+		tangents='tangent', weight=-1,
+		)
+	moyeu.option(color=vec3(0.7))
+
+	bearing = slidebearing(
+					dint = 2*brint, 
+					thickness = brext-brint,
+					h = stceil((1-thickness)*rext + 0.2*rint),
+					) .transform(translate((rext - 0.2*rint)*X) * rotate(pi/2,Y))
+
+	return Solid(
+		part = moyeu,
+		bearings = [
+			bearing.transform(rotate(i*pi/2, Z))
+			for i in range(4)
+			],
+		annotations = [
+			note_radius(moyeu.group('axis').islands()[0]),
+			],
+		)
+
+
+rint = 16/2
+rext = 40/2
+thickness = 0.7
+
+upper = cardan_side(rint*1.05, rext, rext*0.25, thickness, rext*2)
 lower = upper.transform(rotate(pi/2,Z) * rotate(pi,Y))
+central = moyeu(rint, rext, thickness)
 
+kin = Kinematic([
+	Pivot(upper, central, Axis(O,Y), Axis(O,Y)),
+	Pivot(lower, central, Axis(O,Y), Axis(O,X)),
+	])
 
-tubes = repeat(
-		cylinder((rext - 0.3*rint)*X, sqrt((thickness*rext)**2 - rint**2)*X, 0.95*rint) .group((0,1)),
-		4, 
-		rotatearound(pi/2, Axis(O,Z)),
-		) 
-moyeu = tubes + junction(
-	tubes.flip(),
-	tangents='tangent', weight=-1,
-	)
-moyeu.option(color=vec3(0.7))
-
-cardan = [upper, lower, moyeu]
-
-notes = [
-	note_leading(
-		result.group(5),
-		text='surface can be extended\nto join the target part'),
-	note_leading(result.group(7), text='gliding surface ?'),
+part = central['bearings'][0]['part']
+islands = part.group(2).islands()
+central['bearings'][0]['annotations'] = [
+	note_radius(part.group(1)),
+	note_radius(part.group(0)),
+	note_distance_planes(islands[0], islands[1]),
 	]
 
 
-
-
-
-adaptation = revolution(2*pi, Axis(O,X), wire([
-	vec3(rext, rint+0.1*rext, 0),
-	vec3(rext*0.9, rint, 0),
-	vec3(rint*1.2+margin, rint, 0),
-	vec3(rint*1.2+margin, rint*1.2, 0),
-	vec3(rext, rext, 0),
-	]).segmented().flip())
-limit_ext = icosphere(O, rext)
-ponpon = intersection(adaptation, limit_ext)
-
-n = repeat(ponpon, 4, rotatearound(pi/2, Axis(O,Z)))
-
-
-# limited holder
-limitx = ArcThrough(
-	vec3(-2.273, -2.14e-07, 1.795),
-	vec3(-0.1443, -3.538e-07, 2.968),
-	vec3(2.258, 0.01989, 1.815))
-limity = wire(Softened([
-		vec3(7.089e-07, 0.341, 2.973),
-		vec3(7.191e-07, 1.108, 3.016),
-		vec3(5.26e-07, 3.282, 2.206),
-		vec3(5.31e-07, 4.753, 2.227)]))
-limitint = tube(limitx, limity)
-limintest = limitint.transform(rotate(pi/2, Z) * rotate(pi/2, X))
-ArcThrough(
-	vec3(-2.118, -1.809, 0.8377),
-	vec3(0.4138, -0.7041, 3.037),
-	vec3(2.149, -1.901, 0.7572))
-
-
-# ring holder
-ring = Solid(content=[
-	Axis(O,Z),
-	ArcThrough(
-		vec3(-2.25, 0.006792, -2.172),
-		vec3(-0.327, 0.006791, 6.053),
-		vec3(2.237, 0.006792, -2.172)),
-	ArcThrough(
-		vec3(-2.143, 0.006792, 2.137),
-		vec3(-0.2557, 0.006791, 4.95),
-		vec3(2.201, 0.006792, 2.172)),
-	ArcThrough(
-		vec3(-2.157, -2.041, 0.04165),
-		vec3(-0.1463, -0.6017, 5.451),
-		vec3(2.148, -2.042, 0.1403)),
-	ArcThrough(
-		vec3(-2.157, 2.041, 0.04165),
-		vec3(-0.1463, 0.6017, 5.451),
-		vec3(2.148, 2.042, 0.1403)),
-	])
-ring2 = ring.transform(rotate(pi/2,X) * rotate(pi/8,X))
-ring3 = ring.transform(rotate(pi/2,Z) * rotate(pi/8,X))
-
-
-# shared sphere area
-limit_side = revolution(pi, Axis(O,X), Segment(
-	vec3(rint*1.2, rint*1.2+margin, 0),
-	vec3(rext, rext+margin, 0),
-	)) .transform(rotate(-pi/8,Y))
-limit = intersection(
-			limit_side + limit_side.transform(scaledir(X, -1)).flip(),
-			limit_ext,
-			)
+io.write(upper['right'], '/tmp/cardan-holder.stl')
+io.write(central['part'], '/tmp/cardan-moyeu.stl')
