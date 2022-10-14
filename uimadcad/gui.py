@@ -260,7 +260,9 @@ class Madcad(QObject):
 		self.currentfile = filename
 		if extension in ('py', 'txt'):
 			self.script.clear()
-			QTextCursor(self.script).insertText(open(filename, 'r').read())
+			import locale
+			print('locale', locale.getpreferredencoding(False))
+			QTextCursor(self.script).insertText(open(filename, 'r', encoding='UTF-8').read())
 		
 		self.script.setModified(False)
 		self.script.clearUndoRedoStacks()
@@ -486,7 +488,7 @@ class Madcad(QObject):
 		
 		# set the function local pose in the scene
 		for scene in self.scenes:
-			scene.poses[it.name] = scene[callname]
+			scene.poses['return'] = scene.displays.get(callname)
 		
 		# setup the zone edition
 		newzone = [defnode.body[0].position-2, defnode.end_position]
@@ -530,7 +532,7 @@ class Madcad(QObject):
 			
 			# undefine the local pose of the former function
 			for scene in self.scenes:
-				scene.poses[it.name] = None
+				scene.poses['return'] = None
 		
 		# setup the zone edition
 		self.interpreter, self.editzone, _, self.exectarget, *_ = self.scopes.pop()

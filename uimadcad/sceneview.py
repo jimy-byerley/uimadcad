@@ -120,25 +120,27 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.executed = False
 		self.touch()
 		
-	def display(self, obj):		# NOTE will prevent different group from showing the same object, this is not desirable
-		ido = id(obj)
-		if ido in self.recursion_check:
-			raise Exception('recursion error')
+	#def display(self, obj):		# NOTE will prevent different group from showing the same object, this is not desirable
+		#ido = id(obj)
+		#if ido in self.recursion_check:
+			#raise Exception('recursion error')
 		
-		if ido not in self.cache:
-			self.recursion_check.add(ido)
-			self.cache[ido] = super().display(obj)
-			self.cache[ido].source = obj
-			self.recursion_check.remove(ido)
-		return self.cache[ido]
+		#if ido not in self.cache:
+			#self.recursion_check.add(ido)
+			#self.cache[ido] = super().display(obj)
+			#self.cache[ido].source = obj
+			#self.recursion_check.remove(ido)
+		#return self.cache[ido]
 		
 	def display(self, obj, former=None):
 		ido = id(obj)
-		if ido in self.recursion_check:
-			raise Exception('recursion error')
+		assert ido not in self.recursion_check, 'there should not be recursion loops in cascading displays'
 		
 		self.recursion_check.add(ido)
 		try:		disp = super().display(obj, former)
+		except Exception as err:     
+			self.main.showerror(err)
+			raise
 		finally:	self.recursion_check.remove(ido)
 		disp.source = obj
 		return disp
@@ -147,7 +149,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		''' update the association of variables to solids '''
 		# remove current object references, to allow deallocating their memory
 		for name in self.poses:
-			if isinstance(name, str) and name not in self.main.interpreter.current:
+			if isinstance(name, str) and name not in self.main.interpreter.current and name != 'return':
 				self.poses[name] = None
 		
 		sets = []	# sets of variables going together
@@ -180,7 +182,8 @@ class Scene(madcad.rendering.Scene, QObject):
 		# the default pose for any object in the code executed, is the current local pose
 		for u in sets:
 			for name in u:
-				self.poses[name] = self.main.interpreter.name
+				if name != 'return':
+					self.poses[name] = 'return'
 		
 		# process SolidDisplays all across the scene
 		def recur(level):
@@ -206,8 +209,8 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 	def _updateposes(self, _):
 		for name,disp in self.displays.items():
-			if hasattr(disp, 'source') and isinstance(disp.source, (Solid,Kinematic)):	
-				continue
+			#if hasattr(disp, 'source') and isinstance(disp.source, (Solid,Kinematic)):	
+				#continue
 			
 			obj = self.poses.get(name)
 			# solve dynamic pose binding (when a string is put instead of a solid)
@@ -218,8 +221,12 @@ class Scene(madcad.rendering.Scene, QObject):
 					obj = self.active_solid
 				else:
 					obj, last = self.poses.get(obj), obj
-				
-			disp.world = obj.world if obj else fmat4(1)
+			if isinstance(obj, Solid.display):
+				disp.world = obj.world * obj.pose
+			elif obj:
+				disp.world = obj.world 
+			else:
+				disp.world = fmat4(1)
 
 	def items(self):
 		''' yield recursively all couples (key, display) in the scene, including subscenes '''

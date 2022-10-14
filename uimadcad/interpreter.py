@@ -311,10 +311,11 @@ def varusage(node):
 	reused = set()
 	def use(node):
 		if isinstance(node, ast.Assign):
+			astpropagate(node, reuse)
 			for target in node.targets:
 				if isinstance(target, ast.Name):
 					used.add(target.id)
-			astpropagate(node, reuse)
+					reused.discard(target.id)
 		else:
 			astpropagate(node, use)
 	def reuse(node):

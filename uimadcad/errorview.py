@@ -5,10 +5,11 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy,
 from PyQt5.QtGui import QColor, QPalette, QFont, QFontMetrics, QTextOption, QIcon
 import traceback
 import textwrap
-from madcad.nprint import nprint
+from madcad.nprint import nprint, nformat
 
 from .common import *
 from . import settings
+from PyQt5.QtWidgets import QSplitter
 
 class ErrorView(QWidget):
 	tabsize = 4
@@ -16,26 +17,35 @@ class ErrorView(QWidget):
 	def __init__(self, main, exception=None, parent=None):
 		super().__init__(parent)
 		self._text = QPlainTextEdit()
+		self._scope = QPlainTextEdit()
 		self._label = QLabel('(no exception)')
 		self._keepchk = QCheckBox('keep apart')
 		self._sourcebtn = QPushButton('source')
+		self._showscope = QPushButton('scope')
 		self.main = main
 		self.exception = exception
 		self.font = QFont(*settings.scriptview['font'])
 		
 		self._keepchk.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-		
+				
 		# ui layout
 		lower = QWidget()
 		layout = QHBoxLayout()
 		layout.setContentsMargins(0,0,0,0)
 		layout.addWidget(self._keepchk)
 		layout.addWidget(self._sourcebtn)
+		layout.addWidget(self._showscope)
 		layout.addWidget(self._label)
 		lower.setLayout(layout)
+		
+		splitter = QSplitter(self)
+		splitter.setOrientation(Qt.Vertical)
+		splitter.addWidget(self._text)
+		splitter.addWidget(self._scope)
+		
 		layout = QVBoxLayout()
 		layout.setContentsMargins(0,0,0,0)
-		layout.addWidget(self._text)
+		layout.addWidget(splitter)
 		layout.addWidget(lower)
 		self.setLayout(layout)
 		
@@ -48,8 +58,15 @@ class ErrorView(QWidget):
 		self._text.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
 		self._text.setTextInteractionFlags(Qt.TextBrowserInteraction)
 		self._text.setWordWrapMode(QTextOption.WrapMode.NoWrap)
-		self._text.setTabStopDistance(settings.scriptview['tabsize'] * QFontMetrics(self.font).maxWidth())
 		self._text.setCurrentCharFormat(charformat(font=self.font))
+		self._text.setTabStopDistance(settings.scriptview['tabsize'] * QFontMetrics(self.font).maxWidth())
+		self._text.cursorPositionChanged.connect(lambda: self.showscope(self._showscope.isChecked()))
+		
+		self._scope.setVisible(False)
+		self._scope.setTextInteractionFlags(Qt.TextBrowserInteraction)
+		self._scope.setWordWrapMode(QTextOption.WrapMode.NoWrap)
+		self._scope.setCurrentCharFormat(charformat(font=self.font))
+		self._scope.setTabStopDistance(settings.scriptview['tabsize'] * QFontMetrics(self.font).maxWidth()+1.5)
 		# configure the label
 		self._label.setFont(self.font)
 		self._label.setWordWrap(True)
@@ -57,6 +74,10 @@ class ErrorView(QWidget):
 		# configure the button
 		self._sourcebtn.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Minimum))
 		self._sourcebtn.clicked.connect(self.showsource)
+		
+		self._showscope.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Minimum))
+		self._showscope.setCheckable(True)
+		self._showscope.clicked.connect(self.showscope)
 		
 		if exception:
 			self.set(exception)
@@ -107,23 +128,62 @@ class ErrorView(QWidget):
 		self._text.ensureCursorVisible()
 		self.setVisible(True)
 		
-	def showsource(self):
 		if type(self.exception) == SyntaxError and self.exception.filename == self.main.interpreter.name:
-			line = self.exception.lineno
+			self.line = self.exception.lineno
 		else:
 			step = self.exception.__traceback__
-			line = -1
+			self.line = -1
 			while step:
 				if step.tb_frame.f_code.co_filename == self.main.interpreter.name:
-					line = step.tb_frame.f_lineno
+					self.line = step.tb_frame.f_lineno
 					break
 				step = step.tb_next
-		if line >= 0:
-			self.main.active_scriptview.seek_line(line-1)
+				
+		self._sourcebtn.setVisible(self.line >= 0)
+		
+	def showsource(self):
+		if self.line >= 0:
+			self.main.active_scriptview.seek_line(self.line-1)
 			self.main.active_scriptview.editor.activateWindow()
 			self.main.active_scriptview.editor.setFocus()
 		else:
 			print('no source to display in this traceback')
+			
+	def showscope(self, enable):
+		if enable and self.exception.__traceback__:
+			n = self._text.textCursor().blockNumber() //2
+			print(self._text.textCursor().blockNumber() , n)
+			
+			step = self.exception.__traceback__
+			for i in range(n+1):
+				if step.tb_next:
+					step = step.tb_next
+			scope = step.tb_frame.f_locals
+		
+			self._scope.document().clear()
+			cursor = QTextCursor(self._scope.document())
+			palette = self.palette()
+			familly, size = settings.scriptview['font']
+			
+			fmt_value = charformat(
+							font=QFont(familly, size), 
+							foreground=palette.text())
+			fmt_key = charformat(
+							font=QFont(familly, size*1.2, weight=QFont.Bold), 
+							foreground=palette.link())
+			
+			if isinstance(scope, dict):
+				for key in scope:
+					formated = nformat(repr(scope[key]))
+					# one line format
+					if not '\n' in formated:	
+						cursor.insertText((key+':').ljust(16), fmt_key)
+						cursor.insertText(formated+'\n', fmt_value)
+					# multiline format
+					else:
+						cursor.insertText(key+':', fmt_key)
+						cursor.insertText(('\n'+formated).replace('\n', '\n    ')+'\n', fmt_value)
+		self._scope.setVisible(enable)
 	
 	@property
 	def keep(self):	

@@ -375,7 +375,7 @@ def createpoint(main):
 		p = view.ptat(evt.pos()) or view.ptfrom(evt.pos(), view.navigation.center)
 	else:
 		p = view.ptfrom(evt.pos(), view.navigation.center)
-	solid = view.scene.active_solid
+	solid = view.scene.active_solid  or view.scene.poses.get('return')
 	if solid:
 		p = vec3(mat4(affineInverse(solid.world * solid.pose)) * vec4(p,1))
 	main.addtemp(p)

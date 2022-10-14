@@ -22,6 +22,7 @@ from .settings import ctq
 from . import settings
 from madcad.nprint import nprint
 from bisect import bisect_left
+import ast
 import re
 
 
@@ -236,7 +237,11 @@ class ScriptView(QWidget):
 		else:
 			below = main.posvar(cursor.position())
 			if below:
-				below = astinterval(main.interpreter.locations[below])
+				node = main.interpreter.locations[below]
+				if not isinstance(node, ast.FunctionDef):
+					below = astinterval(node)
+				else:
+					below = None
 				
 		if below:
 			main.displayzones[id(self)] = below
