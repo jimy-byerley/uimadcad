@@ -185,7 +185,6 @@ QCheckBox::indicator, QMenu::indicator {
 	border: 1px solid palette(dark);
 	border-radius: 3px;
 	padding: 4px;
-/* 	background-clip: padding; */
 	background: palette(window);
 }
 QCheckBox::indicator:unchecked, QMenu::indicator:unchecked { background: palette(alternate-base) }
@@ -313,12 +312,9 @@ QComboBox::drop-down {
 	Unfortnately Qt doesn't provide a way to outline a docked widget, so the only thing we can do to differentiate them is to put frame widgets inside, and theme the separators
  */
 
-QDockWidget::title, QDockWidget, QDockWidget::separator {
-	border: 3px solid palette(dark);
+QDockWidget, QDockWidget::title {
+	border: 1px solid lightgrey;
 	border-radius: 3px;
-	margin: 10px;
-	padding: 5px;
-	background: blue;
 }
 
 QMainWindow::separator:vertical {
