@@ -1,5 +1,4 @@
 from madcad import *
-from madcad.boolean import booleanwith
 
 dint = 16
 dext = 35
