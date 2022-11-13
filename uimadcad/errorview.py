@@ -88,7 +88,7 @@ class ErrorView(QWidget):
 		# set labels
 		self.setWindowTitle(type(exception).__name__)
 		self._label.setText('<b style="color:#ff5555">{}:</b> {}'.format(
-								type(exception).__name__, str(exception)))
+								type(exception).__name__, str(exception).replace('<', '&lt;').replace('>', '&gt;')))
 		#'\n'.join(textwrap.wrap(str(exception), 24))) 
 		# set text
 		doc = self._text.document()
