@@ -199,6 +199,7 @@ class Scene(madcad.rendering.Scene, QObject):
 				if not hasattr(sub, 'source'):	continue
 				bound = self.main.interpreter.ids.get(id(sub.source))
 				if not bound:	continue
+				
 				# find a solidset that provides that value
 				try:	s = next(u for u in sets	if bound in u)
 				except StopIteration:	continue
@@ -209,10 +210,9 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 	def _updateposes(self, _):
 		for name,disp in self.displays.items():
-			#if hasattr(disp, 'source') and isinstance(disp.source, (Solid,Kinematic)):	
-				#continue
-			
 			obj = self.poses.get(name)
+			if obj != 'return' and isinstance(disp, (Solid.display, madcad.rendering.Group)):
+				continue
 			# solve dynamic pose binding (when a string is put instead of a solid)
 			last = None
 			while isinstance(obj, str) and last is not obj:	
@@ -354,6 +354,10 @@ class SceneView(madcad.rendering.View):
 	
 		self.statusbar = SceneViewBar(self)
 		self.scene.changed.connect(self.update)
+		
+	def initializeGL(self):
+		super().initializeGL()
+		self.scene.ctx.gc_mode = 'context_gc'
 	
 	def closeEvent(self, event):
 		# never close the first openned view, this avoids a Qt bug deleting the context, or something similar
