@@ -378,6 +378,8 @@ def astannotate(tree, text):
 				if text[i:i+3] == 3*marker:
 					marker = 3*marker
 				node.end_position = text.find(marker, i+len(marker)) + len(marker)
+			elif isinstance(node, ast.Constant) and node.value in {None, True, False}:
+				node.end_position = node.position + len(str(node.value))
 			else:
 				while i < len(text) and text[i] in '0123456789+-e.rufbx':	i+=1
 				node.end_position = i
