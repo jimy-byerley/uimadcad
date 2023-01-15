@@ -80,6 +80,21 @@ deb)
 	dpkg -b $package $target/dist/madcad_${version}_${arch}.deb
 	;;
 	
+rpm)
+	$target/distribute.sh -p deb -a $arch -h $platform
+	# name trick for the architecture
+	case $arch in
+	x86_64)	debarch=amd64	;;
+	*)      debarch=$arch   ;;
+	esac
+	
+	(
+		cd $target/dist
+		sudo alien -r madcad_${version}_${debarch}.deb
+		mv madcad-${version}-2.${arch}.rpm madcad-${version}.${arch}.rpm
+	)
+	;;
+	
 ?)
 	echo "package type not supported: $format"
 	
