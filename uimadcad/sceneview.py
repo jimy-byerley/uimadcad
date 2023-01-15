@@ -30,6 +30,7 @@ from . import tricks, settings
 import ast
 from copy import deepcopy, copy
 from weakref import WeakValueDictionary
+from operator import itemgetter
 
 
 QEventGLContextChange = 215	# opengl context change event type, not yet defined in PyQt5
@@ -61,6 +62,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.executed = True	# flag set to True to enable a full relead of the scene
 		self.displayall = False
 		self.displaynone = False
+		self.selected = False
 		
 		self.cache = WeakValueDictionary()	# prevent loading multiple times the same object
 		self.recursion_check = set()  # prevent reference-loop in groups (groups are taken from the execution env, so the user may not want to display it however we are trying to)
@@ -119,6 +121,37 @@ class Scene(madcad.rendering.Scene, QObject):
 				self.queue[k] = v
 		self.executed = False
 		self.touch()
+		
+	def restack(self):
+		''' update the rendering calls stack from the current scene's displays.
+			this is called automatically on `dequeue()`
+		'''
+		# recreate stacks
+		for stack in self.stacks.values():
+			stack.clear()
+		for key,display in self.displays.items():
+			for frame in display.stack(self):
+				if len(frame) != 4:
+					raise ValueError('wrong frame format in the stack from {}\n\t got {}'.format(display, frame))
+				sub,target,priority,func = frame
+				full = (key,*sub)
+				
+				# try special behaviors
+				try:	i = full.index('annotations')
+				except ValueError:	pass
+				else:
+					if i:	disp = self.item(full[:i+1])
+					else:	disp = self
+					if not self.options['display_annotations'] and not disp.selected:
+						continue
+				
+				if target not in self.stacks:	self.stacks[target] = []
+				stack = self.stacks[target]
+				stack.append((full, priority, func))
+		# sort the stack using the specified priorities
+		for stack in self.stacks.values():
+			stack.sort(key=itemgetter(1))
+		self.touched = False
 		
 	#def display(self, obj):		# NOTE will prevent different group from showing the same object, this is not desirable
 		#ido = id(obj)
@@ -426,12 +459,15 @@ class SceneView(madcad.rendering.View):
 			for disp in reversed(stack):
 				if hasattr(disp, '__iter__'):
 					disp.selected = any(sub.selected	for sub in disp)
+			self.scene.selected = any(sub.selected    for sub in self.scene.displays.values())
+			
 			if disp.selected:
 				self.scene.active_selection = key
 				self.update_active_selection()
 			elif not disp.selected and self.scene.active_selection == key:
 				self.scene.active_selection = None
 				self.update_active_selection()
+			self.scene.touch()
 			self.update()
 			self.main.updatescript()
 			evt.accept()
