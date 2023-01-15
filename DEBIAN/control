@@ -1,4 +1,4 @@
-Package: madcad
+Package: uimadcad
 Version: $VERSION
 Architecture: $ARCH
 Essential: no

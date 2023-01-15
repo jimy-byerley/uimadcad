@@ -38,16 +38,16 @@ $target/install.sh -p $prefix -a $arch -h $platform
 case $format in
 tar)
 	cd $(dirname $prefix)
-	tar cf madcad_${version}_${arch}.tar.gz ${platform}_${arch}
+	tar cf uimadcad_${version}_${arch}.tar.gz ${platform}_${arch}
 	;;
 	
 zip)
-	package=$target/dist/madcad
+	package=$target/dist/uimadcad
 	rm -fr $package
 	mv $prefix $package
 	(
 		cd $(dirname $package)
-		7z a madcad_${version}_${arch}.zip madcad
+		7z a uimadcad_${version}_${arch}.zip madcad
 	)
 	;;
 	
@@ -77,7 +77,7 @@ deb)
 	)
 	
 	# create package
-	dpkg -b $package $target/dist/madcad_${version}_${arch}.deb
+	dpkg -b $package $target/dist/uimadcad_${version}_${arch}.deb
 	;;
 	
 rpm)
@@ -90,8 +90,8 @@ rpm)
 	
 	(
 		cd $target/dist
-		sudo alien -r madcad_${version}_${debarch}.deb
-		mv madcad-${version}-2.${arch}.rpm madcad-${version}.${arch}.rpm
+		sudo alien -r uimadcad_${version}_${debarch}.deb
+		mv uimadcad-${version}-2.${arch}.rpm uimadcad-${version}.${arch}.rpm
 	)
 	;;
 	
