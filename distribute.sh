@@ -19,7 +19,7 @@ do
 	*)
 		echo "buid uimadcad and make an installation package out of it"
 		echo
-		echo "usage:  $(basename $0) [-p deb|tar] [-a ARCH] [-h PLATFORM] (deb|tar)"
+		echo "usage:  $(basename $0) [-p deb|tar] [-a ARCH] [-h PLATFORM]"
 		exit 1
 		;;
 	esac
