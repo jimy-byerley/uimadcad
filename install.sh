@@ -24,7 +24,7 @@ set -x
 
 case $(uname -s) in
 Linux*)	  host=linux ;;
-Darwin*)  host=mac ;;
+Darwin*)  host=macosx ;;
 CYGWIN*)  host=windows ;;
 MINGW*)   host=windows ;;
 *)        host=unknown ;;
@@ -34,8 +34,6 @@ project=$(realpath $(dirname $0))
 arch=${arch:-$(arch)}
 platform=${platform:-$host}
 prefix=${prefix:-$project/dist/${platform}_${arch}}
-release=release 
-# NOTE launcher must be in release mode to not contain the source code
 
 
 case $platform in
@@ -58,58 +56,19 @@ windows)
 	;;
 esac
 
-
-# compile the launcher
-if [ "$(arch)" = "$arch" ] && [ "$platform" = "$host" ] 
-then	cargotarget=
-fi
-
-(
-	cd launcher
-	cargo build --release
-
-	if [ -n "$cargotarget" ]
-	then
-		export PYO3_CROSS_PYTHON_VERSION=3.9
-		export PYO3_CROSS_INCLUDE_DIR="$project/../cross/python-$PYO3_CROSS_PYTHON_VERSION-$arch/include"
-		export PYO3_CROSS_LIB_DIR="$project/../cross/python-$PYO3_CROSS_PYTHON_VERSION-$arch/lib"
-		#$project/../cross/setup.sh $PYO3_CROSS_PYTHON_VERSION $arch
-		
-		cargo build --release --target $cargotarget
-	fi
-)
-
 # prepare directories
 install -d $bin
 install -d $data
-# main archive
-# files must be inserted in the python importation order to solve the dependency problems
-$project/launcher/target/release/pack$binformat $data/uimadcad \
-		uimadcad/__init__.py \
-		uimadcad/common.py \
-		uimadcad/apputils.py \
-		uimadcad/interpreter.py \
-		uimadcad/settings.py \
-		uimadcad/errorview.py \
-		uimadcad/detailview.py \
-		uimadcad/tricks.py \
-		uimadcad/sceneview.py \
-		uimadcad/scriptview.py \
-		uimadcad/tooling.py \
-		uimadcad/gui.py \
-		uimadcad/__main__.py
 
-# the main executable
-install $project/launcher/uimadcad.py $bin/madcad
+# the common directories
 install -d $data/themes/
 install $project/themes/*.qss $data/themes/
 install $project/themes/*.yaml $data/themes/
-	
+
 # platform specific
 case $platform in
 linux)
-	# NOTE launcher, must be in release mode to not contain the source code
-	install $project/launcher/target/$cargotarget/$release/liblauncher.so $data/launcher.so
+	install $project/madcad $bin/
 
 	install -d $prefix/share/applications/
 	install $project/madcad.desktop $prefix/share/applications/
@@ -123,8 +82,7 @@ linux)
 	#update-mime-database ~/.local/share/mime
 	;;
 windows)
-	install $project/launcher/madcad.bat $bin/
-	install $project/launcher/target/$cargotarget/$release/launcher.dll $data/launcher.pyd
+	install $project/madcad.bat $bin/
 	
 	install -d $prefix/icons/breeze
 	python minimal-theme.py $project/icons/list.txt $project/breeze $prefix/icons/breeze

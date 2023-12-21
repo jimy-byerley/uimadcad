@@ -9,12 +9,12 @@ from madcad import Mesh, Web, note_label
 
 from .common import *
 from . import settings
-from . import sceneview
 
 
 
 class DetailView(QWidget):
 	def __init__(self, scene, key, parent=None):
+		from . import sceneview
 		super().__init__(parent)
 		# setup ui
 		self._text = QTextEdit()
@@ -92,7 +92,7 @@ class DetailView(QWidget):
 						font=QFont(familly, size), 
 						foreground=palette.text())
 		fmt_key = charformat(
-						font=QFont(familly, size*1.2, weight=QFont.Bold), 
+						font=QFont(familly, int(size*1.2), weight=QFont.Bold), 
 						foreground=palette.link())
 		
 		if isinstance(infos, dict):

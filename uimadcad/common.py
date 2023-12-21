@@ -45,9 +45,9 @@ def mixcolors(a, b, x):
 	b = b.toRgb()
 	y = 1-x
 	return QColor(
-		a.red()*x + b.red()*y,
-		a.green()*x + b.green()*y,
-		a.blue()*x + b.blue()*y,
+		int(a.red()*x + b.red()*y),
+		int(a.green()*x + b.green()*y),
+		int(a.blue()*x + b.blue()*y),
 		)
 
 
