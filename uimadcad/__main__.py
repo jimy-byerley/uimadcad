@@ -49,7 +49,7 @@ if __name__ == '__main__':
 	settings.use_color_preset()
 	settings.use_stylesheet()
 	
-	# set locale settings to default to get correct 'repr' of glm types
+	# set locale settings to C default to get correct 'repr' of glm types
 	locale.setlocale(locale.LC_NUMERIC, 'C')
 	
 	# start software

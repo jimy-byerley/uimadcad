@@ -1,0 +1,36 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "uimadcad"
+version = "0.7.0"
+requires-python = ">= 3.2"
+dependencies = [
+	"pymadcad[ply,stl] >= 0.13",
+	"pyqt5 >= 5.11",
+	"pyyaml >= 6",
+	]
+authors = [{name = "jimy byerley", email = "jimy.byerley@gmail.com"}]
+license = {file = "LICENSE"}
+description = "user-friendly graphical environment for madcad"
+classifiers = [
+	"License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+	"Topic :: Scientific/Engineering",
+	"Programming Language :: Python :: 3.8",
+	"Programming Language :: Python :: 3.9",
+	"Programming Language :: Python :: 3.10",
+	"Programming Language :: Python :: 3.11",
+	"Programming Language :: Python :: 3.12",
+	"Programming Language :: Python :: Implementation :: CPython",
+	"Intended Audience :: Science/Research",
+	"Intended Audience :: Manufacturing",
+	"Intended Audience :: Education",
+	"Topic :: Scientific/Engineering",
+	"Topic :: Scientific/Engineering :: Visualization",
+	"Environment :: X11 Applications :: Qt",
+	]
+
+[project.urls]
+Home = "https://madcad.netlify.com"
+Repository = "https://github.com/jimy-byerley/uimadcad"
