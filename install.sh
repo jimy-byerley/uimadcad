@@ -38,7 +38,7 @@ prefix=${prefix:-$project/dist/${platform}_${arch}}
 
 case $platform in
 linux)
-	data=$prefix/share/madcad
+	data=$prefix/lib/python3/dist-packages
 	bin=$prefix/bin
 	binformat=
 	cargotarget=$arch-unknown-linux-gnu
@@ -62,8 +62,9 @@ install -d $data
 
 # the common directories
 install -d $data/themes/
-install $project/themes/*.qss $data/themes/
-install $project/themes/*.yaml $data/themes/
+install $project/uimadcad/*.py $data/
+install $project/uimadcad/themes/*.qss $data/themes/
+install $project/uimadcad/themes/*.yaml $data/themes/
 
 # platform specific
 case $platform in
@@ -73,18 +74,18 @@ linux)
 	install -d $prefix/share/applications/
 	install $project/madcad.desktop $prefix/share/applications/
 	install -d $prefix/share/icons/hicolor/scalable/apps
-	install $project/icons/*.svg $prefix/share/icons/hicolor/scalable/apps/
+	install $project/uimadcad/icons/madcad-*.svg $prefix/share/icons/hicolor/scalable/apps/
 	
 	install -d $prefix/share/icons/hicolor/scalable/mimetypes
-	install $project/mimetypes/madcad-*.svg $prefix/share/icons/hicolor/scalable/mimetypes/
+	install $project/mimetypes/*.svg $prefix/share/icons/hicolor/scalable/mimetypes/
 	install -d $prefix/share/mime/packages/
 	install $project/mimetypes/*.xml $prefix/share/mime/packages/
 	;;
 windows)
 	install $project/madcad.bat $bin/
 	
-	install -d $prefix/icons/breeze
-	install $project/icons/*.svg $prefix/icons/breeze/actions/symbolic/
+	install -d $prefix/icons
+	install $project/icons/*.svg $prefix/icons/
 	install $project/icons/*.ico $prefix/
 	;;
 ?)

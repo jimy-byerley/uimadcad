@@ -38,7 +38,7 @@ $target/install.sh -p $prefix -a $arch -h $platform
 case $format in
 tar)
 	cd $(dirname $prefix)
-	tar cf uimadcad_${version}_${arch}.tar.gz ${platform}_${arch}
+	tar cf uimadcad-${version}-${arch}.tar.gz ${platform}-${arch}
 	;;
 	
 zip)
@@ -47,13 +47,13 @@ zip)
 	mv $prefix $package
 	(
 		cd $(dirname $package)
-		7z a uimadcad_${version}_${arch}.zip madcad
+		7z a uimadcad_${version}-${arch}.zip madcad
 	)
 	;;
 	
 deb)
 	# rename the tree for further additions
-	package=$target/dist/deb_${arch}
+	package=$target/dist/deb-${arch}
 	rm -fr $package
 	install -d $package
 	mv $prefix $package/usr
@@ -77,7 +77,7 @@ deb)
 	)
 	
 	# create package
-	dpkg -b $package $target/dist/uimadcad_${version}_${arch}.deb
+	dpkg -b $package $target/dist/uimadcad-${version}-${arch}.deb
 	;;
 	
 ?)
