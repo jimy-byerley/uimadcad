@@ -76,18 +76,16 @@ linux)
 	install $project/icons/*.svg $prefix/share/icons/hicolor/scalable/apps/
 	
 	install -d $prefix/share/icons/hicolor/scalable/mimetypes
-	install $project/mimetypes/*.svg $prefix/share/icons/hicolor/scalable/mimetypes/
+	install $project/mimetypes/madcad-*.svg $prefix/share/icons/hicolor/scalable/mimetypes/
 	install -d $prefix/share/mime/packages/
 	install $project/mimetypes/*.xml $prefix/share/mime/packages/
-	#update-mime-database ~/.local/share/mime
 	;;
 windows)
 	install $project/madcad.bat $bin/
 	
 	install -d $prefix/icons/breeze
-	python minimal-theme.py $project/icons/list.txt $project/breeze $prefix/icons/breeze
- 	install $project/icons/*.svg $prefix/icons/breeze/actions/symbolic/
-	install $project/icons/madcad.ico $prefix/
+	install $project/icons/*.svg $prefix/icons/breeze/actions/symbolic/
+	install $project/icons/*.ico $prefix/
 	;;
 ?)
 	echo "platform not supported: $platform"
