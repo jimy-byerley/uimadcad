@@ -1,4 +1,4 @@
-![madcad-logo](icons/madcad.png)
+![madcad-logo](uimadcad/icons/madcad.png)
 
 # UI-MADCAD
 
