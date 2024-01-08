@@ -95,7 +95,7 @@ rpm)
 	)
 	;;
 	
-?)
+*)
 	echo "package type not supported: $format"
 	
 esac

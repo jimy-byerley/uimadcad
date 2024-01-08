@@ -223,9 +223,17 @@ option2 = (sbevelgear(8, 20, radians(70),  helix_angle=radians(20), bore_radius=
 
 option3 = Solid(part=gear(8, 22, 10, helix_angle=radians(20), bore_radius=space_radius, hub_height=0)).transform(-8*Z)
 
-# export the parts to print
-io.write(part_top, '/tmp/differentiel-part-top.stl')
-io.write(part_mid, '/tmp/differentiel-part-mid.stl')
-io.write(output['bearing']['part'], '/tmp/bearing-15-24-5-shape.stl')
-io.write(output['gear']['part'], '/tmp/differentiel-output-gear.stl')
-io.write(transmiter['gear']['part'], '/tmp/differentiel-transmiter-gear.stl')
+## export the parts to print
+#io.write(part_top, '/tmp/differentiel-part-top.stl')
+#io.write(part_mid, '/tmp/differentiel-part-mid.stl')
+#io.write(output['bearing']['part'], '/tmp/bearing-15-24-5-shape.stl')
+#io.write(output['gear']['part'], '/tmp/differentiel-output-gear.stl')
+#io.write(transmiter['gear']['part'], '/tmp/differentiel-transmiter-gear.stl')
+
+show([
+	part_top, part_bot, part_mid,
+	option2,
+	bolts,
+	output1, output2, transmiters,
+	annotations,
+	])

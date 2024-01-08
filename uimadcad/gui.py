@@ -1217,7 +1217,7 @@ class ComputationProgress(QWidget):
 		self.setLayout(layout)
 		
 	def set_state(self, rate):
-		self.bar.setValue(rate*100)
+		self.bar.setValue(int(rate*100))
 		
 	def show(self):
 		if self.main.mainwindow and not self.parent():

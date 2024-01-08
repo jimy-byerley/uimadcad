@@ -1,6 +1,7 @@
 from madcad import *
 from madcad.gear import *
 
+# bevelgear with annotations
 def sbevelgear(step, z, pitch_cone_angle, **kwargs):
 	part = bevelgear(step, z, pitch_cone_angle, **kwargs)
 	top = project(part.group(4).barycenter(), Z)
@@ -16,6 +17,7 @@ def sbevelgear(step, z, pitch_cone_angle, **kwargs):
 			],
 		)
 
+# bolt with annotations
 def bolt(a, b, dscrew, washera=False, washerb=False):
 	dir = normalize(b-a)
 	rwasher = washer(dscrew)
@@ -32,109 +34,6 @@ def bolt(a, b, dscrew, washera=False, washerb=False):
 			w1 = rwasher.place((Pivot, rwasher['top'], Axis(b, -dir))),
 			w2 = rwasher.place((Pivot, rwasher['top'], Axis(a, dir))),
 			)
-
-def screw_slot(axis, dscrew, rslot=None, hole=True, expand=True):
-	if not rslot:	rslot = 1.1*dscrew
-	o = axis[0]
-	x,y,z = dirbase(axis[1])
-
-	profile = []
-	if expand:
-		if isinstance(expand, bool):		expand = 2*rslot
-		profile.append(o + rslot*x + expand*z)
-	profile.append(o + rslot*x)
-	if hole:
-		if isinstance(hole, bool):	hole = dscrew*3
-		profile.append(o + 0.5*dscrew*x)
-		profile.append(o + 0.5*dscrew*x - hole*z)
-		profile.append(o - (hole+0.5*dscrew)*z)
-	else:
-		profile.append(o)
-	return revolution(2*pi, Axis(o,-z), wire(profile).segmented()).finish()
-
-def bolt_slot(a, b, dscrew, rslot=None, hole=True, expanda=True, expandb=True):
-	if not rslot:	rslot = 1.3*dscrew
-	x,y,z = dirbase(normalize(a-b))
-
-	def one_slot(o,x,z, expand):
-		profile = []
-		if expand:
-			if isinstance(expand, bool):		expand = 2*rslot
-			profile.append(o + rslot*x + expand*z)
-		profile.append(o + rslot*x)
-		if hole:
-			profile.append(o + 0.5*dscrew*x)
-		else:
-			profile.append(o)
-		return wire(profile).segmented()
-
-	return revolution(2*pi, Axis(a,-z), 
-			one_slot(a,x,z, expanda) + one_slot(b,x,-z, expandb).flip()
-			).finish()
-
-def bearing_slot_exterior(axis, rext, height, shouldering=True, circlip=False, evade=True, expand=True):
-	tol = stceil(rext*1e-2)
-	profile = [
-		rext*X + 0.5*height*Z,
-		rext*X - 0.5*height*Z,
-		]
-	if shouldering:
-		profile.insert(0, profile[0] - 0.17*rext*X)
-	if circlip:
-		circlip_height = stceil(0.1*rext)
-		circlip_depth = stceil(1.05*rext) - rext
-		profile[-1:] = accumulate([
-			rext*X - (0.5*height + tol)*Z,
-			circlip_depth*X,
-			-circlip_height*Z,
-			-circlip_depth*X,
-			-0.5*circlip_height*Z,
-			])
-	if expand == True:	expand = 0.4*rext
-	if evade:
-		if shouldering:
-			profile.insert(0, profile[0] + 0.1*rext*Z)
-		profile.append(profile[-1] + expand*(X-Z))
-		profile.insert(0, profile[0] + expand*(X+Z))
-	elif expand:
-		profile.extend([
-			profile[-1] - 0.05*rext*(Z-X),
-			profile[-1] - 0.05*rext*(Z-X) - expand*Z,
-			])
-		profile.insert(0, profile[0] + expand*Z)
-	return revolution(2*pi, Axis(O,-Z), wire(profile).segmented()) .transform(translate(axis[0]) * mat4(quat(Z, axis[1])))
-
-def bearing_slot_interior(axis, rint, height, shouldering=True, circlip=False, evade=True, expand=True):
-	tol = stceil(rint*2e-2)
-	profile = [
-		rint*X + 0.5*height*Z,
-		rint*X - 0.5*height*Z,
-		]
-	if shouldering:
-		profile.insert(0, profile[0] + 0.36*rint*X)
-	if circlip:
-		circlip_height = stceil(0.2*rint)
-		circlip_depth = rint - stceil(0.8*rint)
-		profile[-1:] = accumulate([
-			rint*X - (0.5*height + tol)*Z,
-			-circlip_depth*X,
-			-circlip_height*Z,
-			circlip_depth*X,
-			-0.5*circlip_height*Z,
-			])
-	if expand == True:	expand = 0.8*rint
-	if evade:
-		if shouldering:
-			profile.insert(0, profile[0] + 0.1*rint*Z)
-		profile.append(profile[-1] - expand*(X+Z))
-		profile.insert(0, profile[0] - expand*(X-Z))
-	elif expand:
-		profile.extend([
-			profile[-1] - 0.1*rint*(Z+X),
-			profile[-1] - 0.1*rint*(Z+X) - expand*Z,
-			])
-		profile.insert(0, profile[0] + expand*Z)
-	return revolution(2*pi, Axis(O,Z), wire(profile).segmented()) .transform(translate(axis[0]) * mat4(quat(Z, axis[1])))
 
 		
 
@@ -256,7 +155,6 @@ slot = cylinder(b+1e-2*Z, noproject(b, Z), neighscrew).flip()
 slots = mesh.mesh([slot.transform(b.pose)  for b in bolts])
 head = intersection(screw_support, slots)
 
-#l = transmiter['bearing'].pose * project(transmiter['bearing']['part'].group(2).barycenter(), Z)
 l = length(transmiter['gear']['axis'].origin) + 2*transmiter_rint
 transmiter_back = revolution(2*pi, Axis(O,Z), Wire([
 	l*Z,
@@ -270,7 +168,6 @@ exterior_shell = union(
 				transmiter_back.transform(rotate(i*2*pi/transmiter_amount, Z))  
 				for i in range(transmiter_amount) ]))
 exterior = union(head, exterior_shell)
-#exterior = boolean.boolean(head, exterior_shell, (False,False), prec=1e-8)
 
 interior.mergeclose()
 part = intersection(interior, exterior).finish()
@@ -300,4 +197,8 @@ annotations = [
 	note_distance(O, a, project=X, offset=15*Z),
 	]
 
-#output_list = Solid(content=[output1, part_top]).transform(30*Z)
+show([
+	part_top, part_bot,
+	output1, output2, transmiters,
+	bolts,
+	])

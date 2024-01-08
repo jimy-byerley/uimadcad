@@ -93,7 +93,7 @@ class DetailView(QWidget):
 						font=QFont(familly, size), 
 						foreground=palette.text())
 		fmt_key = charformat(
-						font=QFont(familly, size*1.2, weight=QFont.Bold), 
+						font=QFont(familly, int(size*1.2), weight=QFont.Bold), 
 						foreground=palette.link())
 		
 		if isinstance(infos, dict):

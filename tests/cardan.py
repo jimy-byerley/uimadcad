@@ -105,8 +105,8 @@ def bolt(a, b, radius, washera=False, washerb=False):
 	return Solid(
 			screw = rscrew.place((Pivot, rscrew['axis'], Axis(a-thickness*dir, -dir))), 
 			nut = rnut.place((Pivot, rnut['bottom'], Axis(b+thickness*dir, -dir))),
-			w1 = rwasher.place((Pivot, rnut['top'], Axis(b-0.5*thickness*dir, -dir))),
-			w2 = rwasher.place((Pivot, rnut['top'], Axis(a+0.5*thickness*dir, dir))),
+			w1 = rwasher.place((Pivot, rwasher['top'], Axis(b-0.5*thickness*dir, -dir))),
+			w2 = rwasher.place((Pivot, rwasher['top'], Axis(a+0.5*thickness*dir, dir))),
 			)
 
 def moyeu(brext, rext, thickness, brint=None, slot=False):
@@ -137,7 +137,7 @@ def moyeu(brext, rext, thickness, brint=None, slot=False):
 		tubes.flip(),
 		tangents='tangent', weight=-1,
 		)
-	moyeu.option(color=vec3(0.7))
+	moyeu
 
 	bearing = slidebearing(
 					dint = 2*brint, 
@@ -161,14 +161,16 @@ rint = 16/2
 rext = 40/2
 thickness = 0.7
 
-upper = cardan_side(rint*1.05, rext, rext*0.25, thickness, rext*2)
+upper = cardan_side(rint*1.02, rext, rext*0.25, thickness, rext*2)
 lower = upper.transform(rotate(pi/2,Z) * rotate(pi,Y))
 central = moyeu(rint, rext, thickness)
 
-kin = Kinematic([
-	Pivot(upper, central, Axis(O,Y), Axis(O,Y)),
-	Pivot(lower, central, Axis(O,Y), Axis(O,X)),
-	])
+#kin = Kinematic([
+#	Pivot(upper, central, Axis(O,Y), Axis(O,Y)),
+#	Pivot(lower, central, Axis(O,Y), Axis(O,X)),
+#	])
+
+#rotated = upper.transform(rotate(pi/3, X))
 
 part = central['bearings'][0]['part']
 islands = part.group(2).islands()

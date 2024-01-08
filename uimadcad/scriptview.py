@@ -339,7 +339,7 @@ class LineNumbers(QWidget):
 			if block.isVisible() and top >= zone.top():
 				height = view.blockBoundingRect(block).height()
 				painter.setFont(self.font)
-				painter.drawText(0, top, self.width-2*charwidth, height, Qt.AlignRight, str(block.blockNumber()+1))
+				painter.drawText(0, int(top), int(self.width-2*charwidth), int(height), Qt.AlignRight, str(block.blockNumber()+1))
 				top += height
 			block = block.next()
 
@@ -424,7 +424,7 @@ class PathWidget(QWidget):
 		
 		pen = painter.pen()
 		pen.setJoinStyle(Qt.BevelJoin)
-		pen.setWidth(0.1*h)
+		pen.setWidth(int(0.1*h))
 		pen.setColor(palette.color(QPalette.ButtonText))
 		painter.setPen(pen)
 		self.zones = []
@@ -432,7 +432,7 @@ class PathWidget(QWidget):
 		for e in self.path:
 			painter.drawPath(self.separator.translated(QPoint(x,0)))
 			x += h*0.8
-			painter.drawText(x, font.height() - font.descent(), e)
+			painter.drawText(int(x), int(font.height() - font.descent()), e)
 			x += font.horizontalAdvance(e) + h*0.6
 			self.zones.append(x)
 			
