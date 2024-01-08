@@ -4,7 +4,7 @@ Architecture: $ARCH
 Essential: no
 Section: science
 Priority: optional
-Homepage: https://github.com/jimy-byerley/pymadcad
+Homepage: https://github.com/jimy-byerley/uimadcad
 Depends: python3 (>=3.6), python3-pyqt5 (>=5), python3-pyqt5.qtopengl (>=5)
 Maintainer: Jimy Byerley <jimy.byerley@gmail.com>
 Installed-Size: $SIZE
