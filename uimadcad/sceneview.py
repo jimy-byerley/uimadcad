@@ -102,8 +102,6 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 		# update the scene
 		super().sync(newscene)
-		# perform other actions on sync
-		self.dequeue()
 		
 		self.update_solidsets()
 		# trigger the signal for dependent widgets
@@ -255,7 +253,7 @@ class Scene(madcad.rendering.Scene, QObject):
 				else:
 					obj, last = self.poses.get(obj), obj
 			if isinstance(obj, Solid.display):
-				disp.world = obj.world * obj.pose
+				disp.world = obj.world * obj.local
 			elif obj:
 				disp.world = obj.world 
 			else:
@@ -362,11 +360,8 @@ class SceneView(madcad.rendering.View):
 		action.setToolTip('display faces')
 		action.toggled.connect(lambda enable: self.set_option('display_faces', enable))
 		self.quick.addAction(action)
-		#action = QAction('all', main, checkable=True)
-		#action.setToolTip('display all variables')
-		#action.toggled.connect(main._display_all)
-		#self.quick.addAction(action)
 		self.quick.addSeparator()
+		
 		self.quick.addAction(QIcon.fromTheme('view-fullscreen'), 'adapt view to centent', self.adapt)
 		self.quick.addAction(QIcon.fromTheme('madcad-view-normal'), 'set view normal to mesh', self.normalview)
 		self.quick.addAction(QIcon.fromTheme('madcad-projection'), 'switch projection perspective/orthographic', self.projectionswitch)

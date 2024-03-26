@@ -10,9 +10,9 @@ from .common import ressourcedir
 
 
 execution = {
-	'onstartup': True,			# execution at program startup
+	'onstartup': False,			# execution at program startup
 	'trigger': 1,				# execution trigger: {0: manual, 1: on line change, 2: on typing}
-	'steptime': 0.1,			# execution time tolerated between backups, if a block runs a longer time, the interpreter will start create a backup
+	'backup': 0.2,			# execution time tolerated between backups, if a block runs a longer time, the interpreter will start create a backup
 	'checkdanger': 'startup',	# when to check for dangerous code ('never'/False, 'startup'/True, 'always')
 	}
 	
@@ -235,3 +235,6 @@ def use_stylesheet(name=None):
 			print(err)
 			return
 
+# automatically load settings in the file exist
+try:	load()
+except FileNotFoundError:	raise

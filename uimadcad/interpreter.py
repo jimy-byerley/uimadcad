@@ -10,9 +10,8 @@ class InterpreterError(Exception):	pass
 
 class Interpreter:
 	''' script interpreter using caching '''
-	backupstep = 0.2
 
-	def __init__(self, text='', env=None, extract=None, name='custom-interpreter'):
+	def __init__(self, text='', env=None, extract=None, name='custom-interpreter', backuptime=0.2):
 		self.name = name	# module name of the interpreter
 		self.text = text	# complete text edited
 		self.extract = extract or (lambda p: p)	# extractor of the ast part to execute
@@ -26,6 +25,7 @@ class Interpreter:
 		self.neverused = set()
 		self.ids = {}			# object names indexed by their id
 		self.locations = {}		# objects location intervals indexed by object name
+		self.backuptime = backuptime
 		
 		self.backups = [(0, self.current)]						# local variables used
 		self.ast = ast.Module(body=[], type_ignores=[])		# last complete ast compiled
@@ -47,8 +47,8 @@ class Interpreter:
 			self.ast_end = 0
 		
 	def lastbackup(self, position):
-		''' get the index of the last env backup before position '''
-		i = bisect(self.backups, position, key=lambda backup: backup[0])
+		''' get the index of the last env backuptime before position '''
+		i = bisect(self.backups, position, key=lambda backuptime: backuptime[0])
 		if i == len(self.backups) or self.backups[i][0] > position:	i -= 1
 		return i
 	
@@ -74,13 +74,13 @@ class Interpreter:
 		scope = self.extract(self.ast)
 		if not scope:	raise ValueError('unable to extract the current scope from the ast')
 		
-		# get the code to execute from the last backup
+		# get the code to execute from the last backuptime
 		backpos, backenv = self.backups[self.lastbackup(target)]
 		ast_current = astatpos(scope, backpos)
 		ast_target = astatpos(scope, target)
 		# ast until target
 		part = scope.body[ast_current:ast_target]
-		# pick possible backup points
+		# pick possible backuptime points
 		stops = set(stmt.end_position  for stmt in part)
 		# remaining expressions before target in the AST
 		if ast_target < len(scope.body):
@@ -112,7 +112,7 @@ class Interpreter:
 					onstep(i/len(processed.body))
 				
 				# autobackup if this is between 2 statements
-				if stmt.end_position in stops and time() - starttime > self.backupstep:
+				if stmt.end_position in stops and time() - starttime > self.backuptime:
 					self.backups[self.lastbackup(stmt.position)+1
 								:self.lastbackup(target)+1] = [(stmt.end_position, copy(env))]
 					starttime = time()

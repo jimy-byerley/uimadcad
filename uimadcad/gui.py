@@ -17,7 +17,7 @@ from PyQt5.QtCore import (
 		QUrl,
 		)
 from PyQt5.QtWidgets import (
-		QApplication, QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction, QShortcut,
+		QApplication, QVBoxLayout, QWidget, QHBoxLayout, QStyleFactory, QSplitter, QSizePolicy, QAction, QActionGroup, QShortcut,
 		QPlainTextDocumentLayout, 
 		QPushButton, QLabel, QComboBox, QProgressBar,
 		QMainWindow, QDockWidget, QFileDialog, QMessageBox, QDialog,
@@ -82,7 +82,7 @@ class Madcad(QObject):
 		self.active_editor = None
 		self.active_tool = None
 		
-		self.exectrigger = 1
+		self.exectrigger = settings.execution['trigger']
 		self.exectarget = 0
 		self.execthread = None
 		self.editzone = [0,1]
@@ -108,7 +108,7 @@ class Madcad(QObject):
 		self.mod = Modification()
 		self.base = mat4(1)
 		self.scenesmenu = SceneList(self)
-		self.interpreter = Interpreter()
+		self.interpreter = Interpreter(backuptime = settings.execution['backup'])
 		self.scopes = []
 		
 		# madcad widgets
@@ -222,7 +222,6 @@ class Madcad(QObject):
 		self.assist.tool(None)
 		self.active_tool = None
 	
-	# END
 	# BEGIN --- file management system ---
 	
 	def _new(self):
@@ -835,6 +834,10 @@ class Madcad(QObject):
 	def _switchprojection(self):
 		if self.active_sceneview:
 			self.active_sceneview.projectionswitch()
+	def _switch_kinematic_mode(self, mode):
+		if self.active_sceneview:
+			self.active_sceneview.scene.options['kinematic_manipulation'] = mode
+			self.active_sceneview.scene.sync()
 	
 	def execution_label(self, label):
 		for view in self.views:
@@ -1044,7 +1047,7 @@ class MainWindow(QMainWindow):
 		menu.addAction(QIcon.fromTheme('edit-node'), 'graphical edit object', main._edit, QKeySequence('E'))
 		menu.addAction(QIcon.fromTheme('edit-paste'), 'end graphical edit ', main._finishedit, QKeySequence('Escape'))
 		
-		menu = menubar.addMenu('&View')
+		menu = menubar.addMenu('&Window')
 		action = QAction('display quick access toolbars', main, checkable=True)
 		action.setChecked(settings.view['quick_toolbars'])
 		action.toggled.connect(main._display_quick)
@@ -1052,12 +1055,24 @@ class MainWindow(QMainWindow):
 		menu.addSeparator()
 		
 		style = menu.addMenu('style sheet')
+		group = QActionGroup(style)
 		for name in settings.list_stylesheets():
-			style.addAction(name, lambda name=name: settings.use_stylesheet(name))
+			action = QAction(name)
+			action.setCheckable(True)
+			action.setChecked(name == settings.view['stylesheet'])
+			action.toggled.connect(partial(settings.use_stylesheet, name))
+			group.addAction(action)
+			style.addAction(action)
 				
 		theme = menu.addMenu('color preset')
+		group = QActionGroup(theme)
 		for name in settings.list_color_presets():
-			theme.addAction(name, lambda name=name: settings.use_color_preset(name))
+			action = QAction(name)
+			action.setCheckable(True)
+			action.setChecked(name == settings.view['color_preset'])
+			action.toggled.connect(partial(settings.use_color_preset, name))
+			group.addAction(action)
+			theme.addAction(action)
 		
 		layouts = menu.addMenu('layout preset')
 		layouts.addAction('simple +')
@@ -1075,41 +1090,60 @@ class MainWindow(QMainWindow):
 		
 		
 		menu = menubar.addMenu('&Scene')
+		
+		displays = menu.addMenu("displays")
 		action = QAction('display points', main, checkable=True, shortcut=QKeySequence('Shift+P'))
 		action.setChecked(madcad.settings.scene['display_points'])
 		action.toggled.connect(main._display_points)
-		menu.addAction(action)
+		displays.addAction(action)
 		action = QAction('display wire', main, checkable=True, shortcut=QKeySequence('Shift+W'))
 		action.setChecked(madcad.settings.scene['display_wire'])
 		action.toggled.connect(main._display_wire)
-		menu.addAction(action)
+		displays.addAction(action)
 		action = QAction('display groups', main, checkable=True, shortcut=QKeySequence('Shift+G'))
 		action.setChecked(madcad.settings.scene['display_groups'])
 		action.toggled.connect(main._display_groups)
-		menu.addAction(action)
+		displays.addAction(action)
 		action = QAction('display faces', main, checkable=True, shortcut=QKeySequence('Shift+F'))
 		action.setChecked(madcad.settings.scene['display_faces'])
 		action.toggled.connect(main._display_faces)
-		menu.addAction(action)
+		displays.addAction(action)
 		action = QAction('display grid', main, checkable=True, shortcut=QKeySequence('Shift+B'))
 		action.setChecked(madcad.settings.scene['display_grid'])
 		action.toggled.connect(main._display_grid)
-		menu.addAction(action)
+		displays.addAction(action)
 		action = QAction('display annotations', main, checkable=True, shortcut=QKeySequence('Shift+D'))
 		action.setChecked(madcad.settings.scene['display_annotations'])
 		action.toggled.connect(main._display_annotations)
-		menu.addAction(action)
+		displays.addAction(action)
 		action = QAction('display all variables', main, checkable=True, shortcut=QKeySequence('Shift+V'))
 		action.toggled.connect(main._display_all)
-		menu.addAction(action)
-		menu.addSeparator()
-		menu.addAction('switch projection', main._switchprojection, shortcut=QKeySequence('Shift+S'))
-		menu.addAction('center on object', main._viewcenter, shortcut=QKeySequence('Shift+C'))
-		menu.addAction('adjust to object', main._viewadjust, shortcut=QKeySequence('Shift+A'))
-		menu.addAction('look to object', main._viewlook, shortcut=QKeySequence('Shift+L'))
-		menu.addAction('normal to object', main._viewnormal, shortcut=QKeySequence('Shift+N'))
+		displays.addAction(action)
+		
+		manipulation = menu.addMenu("kinematic mode")
+		group = QActionGroup(manipulation)
+		for mode in ('joint', 'internal', 'translate', 'rotate'):
+			action = QAction(mode, manipulation)
+			action.setCheckable(True)
+			action.setShortcut(mode[0].upper())
+			action.setChecked(mode == madcad.settings.scene['kinematic_manipulation'])
+			action.toggled.connect(partial(main._switch_kinematic_mode, mode))
+			group.addAction(action)
+			manipulation.addAction(action)
+		
 		menu.addSeparator()
 		
+		menu.addAction(QIcon.fromTheme('lock'), 'lock solid', main.lock_solid, shortcut=QKeySequence('L'))
+		menu.addAction(QIcon.fromTheme('madcad-solid'), 'set active solid', main.set_active_solid, shortcut=QKeySequence('S'))
+		menu.addAction('explode objects +')
+		menu.addSeparator()
+		
+		menu.addAction(QIcon.fromTheme('madcad-projection'), 'switch projection', main._switchprojection, shortcut=QKeySequence('Shift+S'))
+		menu.addAction(QIcon.fromTheme('view-fullscreen'), 'center on object', main._viewcenter, shortcut=QKeySequence('Shift+C'))
+		menu.addAction(QIcon.fromTheme('view-fullscreen'), 'adjust to object', main._viewadjust, shortcut=QKeySequence('Shift+A'))
+		menu.addAction(QIcon.fromTheme('view-fullscreen'), 'look to object', main._viewlook, shortcut=QKeySequence('Shift+L'))
+		menu.addAction(QIcon.fromTheme('madcad-view-normal'), 'normal to object', main._viewnormal, shortcut=QKeySequence('Shift+N'))
+		menu.addSeparator()
 		
 		def standardcamera(name):
 			orient = self.main.standardcameras[name]
@@ -1136,13 +1170,6 @@ class MainWindow(QMainWindow):
 		anims.addAction('rotate &local +')
 		anims.addAction('rotate &random +')
 		anims.addAction('cyclic &adapt +')
-		
-		menu.addSeparator()
-		
-		menu.addAction(QIcon.fromTheme('lock'), 'lock solid', main.lock_solid, shortcut=QKeySequence('L'))
-		menu.addAction('set active solid', main.set_active_solid, shortcut=QKeySequence('S'))
-		menu.addAction('explode objects +')
-		
 		
 		menu = menubar.addMenu('Scrip&t')
 		action = QAction('show line numbers', main, checkable=True, shortcut=QKeySequence('F11'))
