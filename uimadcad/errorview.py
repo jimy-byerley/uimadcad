@@ -152,7 +152,6 @@ class ErrorView(QWidget):
 	def showscope(self, enable):
 		if enable and self.exception.__traceback__:
 			n = self._text.textCursor().blockNumber() //2
-			print(self._text.textCursor().blockNumber() , n)
 			
 			step = self.exception.__traceback__
 			for i in range(n+1):
@@ -169,7 +168,7 @@ class ErrorView(QWidget):
 							font=QFont(familly, size), 
 							foreground=palette.text())
 			fmt_key = charformat(
-							font=QFont(familly, size*1.2, weight=QFont.Bold), 
+							font=QFont(familly, int(size*1.2), weight=QFont.Bold), 
 							foreground=palette.link())
 			
 			if isinstance(scope, dict):

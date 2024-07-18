@@ -1122,7 +1122,7 @@ class MainWindow(QMainWindow):
 		
 		manipulation = menu.addMenu("kinematic mode")
 		group = QActionGroup(manipulation)
-		for mode in ('joint', 'internal', 'translate', 'rotate'):
+		for mode in ('joint', 'translate', 'rotate'):
 			action = QAction(mode, manipulation)
 			action.setCheckable(True)
 			action.setShortcut(mode[0].upper())

@@ -219,7 +219,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		# process SolidDisplays all across the scene
 		def recur(level):
 			for disp in level:
-				if isinstance(disp, Solid.display):
+				if isinstance(disp, madcad.kinematic.displays.SolidDisplay):
 					process(disp)
 				# recursion
 				elif isinstance(disp, madcad.rendering.Group):	
@@ -242,7 +242,7 @@ class Scene(madcad.rendering.Scene, QObject):
 	def _updateposes(self, _):
 		for name,disp in self.displays.items():
 			obj = self.poses.get(name)
-			if obj != 'return' and isinstance(disp, (Solid.display, madcad.rendering.Group)):
+			if obj != 'return' and isinstance(disp, (madcad.kinematic.displays.SolidDisplay, madcad.rendering.Group)):
 				continue
 			# solve dynamic pose binding (when a string is put instead of a solid)
 			last = None
@@ -252,7 +252,7 @@ class Scene(madcad.rendering.Scene, QObject):
 					obj = self.active_solid
 				else:
 					obj, last = self.poses.get(obj), obj
-			if isinstance(obj, Solid.display):
+			if isinstance(obj, madcad.kinematic.displays.SolidDisplay):
 				disp.world = obj.world * obj.local
 			elif obj:
 				disp.world = obj.world 
