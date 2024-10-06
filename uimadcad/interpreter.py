@@ -255,6 +255,9 @@ class Interpreter:
 		funcname = callnode.func.id
 		defnode = self.locations[funcname]
 		
+		if not isinstance(defnode, ast.FunctionDef):
+			raise ValueError('functions in reassigned variables cannot be edited')
+		
 		# create the start state for the function scope
 		self.execute(callnode.position)
 		env = copy(self.current)
@@ -414,6 +417,8 @@ def astannotate(tree, text):
 				return
 			node.position = start
 			node.end_position = end+1
+		elif isinstance(node, ast.alias) and node.name == '*':
+			node.end_position = node.position + len(node.name)
 	
 	recursive(tree)
 

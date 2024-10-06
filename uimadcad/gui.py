@@ -479,7 +479,7 @@ class Madcad(QObject):
 		callname = self.posvar(cursor.position())
 		
 		try:	it, callnode, defnode = self.interpreter.enter(cursor.position())
-		except ValueError:	
+		except ValueError:
 			return
 		except InterpreterError:
 			print('invalid context for this function')
@@ -922,12 +922,13 @@ class Madcad(QObject):
 				view.editor.setExtraSelections(extra)
 	
 	def update_endzone(self):
-		i = astatpos(self.interpreter.part, self.exectarget)
-		if i < len(self.interpreter.part.body):
-			around = self.interpreter.part.body[i]
-			self.displayzones['aroundtarget'] = around.position, around.end_position
-		else:
-			self.displayzones.pop('aroundtarget', None)
+		if self.interpreter.part:
+			i = astatpos(self.interpreter.part, self.exectarget)
+			if i < len(self.interpreter.part.body):
+				around = self.interpreter.part.body[i]
+				self.displayzones['aroundtarget'] = around.position, around.end_position
+			else:
+				self.displayzones.pop('aroundtarget', None)
 	
 	# END
 	

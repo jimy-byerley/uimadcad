@@ -42,7 +42,7 @@ if __name__ == '__main__':
 		path = QIcon.themeSearchPaths()
 		path.append(ressourcedir + '/icons')
 		QIcon.setThemeSearchPaths(path)
-		QIcon.setThemeName('breeze')		
+		QIcon.setThemeName('breeze')
 	
 	settings.install()
 	settings.load()
