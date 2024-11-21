@@ -9,6 +9,176 @@ from madcad.nprint import nprint
 class InterpreterError(Exception):	pass
 
 class Interpreter:
+	def __init__(self, text='', env=None, name='madcad-interpreter'):
+		self.name = name
+		self.ast = []
+		self.update(text)
+	
+	def update(self, code, stop=None, onstep=None):
+		if not isinstance(code, Module):
+			code = ast.parse(text)
+		
+		def dependencies(node):
+			''' yield variable dependencies of a node '''
+			indev
+		def ischanged(results, node):
+			''' return true if the given node changed or one of its dependencies changes '''
+			return node != old_node or not all(cache_exists(dep)  for dep in dependencies(node.value))
+		def cache_get(scope, name):
+			''' ast for access to the cache for this variable name in this function's scope '''
+			return ast.Call(ast.Attribute(ast.Name('_madcad_cache'), ast.Name('get')), [scope, name])
+		def name_key(name):
+			''' cache key for the given variable name '''
+			return '{}-{}'.format(name, occurences.get(name))
+		def cache_keys(node):
+			''' yield cache keys from this node '''
+			indev
+		def cache_remove(scope, key):
+			''' remove the cached object for the given key '''
+			if scope in caches:
+				caches[scope].pop(key)
+			if not caches[scope]:
+				caches.pop(scope)
+		
+		def parcimonize(scope, args, body):
+			# number of assignment for each variable name
+			assigned = Counter()
+			# new ast body
+			new = [
+				# get the cache dictionnary for this scope
+				Assign(
+					targets = [Name('_madcad_cache', Store())],
+					value = Subscript(
+						# all caches are coming from a global dictionnary if scope caches
+						value = Subscript(
+							value = Name('_global_madcad_cache', Load()),
+							slice = Constant(scope),
+							),
+						# the scope instance is indexed by the instance's arguments values
+						slice = Call(
+								func = Name('_madcad_scope_key', Load()),
+								args = [Name(name, Load()) for name in args],
+								keywords = []),
+						ctx = Load(),
+						),
+				]
+			for node in body:
+				# functions are caching in separate scopes
+				if isinstance(node, FuncDef):
+					# clear function caches if the function signature changed
+					if ischanged(node.name, node.args):
+						cache_remove(node.name)
+					
+					args = node.args.posonlyargs + node.args.args + node.args.varargs + node.args.kwonlyargs + node.args.kwarg
+					# redefine the function with caching
+					new.append(FuncDef(
+						name = node.name,
+						args = node.args,
+						body = parcimonize(
+							# nested scope name
+							scope = scope+'.'+node.name,
+							# arguments identifying the scope instance
+							args = sorted([arg.arg   for arg in args]),
+							body = node.body,
+							),
+						decorator_list = node.decorator_list,
+						))
+				# an expression assigned is assumed to not modify its arguments
+				elif isinstance(node, Assign):
+					# check if changed
+					if ischanged(node.targets, node.value):
+						# changed, remove all caches
+						for dst in cache_keys(node.targets):
+							cache_remove(dst)
+						# cache new results
+						new.append(Assign(
+							targets = node.targets + [cache_set(node.targets)],
+							value = node.value,
+							))
+					else:
+						# not changed, try to reuse previous results from cache
+						new.append(If(
+							# if cache is None
+							test = Compare(
+								left = cache_get(key), 
+								ops = [Is()], 
+								comparators = [Constant(value=None)]
+								),
+							# compute the result
+							body = [Assign(
+								targets = node.targets + [cache_set(key)], 
+								value = node.value,
+								)],
+							# retreive from cache
+							orelse = [Assign(
+								targets = node.targets, 
+								value = cache_get(key),
+								)],
+							))
+				# an expression without result is assumed to be an inplace modification
+				elif isinstance(node, Expr):
+					indev
+				# a block cannot be splitted because its bodies may be executed multiple times or not at all
+				elif isinstance(node, (If, For, While)):
+					indev
+				else:
+					new.append(node)
+			
+		return Module(body = parcimonize('<input>', (), code.body))
+	
+	def update(self, text, stop=None, onstep=None):
+		new = ast.parse(text)
+		
+		# check what didn't changed
+		changed = set()
+		def ischanged(nodes, olds):
+			if nodes != olds[:len(nodes)]:
+				return True
+			for node in nodes:
+				for dep in ast_dependencies(node):
+					if dep in changed:
+						return True
+			return False
+		
+		# TODO: if a target is assigned multiple times, then create derivated unique names to use as cache names
+		sources = {}  # the source if each variable (assignment target) is a list of expressions creating and processing it
+		filtered = [] # statements to retain
+		for node in new:
+			if isinstance(node, ast.FuncDef):
+				# the function should optimize its AST itself ?
+				# or simply here and in the function, the AST is altered depending on available previous caches, juste before execution
+				# TODO
+				filtered.append(indev)
+			elif isinstance(node, (ast.If, ast.For, ast.While, ...)):
+				filtered.append(ast.If(
+					node.test, 
+					filter_changed(node.body), 
+					filter_changed(node.oelse),
+					))
+			# an expression assigned is assumed to not modify its arguments
+			elif isinstance(node, ast.Assign):
+				name = node.targets[0]
+				sources[name] = [node]
+				if ischanged(sources[name], self.sources[name]):
+					changed.add |= node.targets
+					filtered.append(node)
+				else:
+					filtered.append(ast.Assign(
+						node.targets, 
+						ast.Subscript(ast.Name('__uimadcad_cache__'), name),
+						))
+			# an expression without result is assumed to be an implace modification
+			elif isinstance(node, ast.Expr):
+				count = False
+				for dep in ast_dependencies(node):
+					sources[dep].append(node)
+					if ischanged(sources[dep], self.sources[dep]):
+						filtered.append(node)
+						count = True
+				if count:
+					filtered.append(node)
+
+class Interpreter:
 	''' script interpreter using caching '''
 
 	def __init__(self, text='', env=None, extract=None, name='custom-interpreter', backuptime=0.2):
