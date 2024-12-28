@@ -6,6 +6,173 @@ from madcad.mathutils import bisect
 from madcad.nprint import nprint
 
 
+
+
+def parcimonize(cache: dict, scope: str, args: list, code: list, previous: list) -> iter:
+	assigned = Counter()
+	changed = set()
+	
+	if not isinstance(code, list):
+		code = ast.parse(text)
+	
+	# new ast body
+	yield from parcimonize_init(scope)
+	for node in code:
+		# find inputs of this statement
+		deps = dependencies(node)
+		
+		# find the outputs of this statement
+		if isinstance(node, FuncDef):
+			provided = [node.name]
+		elif isinstance(node, Assign):
+			provided = [node.name for node in node.targets]
+		elif isinstance(node, (Expr, If, For, While, Try, Match, With)):
+			provided = deps
+		else:
+			provided = None
+		
+		# update the number of assignments to provided variables
+		assigned.update(provided[0])
+		# cache key for this statement
+		key = (provided, assigned[provided])
+		# check if the node code has changed
+		if previous[key] != node:
+			# count all depending variables as changed
+			changed.update(provided)
+			# void cache of changed statements
+			if scope in caches:
+				caches[scope].pop(key)
+			if not caches[scope]:
+				caches.pop(scope)
+		
+		# functions are caching in separate scopes
+		if isinstance(node, FuncDef):
+			yield _parcimonize_func(scope, node)
+		
+		# an expression assigned is assumed to not modify its arguments
+		elif isinstance(node, Assign):
+			yield _parcimonize_assign(key, node)
+		
+		# an expression without result is assumed to be an inplace modification
+		# a block cannot be splitted because its bodies may be executed multiple times or not at all
+		elif isinstance(node, (Expr, If, For, While, Try, Match, With)):
+			yield _parcimonize_block(key, deps, node)
+		
+		else:
+			new.append(node)
+		
+	return new
+
+def dependencies(node: AST) -> list:
+	''' yield variable dependencies of a node '''
+	for node in walk(node):
+		if isinstance(node, Name) and isinstance(node.ctx, Load):
+			yield node.name
+	
+def _scope_init(scope) -> list:
+	# get the cache dictionnary for this scope
+	return [Assign(
+			targets = [Name('_madcad_cache', Store())],
+			value = Subscript(
+				# all caches are coming from a global dictionnary of scope caches
+				value = Subscript(
+					value = Name('_global_madcad_cache', Load()),
+					slice = Constant(scope),
+					),
+				# the scope instance is indexed by the instance's arguments values
+				slice = Call(
+						func = Name('_madcad_scope_key', Load()),
+						args = [Name(name, Load()) for name in args],
+						keywords = []),
+				))]
+				
+def _parcimonize_func(cache, scope, node) -> AST:
+	# functions are caching in separate scopes
+	subscope = scope + '.' + node.name
+	# clear function caches if the function signature changed
+	if node.name != previous[key].name or node.args != previous[key].args:
+		caches.pop(subscope)
+	
+	args = node.args.posonlyargs + node.args.args + node.args.varargs + node.args.kwonlyargs + node.args.kwarg
+	# redefine the function with caching
+	return FuncDef(
+		name = node.name,
+		args = node.args,
+		body = parcimonize(
+			cache,
+			# nested scope name
+			scope = subscope,
+			# arguments identifying the scope instance
+			args = sorted([arg.arg   for arg in args]),
+			body = node.body,
+			previous = previous[key].body,
+			),
+		decorator_list = node.decorator_list,
+		)
+	
+def _parcimonize_assign(key, node) -> AST:
+	# an expression assigned is assumed to not modify its arguments
+	return If(
+		# if cache is None
+		test = Compare(
+			left = cache_get(key), 
+			ops = [Is()], 
+			comparators = [Constant(value=None)]
+			),
+		# compute the result
+		body = [
+			Assign(targets = Name('_madcad_tmp', Store()), value = node.value), 
+			cache_set(key, value = Name('madcad_tmp', Load())),
+			Assign(targets = node.targets, value = Name('madcad_tmp', Load())),
+			],
+		# retreive from cache
+		orelse = [
+			Assign(targets = node.targets, value = cache_get(key)),
+			],
+		)
+		
+def _parcimonize_block(key, deps, node) -> AST:
+	# an expression without result is assumed to be an inplace modification
+	# a block cannot be splitted because its bodies may be executed multiple times or not at all
+	outs = [Name(dep, Store())  for dep in deps]
+	ins = [Name(dep, Load())  for dep in deps]
+	return If(
+		# if cache is None
+		test = Compare(
+			left = cache_get(key), 
+			ops = [Is()], 
+			comparators = [Constant(value=None)]
+			),
+		# run the node
+		body = [
+			# copy affected variables
+			Assign(
+				targets = outs, 
+				value = Call(
+						func = Global('_madcad_copy', Load()),
+						args = [Tuple(ins)],
+					)),
+			# run original code
+			node,
+			# cache results
+			cache_set(key, value = Tuple(ins)),
+			],
+		# retreive from cache
+		orelse = [
+			Assign(targets = outs, value = cache_get(key))
+			],
+		))
+
+def _cache_get(scope, key) -> Expr:
+	''' ast for access to the cache for this variable name in this function's scope '''
+	return Call(Attribute(Name('_madcad_cache', Load()), Name('get', Load())), Constant(key))
+	
+def _cache_set(scope, key, value) -> Expr:
+	return Assign(Subscript(Name('_madcad_cache', Load()), Constant(name)), value)
+
+
+
+
 class InterpreterError(Exception):	pass
 
 class Interpreter:
@@ -87,7 +254,7 @@ class Interpreter:
 				elif isinstance(node, Assign):
 					# check if changed
 					if ischanged(node.targets, node.value):
-						# changed, remove all caches
+						# remove all caches
 						for dst in cache_keys(node.targets):
 							cache_remove(dst)
 						# cache new results
@@ -116,11 +283,46 @@ class Interpreter:
 								)],
 							))
 				# an expression without result is assumed to be an inplace modification
-				elif isinstance(node, Expr):
-					indev
 				# a block cannot be splitted because its bodies may be executed multiple times or not at all
-				elif isinstance(node, (If, For, While)):
-					indev
+				elif isinstance(node, (Expr, If, For, While, Try, Match, With)):
+					deps = dependencies(node)
+					if ischanged(deps, node):
+						for var in deps:
+							cache_remove(var)
+					load = []
+					for var in deps:
+						load.append(Assign(
+							targets = Name(var, Store()),
+							value = Call(
+								func = Global('_madcad_copy', Load()),
+								args = [Name(var, Load()),
+								),
+							))
+						compute.append(Assign(
+							targets = cache_set(var),
+							value = Load(var, Load()),
+							))
+					compute.append(node)
+					new.append(If(
+						test = Call(
+							func = Global('all', Load()),
+							args = [GeneratorExp(
+								elt = Compare(
+									left = cache_get(key),
+									ops = [Is()],
+									comparators = [Constant(value=None)],
+									),
+								generators = ...,
+								)],
+							),
+						body = load,
+						orelse = compute,
+						))
+					for var in deps:
+						new.append(Assign(
+							targets = cache_set(var),
+							value = Load(var, Load()),
+							))
 				else:
 					new.append(node)
 			
