@@ -9,7 +9,7 @@ def process(code):
 	code = temporaries(code)
 	vars = locate(code)
 
-def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: list) -> iter:
+def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict) -> iter:
 	''' make a code lazily executable by reusing as much previous results as possible '''
 	assigned = Counter()
 	changed = set()
@@ -24,13 +24,15 @@ def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: list)
 	yield from _scope_init(scope, args)
 	for node in code:
 		# find inputs of this statement
-		deps = dependencies(node)
+		deps = list(dependencies(node))
 		
 		# find the outputs of this statement
 		if isinstance(node, FunctionDef):
 			provided = [node.name]
 		elif isinstance(node, Assign):
 			provided = [node.id for node in node.targets]
+		elif isinstance(node, Return):
+			provided = '_return'
 		elif isinstance(node, (Expr, If, For, While, Try, Match, With)):
 			provided = deps
 		else:
@@ -39,7 +41,7 @@ def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: list)
 		# update the number of assignments to provided variables
 		assigned.update(provided)
 		# cache key for this statement
-		key = (provided[0], assigned[provided[0]])
+		key = '{}{}'.format(provided[0], assigned[provided[0]])
 		# check if the node code has changed
 		if previous.get(key) != node:
 			# count all depending variables as changed
@@ -52,7 +54,7 @@ def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: list)
 		
 		# functions are caching in separate scopes
 		if isinstance(node, FunctionDef):
-			yield _parcimonize_func(scope, node)
+			yield _parcimonize_func(cache, scope, node, key, previous)
 		
 		# an expression assigned is assumed to not modify its arguments
 		elif isinstance(node, Assign):
@@ -63,7 +65,10 @@ def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: list)
 		elif isinstance(node, (Expr, If, For, While, Try, Match, With)):
 			yield from _parcimonize_block(key, deps, node)
 			
-		# TODO elif isinstance(node, Return):
+		# an expression returned is assumed to not modify its arguments
+		elif isinstance(node, Return):
+			yield from _parcimonize_return(key, node)
+			
 		# TODO: decide what to do when the target is a subscript
 		
 		else:
@@ -84,100 +89,80 @@ def _scope_init(scope, args) -> list:
 				value = Subscript(
 					value = Name('_madcad_global_cache', Load()),
 					slice = Constant(scope),
+					ctx = Load(),
 					),
 				# the scope instance is indexed by the instance's arguments values
 				slice = Call(
 						func = Name('_madcad_scope_key', Load()),
 						args = [Name(name, Load()) for name in args],
 						keywords = []),
+				ctx = Load(),
 				))]
 				
-def _parcimonize_func(cache, scope, node) -> AST:
+def _parcimonize_func(cache, scope, node, key, previous) -> AST:
 	# functions are caching in separate scopes
 	subscope = scope + '.' + node.name
 	# clear function caches if the function signature changed
-	if node.name != previous[key].name or node.args != previous[key].args:
-		caches.pop(subscope)
+	prev = previous.get(key)
+	if not prev or node.name != prev.name or node.args != prev.args:
+		cache.pop(subscope, None)
 	
-	args = node.args.posonlyargs + node.args.args + node.args.varargs + node.args.kwonlyargs + node.args.kwarg
+	args = node.args.posonlyargs + node.args.args + node.args.kwonlyargs
+	if node.args.vararg:	args.append(node.args.vararg)
+	if node.args.kwarg:     args.append(node.args.kwarg)
 	# redefine the function with caching
 	return FunctionDef(
 		name = node.name,
 		args = node.args,
-		body = parcimonize(
+		body = list(parcimonize(
 			cache,
 			# nested scope name
 			scope = subscope,
 			# arguments identifying the scope instance
 			args = sorted([arg.arg   for arg in args]),
-			body = node.body,
-			previous = previous[key].body,
-			),
+			code = node.body,
+			previous = previous.get(key).body if key in previous else {},
+			)),
 		decorator_list = node.decorator_list,
 		)
+
+def _parcimonize_return(key, node) -> list:
+	# an expression returned is assumed to not modify its arguments
+	r = _parcimonize_assign(key, Assign([Name('_return', Store())], node.value))
+	r.append(Return(Name('_return', Load())))
+	return r
 		
 def _parcimonize_assign(key, node) -> list:
 	# an expression assigned is assumed to not modify its arguments
-	return [
-		Assign(Name('_madcad_tmp', Store()), _cache_get(key)),
-		If(
-			# if cache is None
-			test = Compare(
-				left = Name('_madcad_tmp', Load()),
-				ops = [Is()], 
-				comparators = [Constant(value=None)]
-				),
-			# compute the result
-			body = [
-				Assign(targets = Name('_madcad_tmp', Store()), value = node.value), 
-				_cache_set(key, value = Name('madcad_tmp', Load())),
-				Assign(targets = node.targets, value = Name('madcad_tmp', Load())),
-				],
-			# retreive from cache
-			orelse = [
-				Assign(targets = node.targets, value = Name('_madcad_tmp', Load())),
-				],
-			),
-		]
+	return _cache_use(key, node.targets, [
+		Assign(targets = [Name('_madcad_tmp', Store())], value = node.value), 
+		_cache_set(key, value = Name('_madcad_tmp', Load())),
+		Assign(targets = node.targets, value = Name('_madcad_tmp', Load())),
+		])
 		
 def _parcimonize_block(key, deps, node) -> list:
 	# an expression without result is assumed to be an inplace modification
 	# a block cannot be splitted because its bodies may be executed multiple times or not at all
 	outs = [Name(dep, Store())  for dep in deps]
 	ins = [Name(dep, Load())  for dep in deps]
-	return [
-		Assign(Name('_madcad_tmp', Store()), _cache_get(key)),
-		If(
-			# if cache is None
-			test = Compare(
-				left = Name('_madcad_tmp', Load()),
-				ops = [Is()], 
-				comparators = [Constant(value=None)]
-				),
-			# run the node
-			body = [
-				# copy affected variables
-				Assign(
-					targets = outs, 
-					value = Call(
-							func = Global('_madcad_copy', Load()),
-							args = [Tuple(ins)],
-						)),
-				# run original code
-				node,
-				# cache results
-				_cache_set(key, value = Tuple(ins)),
-				],
-			# retreive from cache
-			orelse = [
-				Assign(targets = outs, value = Name('_madcad_tmp', Load())),
-				],
-			),
-		]
+	return _cache_use(key, [Tuple(outs, Store())], [
+		# copy affected variables
+		Assign(
+			targets = [Tuple(outs, Store())], 
+			value = Call(
+					func = Name('_madcad_copy', Load()),
+					args = [Tuple(ins, Load())],
+					keywords = [],
+				)),
+		# run original code
+		node,
+		# cache results
+		_cache_set(key, value = Tuple(ins, Load())),
+		])
 
-def _cache_use(key, targets, generate) -> list:
+def _cache_use(key: hash, targets: list, generate: list) -> list:
 	return [
-		Assign(Name('_madcad_tmp', Store()), _cache_get(key)),
+		Assign([Name('_madcad_tmp', Store())], _cache_get(key)),
 		If(
 			# if cache is None
 			test = Compare(
@@ -189,7 +174,7 @@ def _cache_use(key, targets, generate) -> list:
 			body = generate,
 			# retreive from cache
 			orelse = [
-				Assign(outs, Name('_madcad_tmp', Load())),
+				Assign(targets, Name('_madcad_tmp', Load())),
 				],
 			),
 		]
@@ -197,15 +182,17 @@ def _cache_use(key, targets, generate) -> list:
 def _cache_get(key) -> Expr:
 	''' expression for accessing the cache value for this variable name in this function's scope '''
 	return Call(Name('_madcad_copy', Load()), 
-		[Call(
-			Attribute(Name('_madcad_cache', Load()), Name('get', Load())), 
-			[Constant(key)],
+		args = [Call(
+			Attribute(Name('_madcad_cache', Load()), 'get', Load()), 
+			args = [Constant(key)],
+			keywords = [],
 			)],
+		keywords = [],
 		)
 	
 def _cache_set(key, value) -> Expr:
 	''' statment for setting the given value to the given cache key '''
-	return Assign(Subscript(Name('_madcad_cache', Load()), Constant(key)), value)
+	return Assign([Subscript(Name('_madcad_cache', Load()), Constant(key), Store())], value)
 
 	
 def test_parcimonize():
@@ -213,16 +200,32 @@ def test_parcimonize():
 	from dis import dis
 	
 	filename = '<input>'
-	result = list(parcimonize(cache={}, scope=filename, args=(), code=parse(
-		"a = foo()\n"
-		"c = 5 + 3\n"
-		"b = bar(a, c)\n"
-		"d = boo(c)\n"
-		), previous={}))
+	original = parse('''
+def foo():
+	a = 1
+	return a
+def bar(x, y):
+	return x+y
+def boo(x):
+	return str(x)
+a = foo()
+c = 5 + 3
+b = bar(a, c)
+d = boo(c)
+fah(c, d, e, f, foo())
+a = dict(a=a, b=b)
+a.b = 2
+		''')
+	original_code = compile(original, filename, 'exec')
+	
+	result = list(parcimonize(cache={}, scope=filename, args=(), code=original, previous={}))
 	nprint('\n'.join(dump(node) for node in result))
 	
-	code = compile(Module(result), filename, 'exec')
-	print(dis(code))
+	result = Module(result, type_ignores=[])
+	complete(result)
+	code = compile(result, filename, 'exec')
+	dis(code)
+	print('original', len(original_code.co_code), 'parcimonized', len(code.co_code))
 
 def name_temporaries(tree: Module) -> Module:
 	''' process an AST to retreive its temporary values '''
@@ -316,6 +319,19 @@ def usage(node) -> (set, set, set):
 					wo.add(node.name)
 	return ro, wo, rw
 
+def complete(parent):
+	for node in walk(parent):
+		node.lineno = getattr(node, 'lineno', 0)
+		node.col_offset = getattr(node, 'col_offset', 0)
+	
+	# print(complete, type(parent), getattr(parent, 'lineno', None))
+	# for name, value in iter_fields(parent):
+	# 	if isinstance(value, (stmt, expr)):
+	# 		complete(value)
+	# 		parent.lineno = min(value.lineno, getattr(parent, 'lineno', value.lineno))
+	# 	if isinstance(value, list):
+	# 		for node in value:
+	# 			complete(node)
 				
 def annotate(tree, text):
 	''' enrich nodes by useful informations, such as start-end text position of tokens
