@@ -31,20 +31,20 @@ def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict)
 		deps = list(dependencies(node))
 		provided = list(results(node))
 		
+		if not provided: 
+			yield node
+			continue
+		
 		# update the number of assignments to provided variables
 		assigned.update(provided)
 		# cache key for this statement
 		key = '{}{}'.format(provided[0], assigned[provided[0]])
 		# check if the node code or dependencies has changed
-		# print('previous   ', previous)
 		if scope not in previous:
 			previous[scope] = {}
 		previous = previous[scope]
-		# if previous.get(key):
-			# print('may changed', dump(previous.get(key)) == dump(node), previous.get(key) == node)
 		
-		if equal(previous.get(key), node) or any(dep in changed  for dep in deps):
-			print('node changed', dump(node))
+		if not equal(previous.get(key), node) or any(dep in changed  for dep in deps):
 			# count all depending variables as changed
 			changed.update(provided)
 			# void cache of changed statements
@@ -77,53 +77,6 @@ def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict)
 		
 		else:
 			yield node
-
-def dependencies(node: AST) -> iter:
-	''' yield names of variables a node depends on '''
-	if isinstance(node, Name) and isinstance(node.ctx, Load):
-		yield node.id
-	elif isinstance(node, FunctionDef):
-		for expr in chain(node.args.defaults, node.args.kw_defaults):
-			yield from dependencies(expr)
-	else:
-		for child in iter_child_nodes(node):
-			yield from dependencies(child)
-
-def results(node: AST, inplace=False) -> iter:
-	''' yield names of variables assigned by a node '''
-	if isinstance(node, Name) and (isinstance(node.ctx, Store) or inplace):
-		yield node.id
-	elif isinstance(node, (FunctionDef, ClassDef)):
-		yield node.name
-	elif isinstance(node, Return):
-		yield 'return'
-	elif isinstance(node, Assign):
-		for target in node.targets:
-			yield from results(target, inplace=True)
-	elif isinstance(node, (Attribute, Subscript)):
-		yield from results(node.value, inplace)
-	elif isinstance(node, Call):
-		arg = next(iter(node.args), None) or next(iter(node.keywords), None)
-		if arg:
-			yield from results(arg, inplace=True)
-	else:
-		for child in iter_child_nodes(node):
-			yield from results(child)
-			
-def equal(a: AST, b: AST) -> bool:
-	if type(a) != type(b):	return False
-	if isinstance(node, Name):
-		return a.id == b.id
-	if isinstance(node, Attribute):
-		if a.attr != b.attr:	return False
-	if isinstance(node, (FunctionDef, AsyncFunctionDef, ClassDef)):
-		if a.name != b.name:	return False
-	if isinstance(node, (Global, Nonlocal)):
-		if set(a.names) != set(b.names):	return False
-	for ca, cb in zip(iter_child_nodes(a), iter_child_nodes(b)):
-		if not equal(ca, cb):
-			return False
-	return True
 	
 def _scope_init(scope: str, args: list) -> list:
 	# get the cache dictionnary for this scope
@@ -278,6 +231,8 @@ def test_parcimonize():
 	
 	filename = '<input>'
 	code = '''
+from math import sin, cos
+
 def foo():
 	a = 'a'
 	return a
@@ -287,14 +242,18 @@ def boo(x):
 	return [x]
 def fah(first, *args):
 	first.extend(args)
+
 e, f = 'e', 'f'
 a = foo()
 c = 'c'
 {}
 d = boo(c)
 fah(d, c, e, f, foo())
-# a = dict(a=a, b=b)
-# a.b = 2
+s = dict(a=a, b=b, c=1)
+s['c'] = 2
+
+if True: pass
+g = 0 if False else 1
 		'''
 	
 	original_ast = parse(code.format('b = bar(a, c)'))
@@ -318,6 +277,9 @@ fah(d, c, e, f, foo())
 		), env)
 	nprint('env', env)
 	nprint('cache', cache)
+	assert env.get('b') == 'ac'
+	assert env.get('d') == ['c', 'c', 'e', 'f', 'a']
+	assert env.get('s') == {'a': 'a', 'b': 'ac', 'c': 2}
 
 	second_ast = parse(code.format('b = bar(a, e)'))
 	result = Module(
@@ -326,16 +288,79 @@ fah(d, c, e, f, foo())
 	complete(result)
 	bytecode = compile(result, filename, 'exec')
 	nprint('cache', cache)
+	assert 'b1' not in cache['<input>'][ArgumentsKey(())]
 	env = {}
 	exec(bytecode, dict(
 		_madcad_global_cache = partial(global_cache, cache),
 		_madcad_copy = deepcopy,
 		), env)
 	nprint('cache', cache)
+	assert 'b1' in cache['<input>'][ArgumentsKey(())]
 	nprint('env', env)
+	assert env.get('b') == 'ae'
+	assert env.get('d') == ['c', 'c', 'e', 'f', 'a']
+	assert env.get('s') == {'a': 'a', 'b': 'ae', 'c': 2}
 
+def dependencies(node: AST) -> iter:
+	''' yield names of variables a node depends on '''
+	if isinstance(node, Name) and isinstance(node.ctx, Load):
+		yield node.id
+	elif isinstance(node, FunctionDef):
+		for expr in chain(node.args.defaults, node.args.kw_defaults):
+			yield from dependencies(expr)
+	else:
+		for child in iter_child_nodes(node):
+			yield from dependencies(child)
 
-def name_temporaries(tree: Module) -> Module:
+def results(node: AST, inplace=False) -> iter:
+	''' yield names of variables assigned by a node '''
+	if isinstance(node, Name) and (isinstance(node.ctx, Store) or inplace):
+		yield node.id
+	elif isinstance(node, (FunctionDef, ClassDef)):
+		yield node.name
+	elif isinstance(node, (Import, ImportFrom)):
+		for alias in node.names:
+			yield alias.name
+	elif isinstance(node, Return):
+		yield 'return'
+	elif isinstance(node, Assign):
+		for target in node.targets:
+			yield from results(target, inplace=True)
+	elif isinstance(node, (Attribute, Subscript)):
+		yield from results(node.value, inplace)
+	elif isinstance(node, Call):
+		arg = next(iter(node.args), None) or next(iter(node.keywords), None)
+		if arg:
+			yield from results(arg, inplace=True)
+	else:
+		for child in iter_child_nodes(node):
+			yield from results(child)
+			
+def equal(a: AST, b: AST) -> bool:
+	''' check that the operations performed by node a are equivalent to operations performed by node b '''
+	if type(a) != type(b):	return False
+	
+	if isinstance(a, Name):
+		return a.id == b.id
+	elif isinstance(a, alias):
+		return a.name == b.name and (a.asname or a.name) == (b.asname or b.name)
+	elif isinstance(a, Constant):
+		return a.value == b.value
+	elif isinstance(a, Attribute):
+		if a.attr != b.attr:	return False
+	elif isinstance(a, (FunctionDef, AsyncFunctionDef, ClassDef)):
+		if a.name != b.name:	return False
+	elif isinstance(a, ImportFrom):
+		if a.module != b.module:   return False
+	elif isinstance(a, (Global, Nonlocal)):
+		if set(a.names) != set(b.names):	return False
+	
+	for ca, cb in zip(iter_child_nodes(a), iter_child_nodes(b)):
+		if not equal(ca, cb):
+			return False
+	return True
+
+def flatten(tree: Module, nodes={Call, BoolOp, BinOp, Tuple, List, Return}) -> Module:
 	''' process an AST to retreive its temporary values '''
 	tree = deepcopy(tree)
 	
@@ -358,20 +383,22 @@ def name_temporaries(tree: Module) -> Module:
 		# return values are captured as assignments to the return slot
 		elif isinstance(statement, Return):
 			propagate(node, descend)
-			return [
-				Assign([Name('_return', Store())], statement.value),
-				Return(Name('_return', Load())),
-				]
+			if type(node) in nodes:
+				return [
+					Assign([Name('_return', Store())], statement.value),
+					Return(Name('_return', Load())),
+					]
 		# capture expressions
 		elif isinstance(node, (BoolOp, BinOp, Call, Tuple, List)):
 			# capture sub expressions only if there is no controlflow structure at our level
 			if not isinstance(node, BoolOp):
 				propagate(node, capture)
 			name = tempname()
-			return [
-				Assign([Name(name, Store())], node),
-				Name(name, Load()),
-				]
+			if type(node) in nodes:
+				return [
+					Assign([Name(name, Store())], node),
+					Name(name, Load()),
+					]
 		# capture statement bodies
 		elif isinstance(node, (Module, If, For, While, Match, Try)):
 			propagate(node.body, capture)
