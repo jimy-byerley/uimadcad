@@ -1,12 +1,16 @@
 from ast import *
 from collections import Counter
+from itertools import chain
+from functools import partial
 
 
 def process(code):
 	code = annotate(code)
 	ios = usage(code)
 	code = parcimonize(code)
-	code = temporaries(code)
+	code = flatten(code)
+	code = steppize(code)
+	complete(code)
 	vars = locate(code)
 
 def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict) -> iter:
@@ -23,34 +27,34 @@ def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict)
 	# new ast body
 	yield from _scope_init(scope, args)
 	for node in code:
-		# find inputs of this statement
+		# find inputs and outputs of this statement
 		deps = list(dependencies(node))
-		
-		# find the outputs of this statement
-		if isinstance(node, FunctionDef):
-			provided = [node.name]
-		elif isinstance(node, Assign):
-			provided = [node.id for node in node.targets]
-		elif isinstance(node, Return):
-			provided = '_return'
-		elif isinstance(node, (Expr, If, For, While, Try, Match, With)):
-			provided = deps
-		else:
-			provided = None
+		provided = list(results(node))
 		
 		# update the number of assignments to provided variables
 		assigned.update(provided)
 		# cache key for this statement
 		key = '{}{}'.format(provided[0], assigned[provided[0]])
-		# check if the node code has changed
-		if previous.get(key) != node:
+		# check if the node code or dependencies has changed
+		# print('previous   ', previous)
+		if scope not in previous:
+			previous[scope] = {}
+		previous = previous[scope]
+		# if previous.get(key):
+			# print('may changed', dump(previous.get(key)) == dump(node), previous.get(key) == node)
+		
+		if equal(previous.get(key), node) or any(dep in changed  for dep in deps):
+			print('node changed', dump(node))
 			# count all depending variables as changed
 			changed.update(provided)
 			# void cache of changed statements
 			if scope in cache:
-				cache[scope].pop(key)
+				for backups in cache[scope].values():
+					backups.pop(key, None)
 				if not cache[scope]:
 					cache.pop(scope)
+					
+		previous[key] = node
 		
 		# functions are caching in separate scopes
 		if isinstance(node, FunctionDef):
@@ -74,32 +78,74 @@ def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict)
 		else:
 			yield node
 
-def dependencies(node: AST) -> list:
-	''' yield variable dependencies of a node '''
-	for node in walk(node):
-		if isinstance(node, Name) and isinstance(node.ctx, Load):
-			yield node.id
+def dependencies(node: AST) -> iter:
+	''' yield names of variables a node depends on '''
+	if isinstance(node, Name) and isinstance(node.ctx, Load):
+		yield node.id
+	elif isinstance(node, FunctionDef):
+		for expr in chain(node.args.defaults, node.args.kw_defaults):
+			yield from dependencies(expr)
+	else:
+		for child in iter_child_nodes(node):
+			yield from dependencies(child)
+
+def results(node: AST, inplace=False) -> iter:
+	''' yield names of variables assigned by a node '''
+	if isinstance(node, Name) and (isinstance(node.ctx, Store) or inplace):
+		yield node.id
+	elif isinstance(node, (FunctionDef, ClassDef)):
+		yield node.name
+	elif isinstance(node, Return):
+		yield 'return'
+	elif isinstance(node, Assign):
+		for target in node.targets:
+			yield from results(target, inplace=True)
+	elif isinstance(node, (Attribute, Subscript)):
+		yield from results(node.value, inplace)
+	elif isinstance(node, Call):
+		arg = next(iter(node.args), None) or next(iter(node.keywords), None)
+		if arg:
+			yield from results(arg, inplace=True)
+	else:
+		for child in iter_child_nodes(node):
+			yield from results(child)
+			
+def equal(a: AST, b: AST) -> bool:
+	if type(a) != type(b):	return False
+	if isinstance(node, Name):
+		return a.id == b.id
+	if isinstance(node, Attribute):
+		if a.attr != b.attr:	return False
+	if isinstance(node, (FunctionDef, AsyncFunctionDef, ClassDef)):
+		if a.name != b.name:	return False
+	if isinstance(node, (Global, Nonlocal)):
+		if set(a.names) != set(b.names):	return False
+	for ca, cb in zip(iter_child_nodes(a), iter_child_nodes(b)):
+		if not equal(ca, cb):
+			return False
+	return True
 	
-def _scope_init(scope, args) -> list:
+def _scope_init(scope: str, args: list) -> list:
 	# get the cache dictionnary for this scope
 	return [Assign(
 			targets = [Name('_madcad_cache', Store())],
-			value = Subscript(
 				# all caches are coming from a global dictionnary of scope caches
-				value = Subscript(
-					value = Name('_madcad_global_cache', Load()),
-					slice = Constant(scope),
-					ctx = Load(),
-					),
-				# the scope instance is indexed by the instance's arguments values
-				slice = Call(
-						func = Name('_madcad_scope_key', Load()),
-						args = [Name(name, Load()) for name in args],
-						keywords = []),
-				ctx = Load(),
+			value = Call(
+				Name('_madcad_global_cache', Load()),
+				args = [
+					Constant(scope),
+					Tuple([Name(name, Load()) for name in args], Load()),
+					],
+				keywords = [],
 				))]
 				
-def _parcimonize_func(cache, scope, node, key, previous) -> AST:
+def _parcimonize_func(
+	cache: dict, 
+	scope: str, 
+	node: FunctionDef, 
+	key: str, 
+	previous: dict,
+	) -> AST:
 	# functions are caching in separate scopes
 	subscope = scope + '.' + node.name
 	# clear function caches if the function signature changed
@@ -121,7 +167,7 @@ def _parcimonize_func(cache, scope, node, key, previous) -> AST:
 			# arguments identifying the scope instance
 			args = sorted([arg.arg   for arg in args]),
 			code = node.body,
-			previous = previous.get(key).body if key in previous else {},
+			previous = previous,
 			)),
 		decorator_list = node.decorator_list,
 		)
@@ -146,14 +192,6 @@ def _parcimonize_block(key, deps, node) -> list:
 	outs = [Name(dep, Store())  for dep in deps]
 	ins = [Name(dep, Load())  for dep in deps]
 	return _cache_use(key, [Tuple(outs, Store())], [
-		# copy affected variables
-		Assign(
-			targets = [Tuple(outs, Store())], 
-			value = Call(
-					func = Name('_madcad_copy', Load()),
-					args = [Tuple(ins, Load())],
-					keywords = [],
-				)),
 		# run original code
 		node,
 		# cache results
@@ -173,9 +211,11 @@ def _cache_use(key: hash, targets: list, generate: list) -> list:
 			# run the generating code
 			body = generate,
 			# retreive from cache
-			orelse = [
-				Assign(targets, Name('_madcad_tmp', Load())),
-				],
+			orelse = [Assign(targets, Call(
+				func = Name('_madcad_copy', Load()),
+				args = [Name('_madcad_tmp', Load())],
+				keywords = [],
+				))],
 			),
 		]
 
@@ -192,40 +232,108 @@ def _cache_get(key) -> Expr:
 	
 def _cache_set(key, value) -> Expr:
 	''' statment for setting the given value to the given cache key '''
-	return Assign([Subscript(Name('_madcad_cache', Load()), Constant(key), Store())], value)
+	return Assign(
+		targets = [Subscript(
+			value = Name('_madcad_cache', Load()), 
+			slice = Constant(key), 
+			ctx = Store())], 
+		value = Call(
+			Name('_madcad_copy', Load()),
+			args = [value],
+			keywords = [],
+			),
+		)
 
+def global_cache(cache: dict, scope: str, args: tuple):
+	if scope not in cache:
+		cache[scope] = {}
+	versions = cache[scope]
+	args = ArgumentsKey(args)
+	if args not in versions:
+		versions[args] = {}
+	return versions[args]
+	
+class ArgumentsKey(object):
+	__slots__ = 'key', 'args'
+	def __init__(self, args):
+		self.key = 0
+		for arg in args:
+			try:	
+				id = hash(arg)
+			except TypeError:  
+				id = 0
+			self.key ^= id
+		self.args = args
+	def __hash__(self):
+		return self.key
+	def __eq__(self, other):
+		return self.args == other.args
+	def __repr__(self):
+		return '{}({})'.format(self.__class__.__name__, ', '.join(repr(arg) for arg in self.args))
 	
 def test_parcimonize():
 	from pnprint import nprint
 	from dis import dis
+	from copy import deepcopy
 	
 	filename = '<input>'
-	original = parse('''
+	code = '''
 def foo():
-	a = 1
+	a = 'a'
 	return a
 def bar(x, y):
 	return x+y
 def boo(x):
-	return str(x)
+	return [x]
+def fah(first, *args):
+	first.extend(args)
+e, f = 'e', 'f'
 a = foo()
-c = 5 + 3
-b = bar(a, c)
+c = 'c'
+{}
 d = boo(c)
-fah(c, d, e, f, foo())
-a = dict(a=a, b=b)
-a.b = 2
-		''')
-	original_code = compile(original, filename, 'exec')
+fah(d, c, e, f, foo())
+# a = dict(a=a, b=b)
+# a.b = 2
+		'''
 	
-	result = list(parcimonize(cache={}, scope=filename, args=(), code=original, previous={}))
-	nprint('\n'.join(dump(node) for node in result))
+	original_ast = parse(code.format('b = bar(a, c)'))
+	original_bytecode = compile(original_ast, filename, 'exec')
+	cache = {}
+	previous = {}
 	
-	result = Module(result, type_ignores=[])
+	result = Module(
+		list(parcimonize(cache=cache, scope=filename, args=(), code=original_ast, previous=previous)),
+		type_ignores=[])
+	nprint('\n'.join(dump(node) for node in result.body))
 	complete(result)
-	code = compile(result, filename, 'exec')
-	dis(code)
-	print('original', len(original_code.co_code), 'parcimonized', len(code.co_code))
+	bytecode = compile(result, filename, 'exec')
+	dis(bytecode)
+	print('original', len(original_bytecode.co_code), 'parcimonized', len(bytecode.co_code))
+
+	env = {}
+	exec(bytecode, dict(
+		_madcad_global_cache = partial(global_cache, cache),
+		_madcad_copy = deepcopy,
+		), env)
+	nprint('env', env)
+	nprint('cache', cache)
+
+	second_ast = parse(code.format('b = bar(a, e)'))
+	result = Module(
+		list(parcimonize(cache=cache, scope=filename, args=(), code=second_ast, previous=previous)),
+		type_ignores=[])
+	complete(result)
+	bytecode = compile(result, filename, 'exec')
+	nprint('cache', cache)
+	env = {}
+	exec(bytecode, dict(
+		_madcad_global_cache = partial(global_cache, cache),
+		_madcad_copy = deepcopy,
+		), env)
+	nprint('cache', cache)
+	nprint('env', env)
+
 
 def name_temporaries(tree: Module) -> Module:
 	''' process an AST to retreive its temporary values '''
