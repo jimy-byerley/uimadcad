@@ -4,25 +4,11 @@ from itertools import chain
 from functools import partial
 
 
-def process(code):
-	code = annotate(code)
-	ios = usage(code)
-	code = parcimonize(code)
-	code = flatten(code)
-	code = steppize(code)
-	complete(code)
-	vars = locate(code)
 
 def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict) -> iter:
 	''' make a code lazily executable by reusing as much previous results as possible '''
 	assigned = Counter()
 	changed = set()
-	
-	if isinstance(code, str):
-		code = parse(code)
-	if isinstance(code, Module):
-		code = code.body
-	code = iter(code)
 	
 	# new ast body
 	yield from _scope_init(scope, args)
@@ -230,31 +216,31 @@ def test_parcimonize():
 	from copy import deepcopy
 	
 	filename = '<input>'
-	code = '''
-from math import sin, cos
+	code = normalizeindent('''
+		from math import sin, cos
 
-def foo():
-	a = 'a'
-	return a
-def bar(x, y):
-	return x+y
-def boo(x):
-	return [x]
-def fah(first, *args):
-	first.extend(args)
+		def foo():
+			a = 'a'
+			return a
+		def bar(x, y):
+			return x+y
+		def boo(x):
+			return [x]
+		def fah(first, *args):
+			first.extend(args)
 
-e, f = 'e', 'f'
-a = foo()
-c = 'c'
-{}
-d = boo(c)
-fah(d, c, e, f, foo())
-s = dict(a=a, b=b, c=1)
-s['c'] = 2
+		e, f = 'e', 'f'
+		a = foo()
+		c = 'c'
+		{}
+		d = boo(c)
+		fah(d, c, e, f, foo())
+		s = dict(a=a, b=b, c=1)
+		s['c'] = 2
 
-if True: pass
-g = 0 if False else 1
-		'''
+		if True: pass
+		g = 0 if False else 1
+		''')
 	
 	original_ast = parse(code.format('b = bar(a, c)'))
 	original_bytecode = compile(original_ast, filename, 'exec')
@@ -335,140 +321,8 @@ def results(node: AST, inplace=False) -> iter:
 	else:
 		for child in iter_child_nodes(node):
 			yield from results(child)
-			
-def equal(a: AST, b: AST) -> bool:
-	''' check that the operations performed by node a are equivalent to operations performed by node b '''
-	if type(a) != type(b):	return False
-	
-	if isinstance(a, Name):
-		return a.id == b.id
-	elif isinstance(a, alias):
-		return a.name == b.name and (a.asname or a.name) == (b.asname or b.name)
-	elif isinstance(a, Constant):
-		return a.value == b.value
-	elif isinstance(a, Attribute):
-		if a.attr != b.attr:	return False
-	elif isinstance(a, (FunctionDef, AsyncFunctionDef, ClassDef)):
-		if a.name != b.name:	return False
-	elif isinstance(a, ImportFrom):
-		if a.module != b.module:   return False
-	elif isinstance(a, (Global, Nonlocal)):
-		if set(a.names) != set(b.names):	return False
-	
-	for ca, cb in zip(iter_child_nodes(a), iter_child_nodes(b)):
-		if not equal(ca, cb):
-			return False
-	return True
 
-def flatten(tree: Module, nodes={Call, BoolOp, BinOp, Tuple, List, Return}) -> Module:
-	''' process an AST to retreive its temporary values '''
-	tree = deepcopy(tree)
-	
-	def tempname():
-		i = 0
-		while True:
-			i += 1
-			name = '_temp'+str(i)
-			if name not in knownvars and name not in oldvars:	return name
-
-	# recursive replacement procedure
-	def capture(node):
-		# do not capture local scopes
-		if isinstance(node, (ListComp, DictComp, SetComp, GeneratorExp)):
-			return
-		# assignments are already captured in their assigned variables
-		# TODO: decide what to do when the target is a subscript
-		if isinstance(node, Assign):
-			propagate(node, descend)
-		# return values are captured as assignments to the return slot
-		elif isinstance(statement, Return):
-			propagate(node, descend)
-			if type(node) in nodes:
-				return [
-					Assign([Name('_return', Store())], statement.value),
-					Return(Name('_return', Load())),
-					]
-		# capture expressions
-		elif isinstance(node, (BoolOp, BinOp, Call, Tuple, List)):
-			# capture sub expressions only if there is no controlflow structure at our level
-			if not isinstance(node, BoolOp):
-				propagate(node, capture)
-			name = tempname()
-			if type(node) in nodes:
-				return [
-					Assign([Name(name, Store())], node),
-					Name(name, Load()),
-					]
-		# capture statement bodies
-		elif isinstance(node, (Module, If, For, While, Match, Try)):
-			propagate(node.body, capture)
-	
-	# recursive replacement only for children
-	def descend(node):
-		if isinstance(node, (ListComp, DictComp, SetComp, GeneratorExp)):
-			return
-		if isinstance(node, Expr):
-			propagate(node, capture)
-	
-	capture(tree)
-	return tree
-
-def propagate(node, process):
-	''' apply process to node's children 
-		if process returns something not None, it's used to inplace replace the child in the node
-	'''
-	for fieldname,value in iter_fields(node):
-		if isinstance(value, AST):
-			child = value
-			replacement = process(child)
-			if replacement:
-				setattr(node, fieldname, replacement)
-		elif isinstance(value, list):
-			for i,child in enumerate(value):
-				replacement = process(child)
-				if replacement:
-					value[i:i+1] = replacement
-
-def usage(node) -> (set, set, set):
-	''' return two set of variable names: those used (read or write) in the given ast tree, and those only read '''
-	ro = set()  # only read
-	wo = set() # only written
-	rw = set()  # read and written
-	for node in walk(node):
-		if isinstance(node, Name):
-			if isinstance(node.ctx, Load):
-				if node.name in rw:
-					pass
-				elif node.name in wo:
-					wo.discard(node.name)
-					rw.add(node.name)
-				else:
-					ro.add(node.name)
-			if isinstance(node.ctx, Store):
-				if node.name in rw:
-					pass
-				elif node.name in ro:
-					ro.discard(node.name)
-					rw.add(node.name)
-				else:
-					wo.add(node.name)
-	return ro, wo, rw
-
-def complete(parent):
-	for node in walk(parent):
-		node.lineno = getattr(node, 'lineno', 0)
-		node.col_offset = getattr(node, 'col_offset', 0)
-	
-	# print(complete, type(parent), getattr(parent, 'lineno', None))
-	# for name, value in iter_fields(parent):
-	# 	if isinstance(value, (stmt, expr)):
-	# 		complete(value)
-	# 		parent.lineno = min(value.lineno, getattr(parent, 'lineno', value.lineno))
-	# 	if isinstance(value, list):
-	# 		for node in value:
-	# 			complete(node)
-				
-def annotate(tree, text):
+def annotate(tree: AST, text: str):
 	''' enrich nodes by useful informations, such as start-end text position of tokens
 		currently
 			* position
@@ -542,84 +396,193 @@ def annotate(tree, text):
 			node.end_position = node.position + len(node.name)
 	
 	recursive(tree)
-
-
-				
-def shift(tree, loc, pos):
-	''' shift the position attributes of the tree nodes, as if the parsed text was appent to an other string '''
-	def recursive(node):
-		if hasattr(node, 'lineno'):			
-			node.lineno += loc[0]
-			if hasattr(node, 'end_lineno'):		node.end_lineno += loc[0]
-			if hasattr(node, 'position'):		node.position += pos
-			if hasattr(node, 'end_position'):	node.end_position += pos
-			if node.lineno == 0:
-				node.col_offset += loc[1]
-				if hasattr(node, 'end_col_offset'):		node.end_col_offset += loc[1]
-		propagate(node, recursive)
-	recursive(tree)
-
-def _advancepos(text, loc, startpos=0, startloc=(1,0), tab=1):
-	''' much like textpos but starts from a point (with startpos and startloc) and can advance forward or backward '''
-	i = startpos
-	l,c = startloc
-	while l < loc[0]:	
-		i = text.find('\n', i)+1
-		l += 1
-	while l > loc[0]:
-		i = text.rfind('\n', 0, i)
-		l -= 1
-	i = text.rfind('\n', 0, i)+1
-	i += loc[1]
-	return i
-		
 	
-		
-def _atpos(tree, pos):
-	''' get the AST node from a list of nodes, that contains the given text location '''
-	for i,statement in enumerate(tree.body):
-		if statement.position >= pos:		
-			return i
-		if getattr(statement, 'end_position', 0) > pos:
-			return i
-	return len(tree.body)
-		
-def _loc(node):
-	''' text location of an AST node '''
-	return (node.lineno, node.col_offset)
-
-def textpos(text, loc, tab=1):
-	''' string index of the given text location (line,column) '''
+def test_annotate():
+	indev
+	
+def flatten(code: list, nodes={Call, BoolOp, BinOp, Tuple, List, Return}, vars:set=None) -> list:
+	if vars is None:
+		vars = set()
+	
+	# choose temporary names
+	def tempname():
+		i = 0
+		while True:
+			i += 1
+			name = '_temp'+str(i)
+			if name not in vars:
+				vars.add(name)
+				return name
+	
+	def capture(node: AST):
+		# an expression not already captured at a lower level has to be captured with a temporary name
+		if isinstance(node, expr) and type(node) in nodes:
+			propagate(node, capture)
+			name = tempname()
+			captured.append(Assign([Name(name, Store())], node))
+			return Name(name, Load())
+		# return values get a special name
+		elif isinstance(node, Return):
+			propagate(node.value, capture)
+			captured.append(Assign([Name('_return', Store())], node.value))
+			return Return(Name('_return', Load()))
+		# assignemnts are already named so no need for capture again
+		elif isinstance(node, Assign):
+			propagate(node.value, capture)
+			
+		# in a block, captures should create variables inside the block
+		elif isinstance(node, (Module, FunctionDef, Lambda, For, While, With)):
+			node.body = flatten(node.body, nodes)
+		elif isinstance(node, If):
+			node.body = flatten(node.body, vars=vars)
+			node.orelse = flatten(node.orelse, vars=vars)
+		elif isinstance(node, Match):
+			node.subject = capture(node.subject)
+			node.cases = [flatten(child, vars=vars)  for child in node.cases]
+	
+	captured = []
 	i = 0
-	l, c = 1, 0
-	while l < loc[0]:	
-		i = text.find('\n', i)+1
-		l += 1
-	while c < loc[1]:
-		if text[i] == '\t':	c += tab
-		else:				c += 1
-		i += 1
-	return i
-
-def textloc(text, pos, tab=1, start=(1,0)):
-	''' text location for the given string index '''
-	if pos < 0:	pos += len(text)
-	l, c = start
-	if pos > len(text):	
-		raise IndexError('the given position is not in the string')
-	for i,char in enumerate(text):
-		if i >= pos:	break
-		if char == '\n':
-			l += 1
-			c = 1
-		elif char == '\t':
-			c += tab
-			c -= c%tab
-		else:
-			c += 1
-	return (l,c)
+	while i < len(code):
+		# process statement
+		capture(code[i])
+		# add captured values juste before statement
+		code[i:i] = captured
+		i += 1+len(captured)
+		captured.clear()
+	return code
 	
-def normalizeindent(text):
+def test_flatten():
+	from pnprint import nprint
+	code = parse(normalize_indent('''\
+		a = (b+c)+d
+		b = [5] + [i+1 for i in range(5)]
+		if 1 != 0:
+			c = 1 + 2
+		else:
+			d = 1 + 3 + 4
+		'''))
+	flatten(code.body)
+	complete(code)
+	compile(code, '<flatten>', 'exec')
+	nprint(dump(code))
+	ro, wo, rw = usage(code)
+	assert ro == {'range'}
+	assert wo == {'a'}
+	assert rw == {'b', 'd', '_temp3', 'c', '_temp2', 'i', '_temp1'}
+	
+def steppize(code:list, scope:str):
+	def filter(node):
+		if isinstance(node, (Module, FunctionDef)):
+			steppize(node.body, scope+'.'+node.name)
+		else:
+			propagate(node, filter)
+	
+	result = []
+	l = len(code)
+	for i,node in enumerate(code):
+		propagate(node, filter)
+		result.append(code)
+		result.append(Call(
+			func = Name('_madcad_step', Load()),
+			args = [Constant(scope), Constant(i/l)],
+			keywords = [],
+			))
+	return result
+
+def report(code:list, scope:str):
+	''' change the given code to report its variables to madcad '''
+	def filter(node):
+		if isinstance(node, (Module, FunctionDef)):
+			report(node.body, scope+'.'+node.name)
+		else:
+			propagate(node, filter)
+	
+	for node in code:
+		filter(node)
+	
+	code.append(Assign(
+		targets = [Subscript(Name('_madcad_scopes', Load()), scope, Store())],
+		value = Call(Name('_madcad_vars', Load()), args=[], keywords=[]),
+		))
+	return code
+
+
+	
+	
+
+def usage(node) -> (set, set, set):
+	''' return two set of variable names: those used (read or write) in the given ast tree, and those only read '''
+	ro = set()  # only read
+	wo = set() # only written
+	rw = set()  # read and written
+	for node in walk(node):
+		if isinstance(node, Name):
+			if isinstance(node.ctx, Load):
+				if node.id in rw:
+					pass
+				elif node.id in wo:
+					wo.discard(node.id)
+					rw.add(node.id)
+				else:
+					ro.add(node.id)
+			if isinstance(node.ctx, Store):
+				if node.id in rw:
+					pass
+				elif node.id in ro:
+					ro.discard(node.id)
+					rw.add(node.id)
+				else:
+					wo.add(node.id)
+	return ro, wo, rw
+
+def complete(parent):
+	for node in walk(parent):
+		node.lineno = getattr(node, 'lineno', 0)
+		node.col_offset = getattr(node, 'col_offset', 0)
+		
+
+def equal(a: AST, b: AST) -> bool:
+	''' check that the operations performed by node a are equivalent to operations performed by node b '''
+	if type(a) != type(b):	return False
+	
+	if isinstance(a, Name):
+		return a.id == b.id
+	elif isinstance(a, alias):
+		return a.name == b.name and (a.asname or a.name) == (b.asname or b.name)
+	elif isinstance(a, Constant):
+		return a.value == b.value
+	elif isinstance(a, Attribute):
+		if a.attr != b.attr:	return False
+	elif isinstance(a, (FunctionDef, AsyncFunctionDef, ClassDef)):
+		if a.name != b.name:	return False
+	elif isinstance(a, ImportFrom):
+		if a.module != b.module:   return False
+	elif isinstance(a, (Global, Nonlocal)):
+		if set(a.names) != set(b.names):	return False
+	
+	for ca, cb in zip(iter_child_nodes(a), iter_child_nodes(b)):
+		if not equal(ca, cb):
+			return False
+	return True
+
+def propagate(node, process):
+	''' apply process to node's children 
+		if process returns something not None, it's used to inplace replace the child in the node
+	'''
+	for fieldname,value in iter_fields(node):
+		if isinstance(value, AST):
+			child = value
+			replacement = process(child)
+			if replacement:
+				setattr(node, fieldname, replacement)
+		elif isinstance(value, list):
+			for i,child in enumerate(value):
+				replacement = process(child)
+				if replacement:
+					value[i:i+1] = replacement
+
+
+def normalize_indent(text):
 	''' remove the indentation level of the first line from all lines '''
 	indent = None
 	for i,c in enumerate(text):
@@ -632,20 +595,94 @@ def normalizeindent(text):
 		return text
 	else:
 		return ''
+				
+# def shift(tree, loc, pos):
+# 	''' shift the position attributes of the tree nodes, as if the parsed text was appent to an other string '''
+# 	def recursive(node):
+# 		if hasattr(node, 'lineno'):			
+# 			node.lineno += loc[0]
+# 			if hasattr(node, 'end_lineno'):		node.end_lineno += loc[0]
+# 			if hasattr(node, 'position'):		node.position += pos
+# 			if hasattr(node, 'end_position'):	node.end_position += pos
+# 			if node.lineno == 0:
+# 				node.col_offset += loc[1]
+# 				if hasattr(node, 'end_col_offset'):		node.end_col_offset += loc[1]
+# 		propagate(node, recursive)
+# 	recursive(tree)
+
+# def _advancepos(text, loc, startpos=0, startloc=(1,0), tab=1):
+# 	''' much like textpos but starts from a point (with startpos and startloc) and can advance forward or backward '''
+# 	i = startpos
+# 	l,c = startloc
+# 	while l < loc[0]:	
+# 		i = text.find('\n', i)+1
+# 		l += 1
+# 	while l > loc[0]:
+# 		i = text.rfind('\n', 0, i)
+# 		l -= 1
+# 	i = text.rfind('\n', 0, i)+1
+# 	i += loc[1]
+# 	return i
+		
 	
-def _expruntil(tree, pos):
-	remains = []
-	def recur(node):
-		if isinstance(node, expr) and node.end_position <= pos:
-			if isinstance(node, Name) and not isinstance(node.ctx, Load):	return
-			remains.append(node)
-		else:
-			for child in iter_child_nodes(node):
-				recur(child)
-	recur(tree)
-	return [Expr(r, 
-				lineno=r.lineno, 
-				col_offset=r.col_offset,
-				position=r.position, 
-				end_position=r.end_position) 	
-			for r in remains]
+		
+# def _atpos(tree, pos):
+# 	''' get the AST node from a list of nodes, that contains the given text location '''
+# 	for i,statement in enumerate(tree.body):
+# 		if statement.position >= pos:		
+# 			return i
+# 		if getattr(statement, 'end_position', 0) > pos:
+# 			return i
+# 	return len(tree.body)
+		
+# def _loc(node):
+# 	''' text location of an AST node '''
+# 	return (node.lineno, node.col_offset)
+
+# def textpos(text, loc, tab=1):
+# 	''' string index of the given text location (line,column) '''
+# 	i = 0
+# 	l, c = 1, 0
+# 	while l < loc[0]:	
+# 		i = text.find('\n', i)+1
+# 		l += 1
+# 	while c < loc[1]:
+# 		if text[i] == '\t':	c += tab
+# 		else:				c += 1
+# 		i += 1
+# 	return i
+
+# def textloc(text, pos, tab=1, start=(1,0)):
+# 	''' text location for the given string index '''
+# 	if pos < 0:	pos += len(text)
+# 	l, c = start
+# 	if pos > len(text):	
+# 		raise IndexError('the given position is not in the string')
+# 	for i,char in enumerate(text):
+# 		if i >= pos:	break
+# 		if char == '\n':
+# 			l += 1
+# 			c = 1
+# 		elif char == '\t':
+# 			c += tab
+# 			c -= c%tab
+# 		else:
+# 			c += 1
+# 	return (l,c)
+	
+# def _expruntil(tree, pos):
+# 	remains = []
+# 	def recur(node):
+# 		if isinstance(node, expr) and node.end_position <= pos:
+# 			if isinstance(node, Name) and not isinstance(node.ctx, Load):	return
+# 			remains.append(node)
+# 		else:
+# 			for child in iter_child_nodes(node):
+# 				recur(child)
+# 	recur(tree)
+# 	return [Expr(r, 
+# 				lineno=r.lineno, 
+# 				col_offset=r.col_offset,
+# 				position=r.position, 
+# 				end_position=r.end_position) 	
+# 			for r in remains]
