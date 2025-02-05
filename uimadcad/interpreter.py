@@ -1,5 +1,6 @@
 from copy import deepcopy
-import .ast
+
+from . import ast
 
 
 class InterpreterError(Exception):	pass
@@ -13,7 +14,14 @@ class Interpreter:
 		self.ast = {}
 		self.vars = {}
 		self.scopes = {}
+		self.stops = []
 		
+		# TODO: remove these debug values
+		import madcad
+		self.scopes[filename] = {
+			'cube': madcad.brick(width=madcad.vec3(1)),
+			}
+	
 	def execute(self, code:str, step:callable):
 		self.ast = ast.parse(code)
 		code = ast.annotate(code)

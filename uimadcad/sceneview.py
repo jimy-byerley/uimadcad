@@ -1,125 +1,66 @@
-from PyQt5.QtCore import (
-		Qt, QSize, QRect, QPoint, QPointF,
-		QEvent, pyqtSignal, QObject,
-		QAbstractListModel,
-		)
-from PyQt5.QtWidgets import (
-		QWidget, QStyleFactory, QSizePolicy, QHBoxLayout, QVBoxLayout, 
-		QComboBox, QDockWidget, QPushButton, QLabel, QSizeGrip, QCheckBox,
-		QToolBar, QAction, 
-		QPlainTextEdit, QPlainTextDocumentLayout,
-		)
-from PyQt5.QtGui import (
-		QFont, QFontMetrics, 
-		QColor, QPalette,
-		QIcon, QKeySequence, 
-		QTextOption, QTextDocument, QTextCursor,
-		QPainter, QPainterPath,
-		)
-
-from madcad import *
-from madcad.rendering import Display, displayable, Displayable, Step, Group, Turntable, Orbit, Perspective, Orthographic
-from madcad.displays import SolidDisplay, WebDisplay, GridDisplay
-import madcad
-
-from .common import *
-from .detailview import DetailView
-from .interpreter import Interpreter, InterpreterError, astinterval
-from . import tricks, settings
-
-import ast
-from copy import deepcopy, copy
-from weakref import WeakValueDictionary
+from functools import partial
 from operator import itemgetter
+
+from PyQt5.QtCore import Qt, QObject, QEvent, QPoint
+from PyQt5.QtGui import QFont
+from PyQt5.QtWidgets import QWidget, QPushButton, QCheckBox, QComboBox, QLabel, QSizePolicy
+
+import madcad
+from madcad.rendering import Perspective, Orthographic, Turntable, Orbit, Group
+from madcad.mathutils import *
+from . import settings
+from .utils import *
 
 
 QEventGLContextChange = 215	# opengl context change event type, not yet defined in PyQt5
 
 class Scene(madcad.rendering.Scene, QObject):
-	changed = pyqtSignal()
-	
-	def __init__(self, main, *args, **kwargs):
+	def __init__(self, app, *args, **kwargs):
 		# data graph setup
 		QObject.__init__(self)
 		madcad.rendering.Scene.__init__(self, *args, **kwargs)
-		self.main = main
-		main.scenes.append(self)
-		main.executed.connect(self._executed)
-		main.scenesmenu.layoutChanged.emit()
+		self.app = app
+		app.scenes.append(self)
 		
+		# prevent reference-loop in groups (groups are taken from the execution env, so the user may not want to display it however we are trying to)
+		self.memo = set()
 		# scene data
-		self.composition = SceneComposition(self)
-		
-		self.showset = set()		# variable names to always display
-		self.hideset = set()		# variable names to never display
 		self.additions = {		# systematic scene additions
-			'__grid__': Displayable(Grid),
-			'__updateposes__': Step('screen', -1, self._updateposes),
+			'__grid__': madcad.rendering.Displayable(Grid),
 			}
-		self.poses = {}			# solid per variable for poses, non associated solids are not in that dict
-		self.active_solid = None	# current solid for current space
-		self.active_selection = None	# key of the last selected display
-		self.executed = True	# flag set to True to enable a full relead of the scene
-		self.displayall = False
-		self.displaynone = False
-		self.selected = False
-		
-		self.cache = WeakValueDictionary()	# prevent loading multiple times the same object
-		self.recursion_check = set()  # prevent reference-loop in groups (groups are taken from the execution env, so the user may not want to display it however we are trying to)
-	
-	def __del__(self):
-		try:	self.main.scenes.remove(self)
-		except ValueError:	pass
-		
-	def _executed(self):
-		self.executed = True
+		# application behavior
+		self.composer = SceneComposer(self)
 		self.sync()
-	
+		
 	def sync(self):
-		# objects selection in env, and already present objs
-		main = self.main
-		it = main.interpreter
-		newscene = {}
+		''' synchronize the scene content with the rest of the application '''
+		keys = set()
+		# hide_all is hidding all default displays
+		if not self.composer.hide_all:
+			# default displays are the writen only variables
+			for key in self.app.intepreter.wo:
+				keys.add(key)
+		# show_all is showing all variables in the scopes
+		if self.composer.show_all:
+			for key in self.app.interpreter.scopes:
+				keys.add(key)
+		# hide_set selects displays to hide despite previous settings
+		for key in self.composer.hide_set:
+			keys.discard(key)
+		# show set selects displays to show despite previous settings
+		for key in self.composer.show_set:
+			keys.add(key)
 		
-		# display objects that are requested by the user, or that are never been used (lastly generated)
-		for name,obj in it.current.items():
-			if name in self.hideset:	continue
-			if name in self.showset or self.displayall or (name in it.neverused and not self.displaynone) and name in it.locations:
-				if displayable(obj):
-					newscene[name] = obj
+		# recreate the scene dictionnary
+		new = {}
+		for key in keys:
+			obj = self.app.interpreter.scopes.get(key, None)
+			if obj is not None:
+				new[key] = obj
+		new.update(self.additions)
 		
-		# display objects in the display zones
-		for zs,ze in main.displayzones.values():
-			for name,node in it.locations.items():
-				if name not in newscene and name in it.current:
-					ts,te = astinterval(node)
-					temp = it.current[name]
-					if zs <= ts and te <= ze and displayable(temp) and type(temp) not in (list, dict):
-						newscene[name] = temp
-		# add scene's own additions
-		newscene.update(main.editors)
-		newscene.update(self.additions)
-		
-		# update the scene
-		super().sync(newscene)
-		
-		self.update_solidsets()
-		# trigger the signal for dependent widgets
-		self.changed.emit()
-		
-	def touch(self):
-		self.changed.emit()
-		super().touch()
-		
-	def update(self, objs):
-		if not objs:    return
-		for k,v in objs.items():
-			disp = self.displays.get(k)
-			if self.executed or not disp or type(getattr(disp, 'source', None)) != type(v):	# with a normal scene, self.executed would be the only condition, but scene elements like editors can be inserted by the interface
-				self.queue[k] = v
-		self.executed = False
-		self.touch()
-		
+		super().sync(new)
+	
 	def restack(self):
 		''' update the rendering calls stack from the current scene's displays.
 			this is called automatically on `dequeue()`
@@ -134,7 +75,7 @@ class Scene(madcad.rendering.Scene, QObject):
 				sub,target,priority,func = frame
 				full = (key,*sub)
 				
-				# try special behaviors
+				# selected objects are showing their annotations
 				try:	i = full.index('annotations')
 				except ValueError:	pass
 				else:
@@ -149,125 +90,21 @@ class Scene(madcad.rendering.Scene, QObject):
 		# sort the stack using the specified priorities
 		for stack in self.stacks.values():
 			stack.sort(key=itemgetter(1))
-		self.touched = False
-		
-	#def display(self, obj):		# NOTE will prevent different group from showing the same object, this is not desirable
-		#ido = id(obj)
-		#if ido in self.recursion_check:
-			#raise Exception('recursion error')
-		
-		#if ido not in self.cache:
-			#self.recursion_check.add(ido)
-			#self.cache[ido] = super().display(obj)
-			#self.cache[ido].source = obj
-			#self.recursion_check.remove(ido)
-		#return self.cache[ido]
-		
+	
 	def display(self, obj, former=None):
+		# TODO: implement this recursion check in pymadcad rather than uimadcad
 		ido = id(obj)
-		assert ido not in self.recursion_check, 'there should not be recursion loops in cascading displays'
+		assert ido not in self.memo, 'there should not be recursion loops in cascading displays'
 		
-		self.recursion_check.add(ido)
+		self.memo.add(ido)
 		try:		disp = super().display(obj, former)
 		except Exception as err:     
-			self.main.showerror(err)
+			self.app.showerror(err)
 			raise
-		finally:	self.recursion_check.remove(ido)
+		finally:	self.memo.remove(ido)
 		disp.source = obj
 		return disp
-		
-	def update_solidsets(self):
-		''' update the association of variables to solids '''
-		# remove current object references, to allow deallocating their memory
-		for name in self.poses:
-			if isinstance(name, str) and name not in self.main.interpreter.current and name != 'return':
-				self.poses[name] = None
-		
-		sets = []	# sets of variables going together
-		# process statements executed in the main flow
-		def search_statements(node):
-			for stmt in reversed(node.body):
-				if isinstance(stmt, (ast.Expr, ast.Assign)):
-					search_expr(stmt)
-				elif isinstance(stmt, (ast.If, ast.With)):
-					search_statements(stmt)
-		# all variables trapped into the same expr are put into the same set
-		def search_expr(node):
-			used = set()
-			wrote = []
-			for child in ast.walk(node):
-				if isinstance(child, ast.Name):
-					used.add(child.id)
-					if isinstance(child.ctx, ast.Store):
-						wrote.append(child.id)
-			assigned = False
-			for s in sets:
-				if not s.isdisjoint(wrote):
-					s.update(used)
-					assigned = True
-			if not assigned:
-				sets.append(used)
-		if self.main.interpreter.part_altered:
-			search_statements(self.main.interpreter.part_altered)
-		
-		# the default pose for any object in the code executed, is the current local pose
-		for u in sets:
-			for name in u:
-				if name != 'return':
-					self.poses[name] = 'return'
-		
-		# process SolidDisplays all across the scene
-		def recur(level):
-			for disp in level:
-				if isinstance(disp, madcad.kinematic.displays.SolidDisplay):
-					process(disp)
-				# recursion
-				elif isinstance(disp, madcad.rendering.Group):	
-					recur(disp.displays.values())
-		# find sub displays representing existing variables
-		def process(disp):
-			for sub in scene_unroll(disp):
-				if not hasattr(sub, 'source'):	continue
-				bound = self.main.interpreter.ids.get(id(sub.source))
-				if not bound:	continue
-				
-				# find a solidset that provides that value
-				try:	s = next(u for u in sets	if bound in u)
-				except StopIteration:	continue
-				# change its variables world matrices
-				for name in s:
-					self.poses[name] = disp
-		recur(self.displays.values())
-		
-	def _updateposes(self, _):
-		for name,disp in self.displays.items():
-			obj = self.poses.get(name)
-			if obj != 'return' and isinstance(disp, (madcad.kinematic.displays.SolidDisplay, madcad.rendering.Group)):
-				continue
-			# solve dynamic pose binding (when a string is put instead of a solid)
-			last = None
-			while isinstance(obj, str) and last is not obj:	
-				# the active solid can override a binding to the local pose
-				if self.active_solid and obj == self.main.interpreter.name and disp is not self.active_solid:
-					obj = self.active_solid
-				else:
-					obj, last = self.poses.get(obj), obj
-			if isinstance(obj, madcad.kinematic.displays.SolidDisplay):
-				disp.world = obj.world * obj.local
-			elif obj:
-				disp.world = obj.world 
-			else:
-				disp.world = fmat4(1)
-
-	def items(self):
-		''' yield recursively all couples (key, display) in the scene, including subscenes '''
-		def recur(level, key):
-			for sub,disp in level:
-				yield (*key, sub), disp
-				if isinstance(disp, madcad.rendering.Group):	
-					yield from recur(disp.displays.items(), (*key, sub))
-		yield from recur(self.displays.items(), ())
-		
+	
 	def selectionbox(self):
 		''' return the bounding box of the selection '''
 		def selbox(level):
@@ -280,108 +117,90 @@ class Scene(madcad.rendering.Scene, QObject):
 			return box
 		return selbox(self.displays.values())
 
-def scene_unroll(scene):
-	''' yield recursively all displays in the scene, including subscenes '''
-	def recur(level):
-		for disp in level:
-			yield disp
-			if hasattr(disp, '__iter__'):	
-				yield from recur(disp)
-	yield from recur(scene.displays.values())		
-	
-	
-def format_scenekey(scene, key, root=True, terminal=True):
-	''' return a string representing the access to the object represented by a display in a scene 
-	
-		Example:
-			
-			>>> format_scenekey(..., root=True)
-			cage.group(4)
-			>>> format_scenekey(..., root=False)
-			['cage'].group(4)
-	'''
-	if root:	name = str(key[0])
-	else:		name = '[{}]'.format(repr(key[0]))
-	node = scene
-	for i in range(len(key)-1):
-		node = node[key[i]]
-		if isinstance(node, (SolidDisplay,WebDisplay)):
-			access = '.group({})'
-		elif i == len(key)-2 and terminal:
-			access = ''
-		else:
-			access = '[{}]'
-		name += access.format(repr(key[i+1]))
-	return name
-
+		
 
 class SceneView(madcad.rendering.View):
 	''' dockable and reparentable scene view widget, bases on madcad.Scene '''
 	
-	def __init__(self, main, scene=None, **kwargs):
-		self.main = main
+	bar_margin = 0
+	
+	def __init__(self, app, scene=None, **kwargs):
+		self.app = app
 		
+		# try to reuse existing scene
 		if scene:
 			pass
-		elif main.active_sceneview:
-			scene = main.active_sceneview.scene
-			self.navigation = deepcopy(main.active_sceneview.navigation)
-		elif main.scenes:
-			scene = main.scenes[0]
+		elif app.active.sceneview:
+			scene = app.active.sceneview.scene
+			self.navigation = deepcopy(app.active.sceneview.navigation)
+		elif app.scenes:
+			scene = app.scenes[0]
 		else:
-			scene = Scene(main)
-		super().__init__(scene, **kwargs)
+			scene = Scene(app)
 		
+		super().__init__(scene, **kwargs)
+		Initializer.init(self)
 		self.setMinimumSize(100,100)
 		self.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
 		
-		main.views.append(self)
-		if not main.active_sceneview:	main.active_sceneview = self
+		app.views.append(self)
+		if not app.active.sceneview:	app.active.sceneview = self
 		
-		self.quick = QToolBar('quick', self)
-		self.quick.setOrientation(Qt.Vertical)
-		action = QAction('points', main, checkable=True)
-		action.setChecked(madcad.settings.scene['display_points'])
-		action.setToolTip('display points')
-		action.toggled.connect(lambda enable: self.set_option('display_points', enable))
-		self.quick.addAction(action)
-		action = QAction('wire', main, checkable=True)
-		action.setChecked(madcad.settings.scene['display_wire'])
-		action.setToolTip('display wire')
-		action.toggled.connect(lambda enable: self.set_option('display_wire', enable))
-		self.quick.addAction(action)
-		action = QAction('groups', main, checkable=True)
-		action.setChecked(madcad.settings.scene['display_groups'])
-		action.setToolTip('display groups')
-		action.toggled.connect(lambda enable: self.set_option('display_groups', enable))
-		self.quick.addAction(action)
-		action = QAction('faces', main, checkable=True)
-		action.setChecked(madcad.settings.scene['display_faces'])
-		action.setToolTip('display faces')
-		action.toggled.connect(lambda enable: self.set_option('display_faces', enable))
-		self.quick.addAction(action)
-		self.quick.addSeparator()
+		# toolbars
+		self.top = ToolBar('scene', [
+			self.new_view,
+			self.open_composer,
+			spacer(20, 0),
+			self.scroll_selection,
+			spacer(20, 0),
+			],
+			orientation=Qt.Horizontal,
+			parent=self)
 		
-		self.quick.addAction(QIcon.fromTheme('view-fullscreen'), 'adapt view to centent', self.adapt)
-		self.quick.addAction(QIcon.fromTheme('madcad-view-normal'), 'set view normal to mesh', self.normalview)
-		self.quick.addAction(QIcon.fromTheme('madcad-projection'), 'switch projection perspective/orthographic', self.projectionswitch)
-		self.quick.addSeparator()
-		self.quick.addAction(QIcon.fromTheme('lock'), 'lock solid', main.lock_solid)
-		self.quick.addAction(QIcon.fromTheme('madcad-solid'), 'set active solid', main.set_active_solid)
-		self.quick.addAction(QIcon.fromTheme('edit-select-all'), 'deselect all', main.deselectall)
-		self.quick.addAction(QIcon.fromTheme('edit-node'), 'graphical edit object', main._edit)
-		self.quick.hide()
+		self.left = ToolBar('display', [
+			self.display_points,
+			self.display_wire,
+			self.display_faces,
+			self.display_groups,
+			self.display_annotations,
+			self.display_grid,
+			None,
+			self.mode_free,
+			None,
+			self.mode_joint,
+			self.mode_translate,
+			self.mode_rotate,
+			# Button(icon='madcad-kinematic-joint', flat=True, menu=Menu('some', [
+			# 	self.mode_joint,
+			# 	self.mode_translate,
+			# 	self.mode_rotate,
+			# 	])),
+			], 
+			orientation=Qt.Vertical, 
+			parent=self)
+		self.right = ToolBar('view', [
+			self.projection_switch,
+			self.view_adjust,
+			self.view_normal,
+			Button(icon='madcad-standard-view', flat=True, menu=Menu('standard views', [
+				self.view_mz, self.view_pz,
+				self.view_mx, self.view_px,
+				self.view_my, self.view_py,
+				])),
+			None,
+			# self.selection_mode,
+			# self.direction_selector,
+			# None,
+			# self.reset_pose,
+			# self.set_pose,
+			], 
+			orientation=Qt.Vertical, 
+			parent=self)
+			
+		group([self.mode_joint, self.mode_translate, self.mode_rotate], self)
 		
-		self.selection_label = QPushButton(self)
-		self.selection_label.setFont(QFont(*settings.scriptview['font']))
-		self.selection_label.move(self.quick.width()*2, 0)
-		self.selection_label.setToolTip('last selection, click to scroll to it')
-		self.selection_label.setFlat(True)
-		self.selection_label.clicked.connect(self.scroll_selection)
-		self.selection_label.hide()
-	
-		self.statusbar = SceneViewBar(self)
-		self.scene.changed.connect(self.update)
+		self._update_active_scene()
+		self._update_active_selection()
 		
 	def initializeGL(self):
 		super().initializeGL()
@@ -389,47 +208,48 @@ class SceneView(madcad.rendering.View):
 	
 	def closeEvent(self, event):
 		# never close the first openned view, this avoids a Qt bug deleting the context, or something similar
-		if next((view for view in self.main.views if isinstance(view, SceneView)), None) is self:
+		if next((view for view in self.app.views if isinstance(view, SceneView)), None) is self:
 			event.ignore()
 			return
 		
-		self.main.views.remove(self)
-		if self.main.active_sceneview is self:
-			self.main.active_sceneview = None
-		if isinstance(self.parent(), QDockWidget):
-			self.main.mainwindow.removeDockWidget(self.parent())
-		else:
-			super().close()
+		self.app.views.remove(self)
+		if self.app.active.sceneview is self:
+			self.app.active.sceneview = None
+	
+	def focusOutEvent(self, event):
+		self._toolbars_visible(False)
 		
 	def focusInEvent(self, event):
-		super().focusInEvent(event)
-		self.main.active_sceneview = self
-		self.main.active_changed.emit()
-		
-	def enterEvent(self, event):
-		if settings.view['quick_toolbars']:	
-			self.quick.show()
-		
-	def leaveEvent(self, event):
-		if not self.hasFocus():	
-			self.quick.hide()
-		
-	def focusOutEvent(self, event):
-		self.quick.hide()
+		self._toolbars_visible(True)
+		self._update_active_scene()
+		self.open_composer.setChecked(False)
 	
 	def changeEvent(self, evt):
-		# detect QDockWidget integration
-		if evt.type() == evt.ParentChange:
-			if isinstance(self.parent(), QDockWidget):
-				self.parent().setTitleBarWidget(self.statusbar)
 		# update scene when color changes
-		elif evt.type() == QEvent.PaletteChange and madcad.settings.display['system_theme'] and self.scene.ctx:
+		if evt.type() == QEvent.PaletteChange and madcad.settings.display['system_theme'] and self.scene.ctx:
 			self.scene.sync()
 		return super().changeEvent(evt)
 		
 	def resizeEvent(self, evt):
 		super().resizeEvent(evt)
-		self.quick.setGeometry(2, 0, 1+self.quick.sizeHint().width(), self.height())
+		self.left.setGeometry(
+			self.bar_margin, 
+			max(0, self.height()//2 - self.left.sizeHint().height()//2),
+			self.left.sizeHint().width(),
+			min(self.height(), self.left.sizeHint().height()),
+			)
+		self.right.setGeometry(
+			self.width() - self.right.sizeHint().width() - self.bar_margin, 
+			max(0, self.height()//2 - self.right.sizeHint().height()//2),
+			self.right.sizeHint().width(), 
+			min(self.height(), self.right.sizeHint().height()),
+			)
+		self.top.setGeometry(
+			self.bar_margin+self.left.width(), 
+			self.bar_margin,
+			self.width()-self.left.width() - self.bar_margin,
+			self.top.sizeHint().height(),
+			)
 		
 	def control(self, key, evt):
 		''' overwrite the Scene method, to implement the edition behaviors '''
@@ -458,45 +278,53 @@ class SceneView(madcad.rendering.View):
 			
 			if disp.selected:
 				self.scene.active_selection = key
-				self.update_active_selection()
+				self._update_active_selection()
 			elif not disp.selected and self.scene.active_selection == key:
 				self.scene.active_selection = None
-				self.update_active_selection()
+				self._update_active_selection()
 			self.scene.touch()
 			self.update()
-			self.main.updatescript()
+			self.app.updatescript()
 			evt.accept()
 		
 		# show details
 		elif evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.RightButton:
-			self.showdetail(key, evt.pos())
+			self._show_details(key, evt.pos())
 			evt.accept()
 		
 		# edition
 		elif evt.type() == QEvent.MouseButtonDblClick and evt.button() == Qt.LeftButton and hasattr(disp, 'source'):
-			name = self.main.interpreter.ids.get(id(disp.source))
+			name = self.app.interpreter.ids.get(id(disp.source))
 			if name:	
-				if name in self.main.editors:
-					self.main.finishedit(name)
+				if name in self.app.editors:
+					self.app.finishedit(name)
 				else:
-					self.main.edit(name)
+					self.app.edit(name)
 				evt.accept()
 	
-	def update_active_selection(self):
-		if self.scene.active_selection:
-			text = format_scenekey(self.scene, self.scene.active_selection)
-		
-			pointsize = self.selection_label.font().pointSize()
-			self.selection_label.setText(text)
-			self.selection_label.resize(pointsize*len(text), pointsize*2)
-			self.selection_label.show()
-		else:
-			self.selection_label.hide()
+	def _update_active_scene(self):
+		self.open_composer.setText('scene:{}'.format(self.app.scenes.index(self.scene)))
+		self.update()
 	
-	def showdetail(self, key, position=None):
+	def _update_active_selection(self):
+		# if self.scene.active_selection:
+		if True:
+			# text = format_scenekey(self.scene, self.scene.active_selection)
+			text = "machin['truc'].bidule"
+		
+			font = QFont(*settings.scriptview['font'])
+			pointsize = font.pointSize()
+			self.scroll_selection.setFont(font)
+			self.scroll_selection.setText(text)
+			self.scroll_selection.resize(pointsize*len(text), pointsize*2)
+			self.scroll_selection.show()
+		else:
+			self.scroll_selection.hide()
+	
+	def _show_details(self, key, position=None):
 		''' display a detail window for the ident given (grp,sub) '''
-		if key in self.main.details:	
-			self.main.details[key].activateWindow()
+		if key in self.app.details:	
+			self.app.details[key].activateWindow()
 			return
 		
 		disp = self.scene.item(key)
@@ -514,10 +342,11 @@ class SceneView(madcad.rendering.View):
 		
 		detail.show()
 		detail.activateWindow()
-		
+	
+	
 	def separate_scene(self):
 		#self.scene = self.scene.duplicate(self.scene.ctx)
-		self.set_scene(Scene(self.main, ctx=self.scene.ctx))
+		self.set_scene(Scene(self.app, ctx=self.scene.ctx))
 		self.preload()
 		self.scene.sync()
 		
@@ -527,13 +356,46 @@ class SceneView(madcad.rendering.View):
 		self.scene = new
 		self.scene.changed.connect(self.update)
 		self.update()
+	
+	def _toolbars_visible(self, enable):
+		self.right.setVisible(enable)
+		self.left.setVisible(enable)
+	
+	@button(icon='view-dual-symbolic', flat=True, shortcut='Shift+V')
+	def new_view(self):
+		''' create a new view widget '''
+		self.app.window.new_sceneview()
 		
-	def adapt(self):
+	@button(flat=True, checked=False, shortcut='Shift+C')
+	def open_composer(self, show):
+		''' set the scene to render and its content '''
+		if show:
+			self.scene.composer.view = self
+			self.scene.composer.setParent(self)
+			self.scene.composer.move(self.open_composer.pos() + QPoint(0, self.open_composer.height()))
+			self.scene.composer.show()
+			self.scene.composer.setFocus(True)
+		else:
+			self.scene.composer.hide()
+			self.setFocus(True)
+	
+	@button(flat=True, shortcut='Home')
+	def scroll_selection(self):
+		''' last selection, click to scroll to it '''
+		indev
+		
+	# def scene_selector
+	
+	@button(icon='view-fullscreen', flat=True, shortcut='C')
+	def view_adjust(self):
+		''' center and zoom to displayed objects '''
 		box = self.scene.selectionbox() or self.scene.box()
 		self.center(box.center)
 		self.adjust(box)
-		
-	def normalview(self):
+	
+	@button(icon='madcad-view-normal', flat=True, shortcut='N')
+	def view_normal(self):
+		''' move the view orthogonal to the selected surface '''
 		if not self.scene.active_selection:	return
 		disp = self.scene.item(self.scene.active_selection)
 		if not disp or not disp.source:	return
@@ -582,164 +444,206 @@ class SceneView(madcad.rendering.View):
 				return
 				
 			self.update()
-			
-	def projectionswitch(self):
+	
+	@button(icon='madcad-projection', flat=True, shortcut='Shift+S')
+	def projection_switch(self):
+		''' switch between perspective and orthographic projection 
+		
+			- orthographic guaratees to show close and far objects at the same scale
+			- perspective shows far objects smaller and close objects bigger
+		'''
 		if isinstance(self.projection, Perspective):
 			self.projection = Orthographic()
 		else:
 			self.projection = Perspective()
 		self.update()
-		
-	def set_option(self, option, value):
-		self.scene.options[option] = value
-		self.scene.touch()
-		
-	def scroll_selection(self):
-		if not self.scene.active_selection or not self.main.active_scriptview:	
-			return
-		try:	disp = self.scene.item(self.scene.active_selection)
-		except KeyError:	
-			self.active_selection = None
-			self.update_active_selection()
-			return
-		it = self.main.interpreter
-		if not hasattr(disp, 'source') or id(disp.source) not in it.ids:	
-			return
-		self.main.active_scriptview.seek_position(it.locations[it.ids[id(disp.source)]].position)
-		self.main.active_scriptview.editor.setFocus(True)
-		
-
-class SceneViewBar(QWidget):
-	''' statusbar for a sceneview, containing scene management tools '''
-	def __init__(self, sceneview, parent=None):
-		super().__init__(parent)
-		self.sceneview = sceneview
-		
-		self.scenes = scenes = QComboBox()
-		scenes.setFrame(False)
-		def callback(i):
-			self.sceneview.set_scene(self.sceneview.main.scenes[i])
-		scenes.activated.connect(callback)
-		scenes.setModel(sceneview.main.scenesmenu)
-		scenes.setCurrentIndex(sceneview.main.scenes.index(sceneview.scene))
-		scenes.setToolTip('scene to display')
-		
-		def btn(icon, callback=None, help=''):
-			b = QPushButton(QIcon.fromTheme(icon), '')
-			b.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-			b.setFlat(True)
-			b.setToolTip(help)
-			if callback:
-				b.clicked.connect(callback)
-			return b
-			
-		def separate_scene():
-			self.sceneview.separate_scene()
-			scenes.setCurrentIndex(len(sceneview.main.scenes)-1)
-		
-		self.compose = btn('madcad-compose', help='force some objects to display')
-		self.compose.clicked.connect(self.show_composition)
-		
-		layout = QHBoxLayout()
-		layout.addWidget(self.scenes)
-		layout.addWidget(btn('list-add', separate_scene, 'duplicate scene'))
-		layout.addWidget(QWidget())
-		layout.addWidget(self.compose)
-		layout.addWidget(btn('dialog-close-icon', sceneview.close, 'close view'))
-		self.setLayout(layout)
 	
-	def show_composition(self):
-		composition = self.sceneview.scene.composition
-		# show the composition window
-		composition.show()
-		composition.activateWindow()
-		composition.setFocus()
-		# place it below the button
-		psize = self.compose.size()
-		composition.move(self.compose.mapToGlobal(QPoint(0,0)) + QPoint(
-				psize.width()-composition.width(), 
-				psize.height(),
-				))
-		
-class SceneList(QAbstractListModel):
-	''' model for the scene list of the scene status bar '''
-	def __init__(self, main):
-		super().__init__(parent=main)
-		self.main = main
+	def _scene_setting(key, **kwargs):
+		@button(
+			name='', #key.replace('_', ' '),
+			flat=True, 
+			checked=madcad.settings.scene[key],
+			**kwargs
+			)
+		def callback(self, value):
+			self.scene.options[key] = value
+			self.scene.touch()
+			self.update()
+		return callback
 	
-	# implement the interface
-	def data(self, index, role):
-		if role == Qt.DisplayRole:	
-			return 'scene {}'.format(index.row())
-	def rowCount(self, parent=None):
-		return len(self.main.scenes)
+	display_points = _scene_setting('display_points', 
+		icon='madcad-display-points', 
+		description='display mesh points',
+		shortcut='Shift+P')
+	display_faces = _scene_setting('display_faces', 
+		icon='madcad-display-faces', 
+		description='display mesh surface',
+		shortcut='Shift+F')
+	display_wire = _scene_setting('display_wire', 
+		icon='madcad-display-wire', 
+		description='display mesh triangulations',
+		shortcut='Shift+W')
+	display_groups = _scene_setting('display_groups', 
+		icon='madcad-display-groups',
+		description='display mesh groups frontiers',
+		shortcut='Shift+G')
+	display_annotations = _scene_setting('display_annotations', 
+		icon='madcad-annotation',
+		description='display annotation and schematics',
+		shortcut='Shift+A')
+	display_grid = _scene_setting('display_grid', 
+		icon='view-app-grid-symbolic',
+		description='display metric a grid in the background',
+		shortcut='Shift+B')
+	
+	@button(icon='madcad-solid-freemove', flat=True, shortcut='F', checked=False)
+	def mode_free(self):
+		''' move solids freely in the view '''
+		self.scene.options['solid-move'] = False
+	
+	@button(icon='madcad-kinematic-joint', flat=True, shortcut='J', checked=True)
+	def mode_joint(self):
+		''' move kinematic joint by joint whenever possible '''
+		self.scene.options['kinematic-mode'] = 'joint'
+	
+	@button(icon='madcad-kinematic-translate', flat=True, shortcut='T', checked=False)
+	def mode_translate(self):
+		''' move kinematic by translating solids '''
+		self.scene.options['kinematic-mode'] = 'translate'
+	
+	@button(icon='madcad-kinematic-rotate', flat=True, shortcut='R', checked=False)
+	def mode_rotate(self):
+		''' move kinematic by rotating solids '''
+		self.scene.options['kinematic-mode'] = 'rotate'
 
-
-class PlainTextEdit(QPlainTextEdit):
-	''' text view to specify objects main.currentenv we want to append to main.scene '''
-	def __init__(self, parent=None):
-		super().__init__(parent)
-		self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
 		
-	def sizeHint(self):
-		return QSize(20, self.document().lineCount())*self.document().defaultFont().pointSize()
+	def _standard_view(direction, name, shortcut, orientation):
+		@action(
+			name='{} {}'.format(direction, name), 
+			description='{} view: toward {}'.format(name, direction),
+			shortcut=shortcut,
+			)
+		def callback(self):
+			nav = self.navigation
+			if isinstance(nav, Turntable):
+				nav.yaw = roll(orientation)
+				nav.pitch = pi/2 - pitch(orientation)
+			elif isinstance(nav, Orbit):
+				nav.orient = orientation
+			else:
+				raise TypeError('navigation type {} is not supported for standard views'.format(type(nav)))
+			self.update()
+		return callback
+	
+	view_mz = _standard_view('-Z', 'top', shortcut='Y', orientation=fquat(fvec3(0, 0, 0)))
+	view_pz = _standard_view('+Z', 'bottom', shortcut='Shift+Y', orientation=fquat(fvec3(pi, 0, 0)))
+	view_mx = _standard_view('-X', 'front', shortcut='U', orientation=fquat(fvec3(pi/2, 0, 0)))
+	view_px = _standard_view('+X', 'back', shortcut='Shift+U', orientation=fquat(fvec3(pi/2, 0, pi)))
+	view_my = _standard_view('-Y', 'right', shortcut='I', orientation=fquat(fvec3(pi/2, 0, -pi/2)))
+	view_py = _standard_view('+Y', 'left', shortcut='Shift+I', orientation=fquat(fvec3(pi/2, 0, pi/2)))
+	
 
 
-class SceneComposition(QWidget):
+class SceneComposer(QWidget):
 	def __init__(self, scene, parent=None):
 		super().__init__(parent)
-		self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+		Initializer.init(self)
 		self.scene = scene
 		
-		layout = QVBoxLayout()
+		self.hide_all = False
+		self.show_all = False
+		self.hide_set = set()
+		self.show_set = set()
 		
-		layout.addWidget(QLabel('show'))
+		self.scene_selector = QComboBox()
+		self.scene_selector.activated.connect(self._scene_change)
+		self.scene_selector.setToolTip("select the scene to display in the view")
 		
-		btn = QCheckBox('show all')
-		btn.toggled.connect(scene.main._display_all)
-		layout.addWidget(btn)
+		self.show_all = Button(name='all', checked=False, 
+			description="show all objects in all scopes, except those in the hiding list below")
+		self.show_all.clicked.connect(self._content_change)
 		
-		self.showlist = PlainTextEdit()
-		self.showlist.setPlaceholderText('variable names separated by spaces or newlines')
-		self.showlist.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-		self.showlist.document().contentsChange.connect(self._contentsChange)
-		layout.addWidget(self.showlist)
+		self.show_list = PlainTextEdit()
+		self.show_list.setPlaceholderText("variable names separated by spaces or newlines")
+		self.show_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+		self.show_list.document().contentsChange.connect(self._content_change)
 		
-		layout.addWidget(QLabel('hide'))
+		self.hide_all = Button(name='all', checked=False,
+			description="hide all objects in all scopes, except those in the show list above")
+		self.hide_all.clicked.connect(self._content_change)
+		self.hide_list = PlainTextEdit()
+		self.hide_list.setPlaceholderText("variable names separated by spaces or newlines")
+		self.hide_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+		self.hide_list.document().contentsChange.connect(self._content_change)
 		
-		btn = QCheckBox('hide all')
-		btn.toggled.connect(scene.main._display_none)
-		layout.addWidget(btn)
+		self.setLayout(vlayout([
+			QLabel('scene selection'),
+			hlayout([self.scene_remove, self.scene_selector, self.scene_add]),
+			QLabel('scene composition'),
+			hlayout([QLabel('show'), self.show_all]),
+			self.show_list,
+			hlayout([QLabel('hide'), self.hide_all]),
+			self.hide_list,
+			]))
 		
-		self.hidelist = PlainTextEdit()
-		self.hidelist.setPlaceholderText('variable names separated by spaces or newlines')
-		self.hidelist.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-		self.hidelist.document().contentsChange.connect(self._contentsChange)
-		layout.addWidget(self.hidelist)
+# 		selector = QGroupBox('scene')
+# 		selector.setLayout(hlayout([self.scene_remove, self.scene_selector, self.scene_add]))
+# 		
+# 		composition = QGroupBox('composition')
+# 		composition.setLayout(vlayout([
+# 			hlayout([QLabel('show'), self.show_all]),
+# 			self.show_list,
+# 			hlayout([QLabel('hide'), self.hide_all]),
+# 			self.hide_list,
+# 			]))
+# 			
+# 		self.setLayout(vlayout([selector, composition]))
+			
+	def focusInEvent(self, evt):
+		self._update_scenes()
+			
+	def _update_scenes(self):
+		self.scene_selector.clear()
+		for i, scene in enumerate(self.scene.app.scenes):
+			self.scene_selector.addItem(str(i))
+			if scene is self.scene:
+				self.scene_selector.setCurrentIndex(i)
 		
-		layout.addWidget(QSizeGrip(self))
+	def _update_active_scene(self):
+		self.view._update_active_scene()
+		self.hide()
+		self.view.scene.composer.view = self.view
+		self.view.scene.composer.setParent(self.view)
+		self.view.scene.composer.move(self.pos())
+		self.view.scene.composer.show()
+		self.view.scene.composer.setFocus(True)
+			
+	def _scene_change(self, index):
+		self.view.scene = self.scene.app.scenes[index]
+		self._update_active_scene()
 		
-		self.setLayout(layout)
-		self.setFocusProxy(self.showlist)
-		
-	def auto_resize(self):
-		pointsize = self.showlist.document().defaultFont().pointSize()
-		self.setMinimumSize(QSize(15,15)*pointsize)
-		self.resize(30*pointsize, (self.showlist.document().lineCount() + self.hidelist.document().lineCount()+10) * pointsize*2)
-	
-	def _contentsChange(self):
-		self.scene.showset = set(self.showlist.document().toPlainText().split())
-		self.scene.hideset = set(self.hidelist.document().toPlainText().split())
+	def _content_change(self):
 		self.scene.sync()
 	
-	def changeEvent(self, evt):
-		if not self.isActiveWindow():
-			self.setVisible(False)
+	@button(icon='list-add-symbolic', flat=True)
+	def scene_add(self):
+		''' create a new scene '''
+		self.view.scene = Scene(self.scene.app, ctx=self.scene.ctx)
+		self._update_active_scene()
+		self.hide()
 		
-		
+	@button(icon='list-remove-symbolic', flat=True)
+	def scene_remove(self):
+		''' delete this scene '''
+		self.view.app.scenes.pop(self.view.app.scenes.index(self.scene))
+		if self.view.app.scenes:
+			self.view.scene = self.view.app.scenes[0]
+		else:
+			self.view.scene = Scene(self.scene.app, ctx=self.scene.ctx)
+		self._update_active_scene()
+		self.hide()
 
-
-class Grid(GridDisplay):
+class Grid(madcad.displays.GridDisplay):
 	def __init__(self, scene, **kwargs):
 		super().__init__(scene, fvec3(0), **kwargs)
 	
@@ -750,5 +654,3 @@ class Grid(GridDisplay):
 	def render(self, view):
 		self.center = view.navigation.center
 		super().render(view)
-
-

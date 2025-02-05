@@ -1,4 +1,6 @@
-''' uimadcad  -  madcad gui module
-'''
+import os
 
-version = '0.7.1'
+# current software version
+version = '0.8.0'
+# determine the current software's ressource directory
+resourcedir = os.path.abspath(__file__ + '/..')

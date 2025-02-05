@@ -1,15 +1,32 @@
-from PyQt5.QtWidgets import QMenuBar, QMenu
-from PyQt5.QtCore import QAction, Qt, QTimer
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import (
+	QWidget, QBoxLayout, QLayoutItem, QVBoxLayout, QHBoxLayout, QSizePolicy,
+	QPushButton, QDockWidget, QToolBar, QActionGroup, QButtonGroup,
+	QMenuBar, QMenu, 
+	QPlainTextEdit,
+	QApplication, QAction,
+	)
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSize
+from PyQt5.QtGui import QIcon, QKeySequence, QColor, QTextCharFormat
 
 import sys
 import traceback
 import locale
 import signal
 from threading import Thread, Lock
+from functools import partial
 from collections import deque
+from types import MethodType
 
-__all__ = ['singleton', 'spawn', 'qtmain', 'qtschedule', 'qtinvoke', 'qtquit']
+from madcad.mathutils import vec4, ivec4, vec3, fvec3
+
+__all__ = [
+	'singleton', 'spawn', 'qtmain', 'qtschedule', 'qtinvoke', 'qtquit',
+	'Initializer',
+	'ToolBar', 'MenuBar', 'Menu', 'Action', 
+	'Button', 'action', 'button', 'group',
+	'PlainTextEdit',
+	'boxlayout', 'vlayout', 'hlayout', 'dock', 'window', 'spacer', 'signal',
+	]
 
 
 qtstopped = False
@@ -105,79 +122,248 @@ def qtquit():
 
 
 class MenuBar(QMenuBar):
-    def __init__(self, menus:list=()):
-        for name, menu in menus:
-            self.addMenu(Menu(name, menu))
+	def __init__(self, menus:list=(), parent=None):
+		super().__init__(parent)
+		for name, menu in menus:
+			self.addMenu(Menu(name, menu))
 
 class Menu(QMenu):
-    def __init__(self, name, actions:list=None):
-        for name, action in actions:
-            icon = None
-            if isinstance(action, tuple):
-                action, icon = action
-            elif isinstance(action, QMenu):
-                self.addMenu(menu)
-            elif isinstance(action, QAction):
-                self.addAction(action)
-                
+	def __init__(self, name:str, actions:list=(), parent=None):
+		super().__init__(name, parent)
+		for action in actions:
+			icon = None
+			if action is None:
+				self.addSeparator()
+			elif isinstance(action, tuple):
+				action, icon = action
+			elif isinstance(action, QMenu):
+				self.addMenu(menu)
+			elif isinstance(action, QAction):
+				self.addAction(action)
+
+class ToolBar(QToolBar):
+	def __init__(self, name:str, widgets:list=(), orientation=Qt.Horizontal, parent=None):
+		super().__init__(name, parent)
+		self.setOrientation(orientation)
+		for widget in widgets:
+			if widget is None:
+				self.addSeparator()
+			else:
+				self.addWidget(widget)
+				
+def group(actions, parent=None):
+	if isinstance(actions[0], Action):	
+		group = QActionGroup(parent)
+		for action in actions:
+			group.addAction(action)
+	elif isinstance(actions[1], Button):
+		group = QButtonGroup(parent)
+		for action in actions:
+			group.addButton(action)
+				
 class Action(QAction):
-    def __init__(self, 
+	def __init__(self, 
 			callback:callable=None, 
-            name:str=None, 
-            icon:str|QIcon=None, 
-            shortcut:str|QKeySequence=None, 
-            description:str=None, 
-            checked:bool=None,
-            parent=None):
-        super().__init__(parent)
-        if callback:
+			name:str=None, 
+			icon:str|QIcon=None, 
+			shortcut:str|QKeySequence=None, 
+			description:str=None, 
+			checked:bool=None,
+			group=None,
+			parent=None):
+		super().__init__(parent)
+		if callback:
 			if checked is None:
 				self.triggered.connect(callback)
 			else:
 				self.toggled.connect(callback)
-            if not name:    
+			if name is None:
 				name = callback.__name__.replace('_', ' ')
-            if not description: 
+			if description is None: 
 				description = callback.__doc__
-        if name:  
-            self.setText(name)
-            self.setIconText(name)
-        if description: 
-            self.setToolTip(description)
-            self.setWhatsThis(description)
-        if icon:    
-            if isinstance(icon, str):
-                icon = QAction.fromTheme(icon)
-            self.setIcon(icon)
-        if shortcut:
-            if isinstance(shortcut, str):
-                shortcut = QKeySequence(shortcut)
-            self.setShortcut(shortcut)
-        if checked is not None:
-            self.setCheckable(True)
-            self.setChecked(checked)
-        if group:
-            group.addAction(self)
-
-class Initializer: 
-	'''
-		>>> decorator = Initializer.decorator(MyClass)
-		>>> initializer = decorator(*args, **kwargs)(f)
-		>>> action = initializer(*args, **kwargs)
-		>>> Initializer.init(obj)
-	'''
-	def decorator(cls):
-		return partial(partial, Initializer, cls)
-	def __init__(self, cls, *args, **kwargs):
-		self.cls = cls
-		self.args = args
-		self.kwargs = kwargs
-	def __call__(self, *args, **kwargs):
-		return self.cls(*args, *self.args, **kwargs, **self.kwargs)
-	def init(obj):
-		for name, value in vars(obj).items():
-			if isinstance(obj, Initializer):
-				setattr(obj, name, value(obj))
+		if icon:    
+			if isinstance(icon, str):
+				icon = QIcon.fromTheme(icon)
+			self.setIcon(icon)
+		if shortcut:
+			if isinstance(shortcut, str):
+				key = shortcut
+				shortcut = QKeySequence(shortcut)
+			elif isinstance(shortcut, QKeySequence):
+				key = shortcut.key().toString()
+			self.setShortcut(shortcut)
+			if description:
+				description += '\n\n(shortcut: {})'.format(key)
+		if checked is not None:
+			self.setCheckable(True)
+			self.setChecked(checked)
+		if name:  
+			self.setText(name)
+			self.setIconText(name)
+		if description: 
+			self.setToolTip(description)
+			self.setWhatsThis(description)
+		if group:
+			group.addAction(self)
 			
-action = Initializer(Action)
+class Button(QPushButton):
+	def __init__(self, 
+			callback:callable=None, 
+			name:str=None, 
+			icon:str|QIcon=None, 
+			shortcut:str|QKeySequence=None, 
+			description:str=None, 
+			checked:bool=None,
+			flat:bool=False,
+			menu:QMenu=None,
+			group=None,
+			parent=None):
+		super().__init__(parent)
+		if callback:
+			if checked is None:
+				self.clicked.connect(callback)
+			else:
+				self.toggled.connect(callback)
+			if name is None and icon is None:    
+				name = callback.__name__.replace('_', ' ')
+			if description is None: 
+				description = callback.__doc__
+		if icon:    
+			if isinstance(icon, str):
+				icon = QIcon.fromTheme(icon)
+			self.setIcon(icon)
+		if shortcut:
+			if isinstance(shortcut, str):
+				key = shortcut
+				shortcut = QKeySequence(shortcut)
+			elif isinstance(shortcut, QKeySequence):
+				key = shortcut.key().toString()
+			self.setShortcut(shortcut)
+			if description:
+				description += '\n\n(shortcut: {})'.format(key)
+		if checked is not None:
+			self.setCheckable(True)
+			self.setChecked(checked)
+		if name:  
+			self.setText(name)
+		if description is not None: 
+			self.setToolTip(description)
+			self.setWhatsThis(description)
+		if menu:
+			self.setMenu(menu)
+		self.setFlat(flat)
+		self.setFocusPolicy(Qt.NoFocus)
+		if group:
+			group.addAction(self)
 
+def propertywrite(func):
+	''' decorator to create a property with only a write function '''
+	fieldname = '_'+func.__name__
+	def getter(self):	return getattr(self, fieldname)
+	def setter(self, value):
+		setattr(self, fieldname, value)
+		func(self, value)
+	return property(getter, setter)
+
+class Initializer:
+	def decorator(cls):
+		def parametrizer(**kwargs):
+			def decorator(callback):
+				def init(self):
+					return cls(MethodType(callback, self), **kwargs)
+				return Initializer(init)
+			return decorator
+		return parametrizer
+	
+	def __init__(self, init):
+		self.init = init
+	
+	def init(obj, *args, **kwargs):
+		for name, initializer in vars(type(obj)).items():
+			if isinstance(initializer, Initializer):
+				setattr(obj, name, initializer.init(obj, *args, **kwargs))
+
+action = Initializer.decorator(Action)
+button = Initializer.decorator(Button)
+
+
+class PlainTextEdit(QPlainTextEdit):
+	''' text view to specify objects main.currentenv we want to append to main.scene '''
+	def __init__(self, parent=None):
+		super().__init__(parent)
+		self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+		
+	def sizeHint(self):
+		return QSize(20, self.document().lineCount())*self.document().defaultFont().pointSize()
+		
+def boxlayout(items: list, orientation=QBoxLayout.TopToBottom) -> QBoxLayout:
+	layout = QBoxLayout(orientation)
+	for item in items:
+		if isinstance(item, QLayoutItem):
+			layout.addItem(item)
+		elif isinstance(item, QWidget):
+			layout.addWidget(item)
+	return layout
+	
+def vlayout(items: list) -> QVBoxLayout:
+	return boxlayout(items, QBoxLayout.TopToBottom)
+	
+def hlayout(items: list) -> QHBoxLayout:
+	return boxlayout(items, QBoxLayout.LeftToRight)
+
+def dock(widget, title, closable=True, floatable=True):
+	''' create a QDockWidget '''
+	dock = QDockWidget(title)
+	dock.setWidget(widget)
+	dock.setFeatures(	QDockWidget.DockWidgetMovable
+					|	(QDockWidget.DockWidgetFloatable if floatable else 0)
+					|	(QDockWidget.DockWidgetClosable if closable else 0)
+					)
+	dock.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
+	return dock
+	
+def window(widget: QWidget) -> QWidget:
+	widget.setParent(None)
+	widget.show()
+	return widget
+
+def spacer(w: int, h: int) -> QWidget:
+	space = QWidget()
+	space.setMinimumSize(w, h)
+	return space
+
+signal = pyqtSignal
+
+def charformat(background=None, foreground=None, italic=None, overline=None, strikeout=None, weight=None, font=None):
+	''' create a QTextCharFormat '''
+	fmt = QTextCharFormat()
+	if background:	fmt.setBackground(background)
+	if foreground:	fmt.setForeground(foreground)
+	if italic is not None:		fmt.setFontItalic(italic)
+	if overline is not None:	fmt.setFontOverline(overline)
+	if strikeout is not None:	fmt.setFontStrikeOut(strikeout)
+	if weight:					fmt.setFontWeight(weight)
+	if font:	fmt.setFont(font)
+	return fmt
+
+def mix_colors(a: QColor, b: QColor, x: float) -> QColor:
+	a = a.toRgb()
+	b = b.toRgb()
+	y = 1-x
+	return QColor(
+		int(a.red()*x + b.red()*y),
+		int(a.green()*x + b.green()*y),
+		int(a.blue()*x + b.blue()*y),
+		)
+
+def color_to_vec(color: QColor) -> vec4:
+	color = color.toRgb()
+	return vec3(color.red(), color.green(), color.blue(), color.alpha()) / 255
+	
+def vec_to_color(color: vec4) -> QColor:
+	if isinstance(color, fvec3):
+		color = vec3(color)
+	if isinstance(color, vec3):
+		color = vec4(color,1)
+	color = ivec4(color * 255)
+	return QColor(color.x, color.y, color.z, color.w)

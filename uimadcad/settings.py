@@ -6,21 +6,19 @@ from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QApplication, QStyleFactory
 from PyQt5.QtGui import QPalette
 
-from .common import ressourcedir
+from . import resourcedir
 
 
 execution = {
-	'onstartup': False,			# execution at program startup
+	'onstartup': True,			# execution at program startup
 	'trigger': 1,				# execution trigger: {0: manual, 1: on line change, 2: on typing}
-	'backup': 0.2,			# execution time tolerated between backups, if a block runs a longer time, the interpreter will start create a backup
 	'checkdanger': 'startup',	# when to check for dangerous code ('never'/False, 'startup'/True, 'always')
 	}
 	
-view = {
+window = {
+	'size': [900,500],
 	'layout': 'default',
 	'enable_floating': False,	# floating dockable windows, may have performance issues with big meshes
-	'window_size': [900,500],
-	'quick_toolbars': True,		# display the quickaccess toolbars
 	'color_preset': 'system',
 	'stylesheet': 'breeze-artificial',
 	}
@@ -57,7 +55,7 @@ locations = {
 	'startup': configdir+'/madcad/startup.py',
 	}
 
-settings = {'execution':execution, 'view':view, 'scriptview':scriptview}
+settings = {'execution':execution, 'window':window, 'scriptview':scriptview}
 
 
 def qtc(c):
@@ -153,7 +151,7 @@ def list_color_presets(name=None):
 
 def use_color_preset(name=None):	
 	if not name:	
-		name = view['color_preset']
+		name = window['color_preset']
 	
 	palette = QPalette()
 	if name != 'system':
@@ -220,7 +218,7 @@ def list_stylesheets(name=None):
 
 def use_stylesheet(name=None):
 	if not name:
-		name = view['stylesheet']
+		name = window['stylesheet']
 	
 	app = QApplication.instance()
 	keys = set(key.lower()  for key in QStyleFactory.keys())
@@ -235,6 +233,3 @@ def use_stylesheet(name=None):
 			print(err)
 			return
 
-# automatically load settings in the file exist
-try:	load()
-except FileNotFoundError:	raise

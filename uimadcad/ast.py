@@ -4,7 +4,6 @@ from itertools import chain
 from functools import partial
 
 
-
 def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict) -> iter:
 	''' make a code lazily executable by reusing as much previous results as possible '''
 	assigned = Counter()

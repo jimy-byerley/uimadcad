@@ -7,9 +7,8 @@ if __name__ == '__main__':
 	from PyQt5.QtGui import QIcon
 	from PyQt5.QtWidgets import QApplication, QErrorMessage, QMessageBox
 	
-	from uimadcad import version
-	from uimadcad.apputils import *
-	from uimadcad.common import ressourcedir
+	from . import version, settings, resourcedir
+	from .utils import *
 	
 	# set Qt opengl context sharing to avoid reinitialization of scenes everytime, (this is for pymadcad display)
 	QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
@@ -34,7 +33,7 @@ if __name__ == '__main__':
 		raise
 
 	# import the rest of uimadcad that depends on pymadcad
-	from uimadcad.gui import *
+	from .app import Madcad
 	
 	# set icons if not provided by the system
 	if not QIcon.themeName() and sys.platform == 'win32':
@@ -42,30 +41,26 @@ if __name__ == '__main__':
 		path = QIcon.themeSearchPaths()
 		path.append(ressourcedir + '/icons')
 		QIcon.setThemeSearchPaths(path)
-		QIcon.setThemeName('breeze')
+		QIcon.setThemeName('breeze')		
 	
-	settings.install()
+	madcad.settings.load()
+	madcad.settings.install()
 	settings.load()
+	settings.install()
 	settings.use_color_preset()
 	settings.use_stylesheet()
 	
 	# set locale settings to C default to get correct 'repr' of glm types
 	locale.setlocale(locale.LC_NUMERIC, 'C')
 	
+	# create or load config
+	if madcad.settings.display['system_theme']:
+		madcad.settings.use_qt_colors()
+	if settings.scriptview['system_theme']:
+		settings.use_qt_colors()
+	
 	# start software
 	madcad = Madcad()
-	main = MainWindow(madcad)
-	
-	def loaded():
-		if not madcad.execthread:
-			madcad.active_sceneview.adapt()
-			madcad.executed.disconnect(loaded)
-	def startup():
-		if len(sys.argv) >= 2 and os.path.exists(sys.argv[1]):
-			madcad.open_file(sys.argv[1])
-		madcad.executed.connect(loaded)
-	
-	QTimer.singleShot(100, startup)
-	main.show()
+	# TODO load startup file
 	
 	qtmain(app)
