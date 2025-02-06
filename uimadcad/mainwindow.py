@@ -1,19 +1,18 @@
 import warnings
 
-from PyQt5.QtWidgets import QMainWindow, QDockWidget
-from PyQt5.QtCore import Qt
+from madcad.qt import Qt, QWidget, QMainWindow, QDockWidget
 
 from . import settings
 from .sceneview import SceneView
 from .scriptview import ScriptView
-from .utils import ToolBar, button, Initializer, dock
+from .utils import ToolBar, Button, button, Initializer, hlayout, spacer
 
 class MainWindow(QMainWindow):
 	def __init__(self, app):
 		super().__init__()
+		# allows docks to stack horizontally or vertically
+		self.setDockNestingEnabled(True)
 		Initializer.init(self)
-		
-		print(self.execute)
 		
 		self.app = app
 		self.toolbar = ToolBar('app', [
@@ -67,8 +66,35 @@ class MainWindow(QMainWindow):
 
 	def new_scriptview(self):
 		''' insert a new code view into the window layout '''
-		self.addDockWidget(Qt.LeftDockWidgetArea, dock(ScriptView(self.app), 'script view'))
+		self.addDockWidget(Qt.TopDockWidgetArea, DockedView(ScriptView(self.app), 'script view'))
 	
 	def new_sceneview(self):
 		''' insert a new 3d view into the window layout '''
-		self.addDockWidget(Qt.RightDockWidgetArea, dock(SceneView(self.app), 'scene view'))
+		self.addDockWidget(Qt.TopDockWidgetArea, DockedView(SceneView(self.app), 'scene view'))
+
+		
+class DockedView(QDockWidget):
+	def __init__(self, content:QWidget, title:str=None, closable=True, floatable=True):
+		super().__init__()
+		self.setWidget(content)
+		if title:
+			self.setWindowTitle(title)
+		self.setFeatures(	QDockWidget.DockWidgetMovable
+						|	(QDockWidget.DockWidgetFloatable if floatable else 0)
+						|	(QDockWidget.DockWidgetClosable if closable else 0)
+						)
+		self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
+		
+		if isinstance(getattr(content, 'top', None), QWidget):
+			title = QWidget()
+			title.setLayout(hlayout([
+				content.top,
+				spacer(5,0),
+				Button(self.setFloating, flat=True, minimal=True,
+					icon='window-restore-symbolic', shortcut='Ctrl+Shift+F',
+					description="detach view from main window"),
+				Button(self.close, flat=True, minimal=True,
+					icon='window-close-symbolic', shortcut='Ctrl+Shift+V',
+					description="close view"),
+				], spacing=0, margins=(0,0,0,0)))
+			self.setTitleBarWidget(title)

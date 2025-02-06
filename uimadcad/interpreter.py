@@ -20,6 +20,7 @@ class Interpreter:
 		import madcad
 		self.scopes[filename] = {
 			'cube': madcad.brick(width=madcad.vec3(1)),
+			'base': madcad.mat4(),
 			}
 	
 	def execute(self, code:str, step:callable):

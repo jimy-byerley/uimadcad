@@ -3,9 +3,11 @@ if __name__ == '__main__':
 
 	# import the minimal runtime before checks
 	import sys, os, locale
-	from PyQt5.QtCore import Qt, QTimer
-	from PyQt5.QtGui import QIcon
-	from PyQt5.QtWidgets import QApplication, QErrorMessage, QMessageBox
+	from madcad.qt import (
+		Qt, QTimer,
+		QIcon,
+		QApplication, QErrorMessage, QMessageBox,
+		)
 	
 	from . import version, settings, resourcedir
 	from .utils import *

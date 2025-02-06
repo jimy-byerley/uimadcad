@@ -1,9 +1,11 @@
 from functools import partial
 from operator import itemgetter
 
-from PyQt5.QtCore import Qt, QObject, QEvent, QPoint
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QWidget, QPushButton, QCheckBox, QComboBox, QLabel, QSizePolicy
+from madcad.qt import (
+	Qt, QObject, QEvent, 
+	QPoint, QMargins, QFont, 
+	QWidget, QPushButton, QCheckBox, QComboBox, QLabel, QSizePolicy,
+	)
 
 import madcad
 from madcad.rendering import Perspective, Orthographic, Turntable, Orbit, Group
@@ -132,13 +134,19 @@ class SceneView(madcad.rendering.View):
 			pass
 		elif app.active.sceneview:
 			scene = app.active.sceneview.scene
-			self.navigation = deepcopy(app.active.sceneview.navigation)
 		elif app.scenes:
 			scene = app.scenes[0]
 		else:
 			scene = Scene(app)
+		print(scene is app.scenes[0], scene, app.scenes)
 		
 		super().__init__(scene, **kwargs)
+		print(self.scene is app.scenes[0], self.scene)
+		
+		if app.active.sceneview:
+			self.navigation = deepcopy(app.active.sceneview.navigation)
+			self.projection = deepcopy(app.active.sceneview.projection)
+		
 		Initializer.init(self)
 		self.setMinimumSize(100,100)
 		self.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
@@ -150,11 +158,11 @@ class SceneView(madcad.rendering.View):
 		self.top = ToolBar('scene', [
 			self.new_view,
 			self.open_composer,
-			spacer(20, 0),
+			spacer(5, 0),
 			self.scroll_selection,
-			spacer(20, 0),
 			],
 			orientation=Qt.Horizontal,
+			margins=QMargins(3,3,3,0),
 			parent=self)
 		
 		self.left = ToolBar('display', [
@@ -177,6 +185,7 @@ class SceneView(madcad.rendering.View):
 			# 	])),
 			], 
 			orientation=Qt.Vertical, 
+			margins=QMargins(3,3,0,3),
 			parent=self)
 		self.right = ToolBar('view', [
 			self.projection_switch,
@@ -195,6 +204,7 @@ class SceneView(madcad.rendering.View):
 			# self.set_pose,
 			], 
 			orientation=Qt.Vertical, 
+			margins=QMargins(0,3,3,3),
 			parent=self)
 			
 		group([self.mode_joint, self.mode_translate, self.mode_rotate], self)
@@ -244,12 +254,13 @@ class SceneView(madcad.rendering.View):
 			self.right.sizeHint().width(), 
 			min(self.height(), self.right.sizeHint().height()),
 			)
-		self.top.setGeometry(
-			self.bar_margin+self.left.width(), 
-			self.bar_margin,
-			self.width()-self.left.width() - self.bar_margin,
-			self.top.sizeHint().height(),
-			)
+		if self.top.parent() is self:
+			self.top.setGeometry(
+				self.bar_margin+self.left.width(), 
+				self.bar_margin,
+				self.width()-self.left.width() - self.bar_margin,
+				self.top.sizeHint().height(),
+				)
 		
 	def control(self, key, evt):
 		''' overwrite the Scene method, to implement the edition behaviors '''
@@ -372,7 +383,12 @@ class SceneView(madcad.rendering.View):
 		if show:
 			self.scene.composer.view = self
 			self.scene.composer.setParent(self)
-			self.scene.composer.move(self.open_composer.pos() + QPoint(0, self.open_composer.height()))
+			self.scene.composer.setGeometry(
+				self.left.width(), 
+				0, 
+				self.scene.composer.sizeHint().width(),
+				min(self.height(), self.scene.composer.sizeHint().height()),
+				)
 			self.scene.composer.show()
 			self.scene.composer.setFocus(True)
 		else:
@@ -383,8 +399,6 @@ class SceneView(madcad.rendering.View):
 	def scroll_selection(self):
 		''' last selection, click to scroll to it '''
 		indev
-		
-	# def scene_selector
 	
 	@button(icon='view-fullscreen', flat=True, shortcut='C')
 	def view_adjust(self):
@@ -628,9 +642,37 @@ class SceneComposer(QWidget):
 	@button(icon='list-add-symbolic', flat=True)
 	def scene_add(self):
 		''' create a new scene '''
-		self.view.scene = Scene(self.scene.app, ctx=self.scene.ctx)
-		self._update_active_scene()
-		self.hide()
+		former = self.view.scene
+		# self.view.scene = Scene(self.scene.app, 
+		# 	ctx = former.ctx, 
+		# 	options = former.options,
+		# 	)
+		# self.view.scene = madcad.rendering.Scene(
+		# 	{'sphere':madcad.icosphere(vec3(0),1)},
+		# 	ctx = former.ctx, 
+		# 	options = former.options,
+		# 	)
+		print(former is self.view.app.scenes[0], former)
+		former.update({'sphere':madcad.icosphere(vec3(0),1), 'base2':mat4()})
+		print(former.displays, former.queue)
+		self.view.makeCurrent()
+		with self.view.scene.ctx:
+			self.view.preload()
+			self.view.init()
+			
+			# former.dequeue()
+			# print(former.displays, former.queue)
+			# from pnprint import nprint
+			# nprint(former.stacks)
+		
+			# self.view.scene.touch()
+			# self.view.scene.restack()
+			# self.view.scene.ctx.finish()
+			# self.view.fb_screen.use()
+			# self.view.fb_screen.clear()
+			# self.view.scene.resources['shader_ident'] = former.resources['shader_ident']
+			# self.view.scene.resources['shader_subident'] = former.resources['shader_subident']
+		# self._update_active_scene()
 		
 	@button(icon='list-remove-symbolic', flat=True)
 	def scene_remove(self):
@@ -638,10 +680,10 @@ class SceneComposer(QWidget):
 		self.view.app.scenes.pop(self.view.app.scenes.index(self.scene))
 		if self.view.app.scenes:
 			self.view.scene = self.view.app.scenes[0]
+			self._update_active_scene()
 		else:
-			self.view.scene = Scene(self.scene.app, ctx=self.scene.ctx)
-		self._update_active_scene()
-		self.hide()
+			self.scene_add.trigger()
+
 
 class Grid(madcad.displays.GridDisplay):
 	def __init__(self, scene, **kwargs):

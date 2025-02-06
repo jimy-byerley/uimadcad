@@ -1,12 +1,12 @@
-from PyQt5.QtWidgets import (
+from madcad.qt import (
+	Qt, QTimer, Signal, QSize, QMargins,
+	QIcon, QKeySequence, QColor, QTextCharFormat,
 	QWidget, QBoxLayout, QLayoutItem, QVBoxLayout, QHBoxLayout, QSizePolicy,
 	QPushButton, QDockWidget, QToolBar, QActionGroup, QButtonGroup,
 	QMenuBar, QMenu, 
 	QPlainTextEdit,
 	QApplication, QAction,
 	)
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSize
-from PyQt5.QtGui import QIcon, QKeySequence, QColor, QTextCharFormat
 
 import sys
 import traceback
@@ -142,7 +142,7 @@ class Menu(QMenu):
 				self.addAction(action)
 
 class ToolBar(QToolBar):
-	def __init__(self, name:str, widgets:list=(), orientation=Qt.Horizontal, parent=None):
+	def __init__(self, name:str, widgets:list=(), orientation=Qt.Horizontal, margins:QMargins=None, parent=None):
 		super().__init__(name, parent)
 		self.setOrientation(orientation)
 		for widget in widgets:
@@ -150,6 +150,8 @@ class ToolBar(QToolBar):
 				self.addSeparator()
 			else:
 				self.addWidget(widget)
+		if margins:
+			self.layout().setContentsMargins(margins)
 				
 def group(actions, parent=None):
 	if isinstance(actions[0], Action):	
@@ -216,6 +218,7 @@ class Button(QPushButton):
 			checked:bool=None,
 			flat:bool=False,
 			menu:QMenu=None,
+			minimal:bool=False,
 			group=None,
 			parent=None):
 		super().__init__(parent)
@@ -251,6 +254,10 @@ class Button(QPushButton):
 			self.setWhatsThis(description)
 		if menu:
 			self.setMenu(menu)
+		if minimal:
+			self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+		else:
+			self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 		self.setFlat(flat)
 		self.setFocusPolicy(Qt.NoFocus)
 		if group:
@@ -270,7 +277,10 @@ class Initializer:
 		def parametrizer(**kwargs):
 			def decorator(callback):
 				def init(self):
-					return cls(MethodType(callback, self), **kwargs)
+					bound = partial(callback, self)
+					bound.__name__ = callback.__name__
+					bound.__doc__ = callback.__doc__
+					return cls(bound, **kwargs)
 				return Initializer(init)
 			return decorator
 		return parametrizer
@@ -296,8 +306,15 @@ class PlainTextEdit(QPlainTextEdit):
 	def sizeHint(self):
 		return QSize(20, self.document().lineCount())*self.document().defaultFont().pointSize()
 		
-def boxlayout(items: list, orientation=QBoxLayout.TopToBottom) -> QBoxLayout:
+def boxlayout(items: list, orientation=QBoxLayout.TopToBottom, spacing=None, margins=None) -> QBoxLayout:
 	layout = QBoxLayout(orientation)
+	if spacing is not None:
+		layout.setSpacing(spacing)
+	if margins is not None:
+		if isinstance(margins, tuple):
+			layout.setContentsMargins(*margins)
+		else:
+			layout.setContentsMargins(margins)
 	for item in items:
 		if isinstance(item, QLayoutItem):
 			layout.addItem(item)
@@ -305,11 +322,11 @@ def boxlayout(items: list, orientation=QBoxLayout.TopToBottom) -> QBoxLayout:
 			layout.addWidget(item)
 	return layout
 	
-def vlayout(items: list) -> QVBoxLayout:
-	return boxlayout(items, QBoxLayout.TopToBottom)
+def vlayout(items: list, **kwargs) -> QVBoxLayout:
+	return boxlayout(items, orientation=QBoxLayout.TopToBottom, **kwargs)
 	
-def hlayout(items: list) -> QHBoxLayout:
-	return boxlayout(items, QBoxLayout.LeftToRight)
+def hlayout(items: list, **kwargs) -> QHBoxLayout:
+	return boxlayout(items, orientation=QBoxLayout.LeftToRight, **kwargs)
 
 def dock(widget, title, closable=True, floatable=True):
 	''' create a QDockWidget '''
@@ -332,7 +349,7 @@ def spacer(w: int, h: int) -> QWidget:
 	space.setMinimumSize(w, h)
 	return space
 
-signal = pyqtSignal
+signal = Signal
 
 def charformat(background=None, foreground=None, italic=None, overline=None, strikeout=None, weight=None, font=None):
 	''' create a QTextCharFormat '''

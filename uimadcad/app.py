@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
-from PyQt5.QtCore import QObject
-from PyQt5.QtGui import QTextDocument
+from madcad.qt import QObject, QTextDocument
 
 from . import settings
 from .utils import signal, window

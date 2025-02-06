@@ -2,9 +2,11 @@ import os, yaml
 from os.path import dirname, exists
 from madcad.mathutils import *	
 import madcad
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QApplication, QStyleFactory
-from PyQt5.QtGui import QPalette
+from madcad.qt import (
+	QColor,
+	QApplication, QStyleFactory,
+	QPalette,
+	)
 
 from . import resourcedir
 
@@ -109,18 +111,18 @@ def dump(file=None):
 
 def use_qt_colors():
 	''' set the color settings to fit the current system colors '''
-	from PyQt5.QtWidgets import QApplication
+	from madcad.qt import QApplication
 	palette = QApplication.instance().palette()
 	def qtc(role):
 		''' convert a QColor or QPalette role to fvec3'''
 		c = palette.color(role)
 		return fvec3(c.red(), c.green(), c.blue()) / 255
 		
-	background = clamp(mix(qtc(palette.Base), fvec3(0.5), -0.1), fvec3(0), fvec3(1))
-	normal = clamp(mix(qtc(palette.Text), fvec3(0.5), -0.1), fvec3(0), fvec3(1))
+	background = clamp(mix(qtc(QPalette.Base), fvec3(0.5), -0.1), fvec3(0), fvec3(1))
+	normal = clamp(mix(qtc(QPalette.Text), fvec3(0.5), -0.1), fvec3(0), fvec3(1))
 	darken = 0.9 + 0.1*(norminf(normal)-norminf(background))
 	
-	second = qtc(palette.Highlight) +1e-3
+	second = qtc(QPalette.Highlight) +1e-3
 	second = clamp(second / norminf(second) * darken, fvec3(0), fvec3(1)) **2
 	accent = mix(second, fvec3(1, 1, 0)*norminf(second), 0.65)
 	accent = clamp(accent, fvec3(0), fvec3(1))
@@ -143,7 +145,7 @@ def use_qt_colors():
 	
 def list_color_presets(name=None):
 	names = ['system']
-	for name in os.listdir(ressourcedir +'/themes'):
+	for name in os.listdir(resourcedir +'/themes'):
 		radix, ext = os.path.splitext(name)
 		if ext == '.yaml':
 			names.append(radix)
@@ -156,7 +158,7 @@ def use_color_preset(name=None):
 	palette = QPalette()
 	if name != 'system':
 		
-		file = ressourcedir +'/themes/'+ name + '.yaml'
+		file = resourcedir +'/themes/'+ name + '.yaml'
 		try:
 			colors = yaml.safe_load(open(file, 'r'))
 		except FileNotFoundError as err:
@@ -210,7 +212,7 @@ def use_color_preset(name=None):
 
 def list_stylesheets(name=None):
 	names = [key.lower()  for key in QStyleFactory.keys()]
-	for name in os.listdir(ressourcedir +'/themes'):
+	for name in os.listdir(resourcedir +'/themes'):
 		radix, ext = os.path.splitext(name)
 		if ext == '.qss':
 			names.append(radix)
@@ -227,7 +229,7 @@ def use_stylesheet(name=None):
 		app.setStyleSheet('')
 	else:
 		try:
-			app.setStyleSheet(open(ressourcedir+'/themes/'+name+'.qss', 'r').read())
+			app.setStyleSheet(open(resourcedir+'/themes/'+name+'.qss', 'r').read())
 			app.setStyle('fusion')
 		except FileNotFoundError as err:
 			print(err)

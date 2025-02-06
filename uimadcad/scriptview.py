@@ -1,8 +1,10 @@
 import re
 
-from PyQt5.QtWidgets import QWidget, QPlainTextEdit, QVBoxLayout
-from PyQt5.QtGui import QTextCursor, QSyntaxHighlighter, QFont, QFontMetrics, QColor, QTextOption, QPalette, QPainter
-from PyQt5.QtCore import Qt, QEvent, QMargins, QSize, QRect
+from madcad.qt import (
+	QWidget, QPlainTextEdit, QVBoxLayout,
+	QTextCursor, QSyntaxHighlighter, QFont, QFontMetrics, QColor, QTextOption, QPalette, QPainter,
+	Qt, QEvent, QMargins, QSize, QRect,
+	)
 
 from . import settings
 from .utils import Initializer, ToolBar, button, vec_to_color, charformat
