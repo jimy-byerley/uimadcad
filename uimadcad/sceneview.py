@@ -128,6 +128,7 @@ class SceneView(madcad.rendering.View):
 	
 	def __init__(self, app, scene=None, **kwargs):
 		self.app = app
+		self._last_empty = True
 		
 		# try to reuse existing scene
 		if scene:
@@ -138,18 +139,15 @@ class SceneView(madcad.rendering.View):
 			scene = app.scenes[0]
 		else:
 			scene = Scene(app)
-		print(scene is app.scenes[0], scene, app.scenes)
 		
 		super().__init__(scene, **kwargs)
-		print(self.scene is app.scenes[0], self.scene)
-		
-		if app.active.sceneview:
-			self.navigation = deepcopy(app.active.sceneview.navigation)
-			self.projection = deepcopy(app.active.sceneview.projection)
 		
 		Initializer.init(self)
 		self.setMinimumSize(100,100)
-		self.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+		pol = QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
+		pol.setHorizontalStretch(4)
+		pol.setVerticalStretch(4)
+		self.setSizePolicy(pol)
 		
 		app.views.append(self)
 		if not app.active.sceneview:	app.active.sceneview = self
@@ -211,20 +209,21 @@ class SceneView(madcad.rendering.View):
 		
 		self._update_active_scene()
 		self._update_active_selection()
+		self._toolbars_visible(False)
 		
-	def initializeGL(self):
-		super().initializeGL()
-		self.scene.ctx.gc_mode = 'context_gc'
+	def paintEvent(self, evt):
+		# if scene is no more empty, adjust the view automatically
+		empty = self.scene.box().isempty()
+		if not empty and self._last_empty:
+			self.adjust()
+		self._last_empty = empty
+		# proceed to rendering normally
+		super().paintEvent(evt)
 	
-	def closeEvent(self, event):
-		# never close the first openned view, this avoids a Qt bug deleting the context, or something similar
-		if next((view for view in self.app.views if isinstance(view, SceneView)), None) is self:
-			event.ignore()
-			return
-		
+	def hideEvent(self, event):
 		self.app.views.remove(self)
-		if self.app.active.sceneview is self:
-			self.app.active.sceneview = None
+		if self.app.active.scriptview is self:
+			self.app.active.scriptview = None
 	
 	def focusOutEvent(self, event):
 		self._toolbars_visible(False)
@@ -530,24 +529,24 @@ class SceneView(madcad.rendering.View):
 		''' move kinematic by rotating solids '''
 		self.scene.options['kinematic-mode'] = 'rotate'
 
+	def orient(self, orientation: fquat):
+		''' change the view orinetation around its center using the given rotation '''
+		nav = self.navigation
+		if isinstance(nav, Turntable):
+			nav.yaw = roll(orientation)
+			nav.pitch = pi/2 - pitch(orientation)
+		elif isinstance(nav, Orbit):
+			nav.orient = orientation
+		else:
+			raise TypeError('navigation type {} is not supported for standard views'.format(type(nav)))
+		self.update()
 		
 	def _standard_view(direction, name, shortcut, orientation):
-		@action(
+		return action(
 			name='{} {}'.format(direction, name), 
 			description='{} view: toward {}'.format(name, direction),
 			shortcut=shortcut,
-			)
-		def callback(self):
-			nav = self.navigation
-			if isinstance(nav, Turntable):
-				nav.yaw = roll(orientation)
-				nav.pitch = pi/2 - pitch(orientation)
-			elif isinstance(nav, Orbit):
-				nav.orient = orientation
-			else:
-				raise TypeError('navigation type {} is not supported for standard views'.format(type(nav)))
-			self.update()
-		return callback
+			)(lambda self: self.orient(orientation))
 	
 	view_mz = _standard_view('-Z', 'top', shortcut='Y', orientation=fquat(fvec3(0, 0, 0)))
 	view_pz = _standard_view('+Z', 'bottom', shortcut='Shift+Y', orientation=fquat(fvec3(pi, 0, 0)))
@@ -625,12 +624,12 @@ class SceneComposer(QWidget):
 		
 	def _update_active_scene(self):
 		self.view._update_active_scene()
-		self.hide()
 		self.view.scene.composer.view = self.view
 		self.view.scene.composer.setParent(self.view)
 		self.view.scene.composer.move(self.pos())
 		self.view.scene.composer.show()
 		self.view.scene.composer.setFocus(True)
+		self.hide()
 			
 	def _scene_change(self, index):
 		self.view.scene = self.scene.app.scenes[index]
@@ -643,36 +642,11 @@ class SceneComposer(QWidget):
 	def scene_add(self):
 		''' create a new scene '''
 		former = self.view.scene
-		# self.view.scene = Scene(self.scene.app, 
-		# 	ctx = former.ctx, 
-		# 	options = former.options,
-		# 	)
-		# self.view.scene = madcad.rendering.Scene(
-		# 	{'sphere':madcad.icosphere(vec3(0),1)},
-		# 	ctx = former.ctx, 
-		# 	options = former.options,
-		# 	)
-		print(former is self.view.app.scenes[0], former)
-		former.update({'sphere':madcad.icosphere(vec3(0),1), 'base2':mat4()})
-		print(former.displays, former.queue)
-		self.view.makeCurrent()
-		with self.view.scene.ctx:
-			self.view.preload()
-			self.view.init()
-			
-			# former.dequeue()
-			# print(former.displays, former.queue)
-			# from pnprint import nprint
-			# nprint(former.stacks)
-		
-			# self.view.scene.touch()
-			# self.view.scene.restack()
-			# self.view.scene.ctx.finish()
-			# self.view.fb_screen.use()
-			# self.view.fb_screen.clear()
-			# self.view.scene.resources['shader_ident'] = former.resources['shader_ident']
-			# self.view.scene.resources['shader_subident'] = former.resources['shader_subident']
-		# self._update_active_scene()
+		self.view.scene = Scene(self.scene.app, 
+			ctx = former.ctx, 
+			options = former.options,
+			)
+		self._update_active_scene()
 		
 	@button(icon='list-remove-symbolic', flat=True)
 	def scene_remove(self):

@@ -3,7 +3,7 @@ import re
 from madcad.qt import (
 	QWidget, QPlainTextEdit, QVBoxLayout,
 	QTextCursor, QSyntaxHighlighter, QFont, QFontMetrics, QColor, QTextOption, QPalette, QPainter,
-	Qt, QEvent, QMargins, QSize, QRect,
+	Qt, QEvent, QMargins, QSize, QRect, QSizePolicy,
 	)
 
 from . import settings
@@ -65,6 +65,10 @@ class ScriptView(QWidget):
 	
 	def __init__(self, app, parent=None):
 		super().__init__(parent)
+		self.setMinimumSize(100,100)
+		pol = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+		pol.setHorizontalStretch(2)
+		self.setSizePolicy(pol)
 		Initializer.init(self)
 		
 		self.app = app
@@ -119,8 +123,7 @@ class ScriptView(QWidget):
 		layout.addWidget(self.editor)
 		layout.setContentsMargins(QMargins(0,0,0,0))
 		self.setLayout(layout)
-		
-		
+	
 	def changeEvent(self, event):
 		# detect theme change
 		if event.type() == QEvent.PaletteChange and settings.scriptview['system_theme']:
@@ -128,14 +131,10 @@ class ScriptView(QWidget):
 			self.update_colors()
 		return super().changeEvent(event)
 	
-	def closeEvent(self, event):
+	def hideEvent(self, event):
 		self.app.views.remove(self)
 		if self.app.active.scriptview is self:
 			self.app.active.scriptview = None
-		if isinstance(self.parent(), QDockWidget):
-			self.app.mainwindow.removeDockWidget(self.parent())
-		else:
-			super().close()
 			
 # 	def enterEvent(self, event):
 # 		if self.editor.hasFocus():

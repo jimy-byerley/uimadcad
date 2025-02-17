@@ -131,13 +131,10 @@ class Menu(QMenu):
 	def __init__(self, name:str, actions:list=(), parent=None):
 		super().__init__(name, parent)
 		for action in actions:
-			icon = None
 			if action is None:
 				self.addSeparator()
-			elif isinstance(action, tuple):
-				action, icon = action
 			elif isinstance(action, QMenu):
-				self.addMenu(menu)
+				self.addMenu(action)
 			elif isinstance(action, QAction):
 				self.addAction(action)
 
@@ -148,6 +145,8 @@ class ToolBar(QToolBar):
 		for widget in widgets:
 			if widget is None:
 				self.addSeparator()
+			elif isinstance(widget, Action):
+				self.addAction(widget)
 			else:
 				self.addWidget(widget)
 		if margins:
@@ -202,7 +201,8 @@ class Action(QAction):
 		if name:  
 			self.setText(name)
 			self.setIconText(name)
-		if description: 
+		if description is not None: 
+			description = dedent(description)
 			self.setToolTip(description)
 			self.setWhatsThis(description)
 		if group:
@@ -245,11 +245,12 @@ class Button(QPushButton):
 			if description:
 				description += '\n\n(shortcut: {})'.format(key)
 		if checked is not None:
-			self.setCheckable(True)
 			self.setChecked(checked)
+			self.setCheckable(True)
 		if name:  
 			self.setText(name)
 		if description is not None: 
+			description = dedent(description)
 			self.setToolTip(description)
 			self.setWhatsThis(description)
 		if menu:
@@ -384,3 +385,23 @@ def vec_to_color(color: vec4) -> QColor:
 		color = vec4(color,1)
 	color = ivec4(color * 255)
 	return QColor(color.x, color.y, color.z, color.w)
+
+def dedent(text):
+	text = text.strip()
+	indent = None
+	it = iter(text)
+	for char in it:
+		if char == '\n': 
+			indent = char
+			break
+	for char in it:
+		if char == '\n':	
+			indent = char
+		elif char.isspace():  
+			indent += char
+		else:  
+			break
+	if indent:
+		return text.replace(indent, '\n')
+	else:
+		return text
