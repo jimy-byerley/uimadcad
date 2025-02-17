@@ -42,9 +42,10 @@ class MainWindow(QMainWindow):
 			# 	flat = True,
 			# 	description = "reorganize the window following one of the predefined layouts", 
 			# 	menu = (Menu('layout', [
-					Action(partial(self.layout_preset, 'default'), name='default', shortcut='Ctrl+Shift+J', icon='madcad-layout-default', description='default', parent=self),
-					Action(partial(self.layout_preset, 'double'), name='double', shortcut='Ctrl+Shift+K', icon='madcad-layout-double', description='double', parent=self),
-					Action(partial(self.layout_preset, 'triple'), name='triple', shortcut='Ctrl+Shift+L', icon='madcad-layout-triple', description='triple', parent=self),
+					self.layout_default,
+					self.layout_double,
+					self.layout_triple,
+					self.layout_minimal,
 				# ]))),
 			]))
 		
@@ -52,20 +53,24 @@ class MainWindow(QMainWindow):
 		self.layout_preset(settings.window['layout'])
 	
 	def layout_preset(self, name):
-		method = getattr(self, '_layout_'+name, None)
+		method = getattr(self, 'layout_'+name, None)
 		if method:
-			# clear
-			for child in self.children():
-				if isinstance(child, QDockWidget):
-					self.removeDockWidget(child)
-			# repopulate
-			method()
+			method.trigger()
 		else:
 			warnings.warn('unknown layout preset {}'.format(repr(name)))
+			
+	def _layout_clear(self):
+		for child in self.children():
+			if isinstance(child, QDockWidget):
+				self.removeDockWidget(child)
 	
-	def _layout_default(self):
-		self.addDockWidget(Qt.TopDockWidgetArea, script := DockedView(ScriptView(self.app), 'script view', closable=False))
-		self.addDockWidget(Qt.TopDockWidgetArea, main := DockedView(SceneView(self.app), 'scene view', closable=False))
+	@action(shortcut='Ctrl+Shift+J', icon='madcad-layout-default')
+	def layout_default(self):
+		''' default layout with a script view and a scene view '''
+		self._layout_clear()
+		
+		self.addDockWidget(Qt.TopDockWidgetArea, script := DockedView(ScriptView(self.app), 'script view'))
+		self.addDockWidget(Qt.TopDockWidgetArea, main := DockedView(SceneView(self.app), 'main scene view'))
 		
 		main.widget().orient(fquat(fvec3(+pi/3, 0, -pi/4)))
 		
@@ -76,10 +81,17 @@ class MainWindow(QMainWindow):
 			Qt.Horizontal,
 			)
 	
-	def _layout_double(self):
-		self.addDockWidget(Qt.TopDockWidgetArea, script := DockedView(ScriptView(self.app), 'script view', closable=False))
-		self.addDockWidget(Qt.TopDockWidgetArea, main := DockedView(SceneView(self.app), 'scene view', closable=False))
-		self.addDockWidget(Qt.TopDockWidgetArea, second := DockedView(SceneView(self.app, projection = Orthographic()), 'scene view', closable=False))
+	@action(shortcut='Ctrl+Shift+K', icon='madcad-layout-double')
+	def layout_double(self):
+		''' 2 view layout in addition to a script view
+			- one main view
+			- one orthographic side view
+		'''
+		self._layout_clear()
+		
+		self.addDockWidget(Qt.TopDockWidgetArea, script := DockedView(ScriptView(self.app), 'script view'))
+		self.addDockWidget(Qt.TopDockWidgetArea, main := DockedView(SceneView(self.app), 'main scene view'))
+		self.addDockWidget(Qt.TopDockWidgetArea, second := DockedView(SceneView(self.app, projection = Orthographic()), 'side scene view'))
 		
 		main.widget().orient(fquat(fvec3(pi/3,0,-pi/4)))
 		second.widget().orient(fquat(fvec3(pi/2,0,0)))
@@ -94,11 +106,18 @@ class MainWindow(QMainWindow):
 			Qt.Horizontal,
 			)
 	
-	def _layout_triple(self):
-		self.addDockWidget(Qt.TopDockWidgetArea, script := DockedView(ScriptView(self.app), 'script view', closable=False))
-		self.addDockWidget(Qt.TopDockWidgetArea, main := DockedView(SceneView(self.app), 'scene view', closable=False))
-		self.addDockWidget(Qt.TopDockWidgetArea, top := DockedView(SceneView(self.app, projection = Orthographic()), 'scene view', closable=False))
-		self.splitDockWidget(top, side := DockedView(SceneView(self.app, projection = Orthographic()), 'scene view', closable=False), Qt.Vertical)
+	@action(shortcut='Ctrl+Shift+L', icon='madcad-layout-triple')
+	def layout_triple(self):
+		''' 3 view layout in addition to a script view
+			- one main view
+			- two orthographic top and side views
+		'''
+		self._layout_clear()
+		
+		self.addDockWidget(Qt.TopDockWidgetArea, script := DockedView(ScriptView(self.app), 'script view'))
+		self.addDockWidget(Qt.TopDockWidgetArea, main := DockedView(SceneView(self.app), 'main scene view'))
+		self.addDockWidget(Qt.TopDockWidgetArea, top := DockedView(SceneView(self.app, projection = Orthographic()), 'top scene view'))
+		self.splitDockWidget(top, side := DockedView(SceneView(self.app, projection = Orthographic()), 'side scene view'), Qt.Vertical)
 		
 		main.widget().orient(fquat(fvec3(+pi/3, 0, -pi/4)))
 		top.widget().orient(fquat(fvec3(0)))
@@ -119,8 +138,14 @@ class MainWindow(QMainWindow):
 			Qt.Vertical,
 			)
 
-	def _layout_minimal(self):
-		self.new_sceneview()
+	@action(shortcut='Ctrl+Shift+M', icon='madcad-layout-minimal')
+	def layout_minimal(self):
+		''' minimal layout with only one scene view '''
+		self._layout_clear()
+		
+		self.addDockWidget(Qt.TopDockWidgetArea, main := DockedView(SceneView(self.app), 'scene view'))
+		
+		main.widget().orient(fquat(fvec3(+pi/3, 0, -pi/4)))
 	
 	@action(icon='madcad-scriptview')
 	def new_scriptview(self):
@@ -131,6 +156,21 @@ class MainWindow(QMainWindow):
 	def new_sceneview(self):
 		''' insert a new 3d view into the window layout '''
 		self.addDockWidget(Qt.TopDockWidgetArea, DockedView(SceneView(self.app), 'scene view'))
+		
+	def insert_view(self, current:QWidget, new:QWidget):
+		''' insert a new DockedView in the mainwindow
+		
+			- if the current widget is in a DockedView, the new one is inserted to the right or below
+			- else it is added at the right of the layout
+		'''
+		if isinstance(current.parent(), DockedView):
+			if current.height() > current.width():
+				orientation = Qt.Vertical
+			else:
+				orientation = Qt.Horizontal
+			self.app.window.splitDockWidget(current.parent(), DockedView(new, 'new view'), orientation)
+		else:
+			self.app.window.addDockWidget(Qt.TopDockWidgetArea, DockedView(new, 'new view'))
 
 	@action(icon='view-dual-symbolic')
 	def copy_layout_to_clipboard(self):

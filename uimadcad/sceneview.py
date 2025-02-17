@@ -4,7 +4,7 @@ from operator import itemgetter
 from madcad.qt import (
 	Qt, QObject, QEvent, 
 	QPoint, QMargins, QFont, 
-	QWidget, QPushButton, QCheckBox, QComboBox, QLabel, QSizePolicy,
+	QWidget, QPushButton, QCheckBox, QComboBox, QLabel, QSizePolicy, QButtonGroup,
 	)
 
 import madcad
@@ -141,13 +141,10 @@ class SceneView(madcad.rendering.View):
 			scene = Scene(app)
 		
 		super().__init__(scene, **kwargs)
-		
-		Initializer.init(self)
 		self.setMinimumSize(100,100)
-		pol = QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
-		pol.setHorizontalStretch(4)
-		pol.setVerticalStretch(4)
-		self.setSizePolicy(pol)
+		self.setSizePolicy(QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding))
+		Initializer.init(self)
+		self._init_scene_settings()
 		
 		app.views.append(self)
 		if not app.active.sceneview:	app.active.sceneview = self
@@ -171,7 +168,7 @@ class SceneView(madcad.rendering.View):
 			self.display_annotations,
 			self.display_grid,
 			None,
-			self.mode_free,
+			self.solid_freemove,
 			None,
 			self.mode_joint,
 			self.mode_translate,
@@ -204,8 +201,6 @@ class SceneView(madcad.rendering.View):
 			orientation=Qt.Vertical, 
 			margins=QMargins(0,3,3,3),
 			parent=self)
-			
-		group([self.mode_joint, self.mode_translate, self.mode_rotate], self)
 		
 		self._update_active_scene()
 		self._update_active_selection()
@@ -229,6 +224,7 @@ class SceneView(madcad.rendering.View):
 		self._toolbars_visible(False)
 		
 	def focusInEvent(self, event):
+		self._retreive_scene_options()
 		self._toolbars_visible(True)
 		self._update_active_scene()
 		self.open_composer.setChecked(False)
@@ -374,7 +370,12 @@ class SceneView(madcad.rendering.View):
 	@button(icon='view-dual-symbolic', flat=True, shortcut='Shift+V')
 	def new_view(self):
 		''' create a new view widget '''
-		self.app.window.new_sceneview()
+		self.app.window.insert_view(self, SceneView(
+			self.app, 
+			scene = self.scene,
+			navigation = deepcopy(self.navigation),
+			projection = deepcopy(self.projection),
+			))
 		
 	@button(flat=True, checked=False, shortcut='Shift+C')
 	def open_composer(self, show):
@@ -471,64 +472,102 @@ class SceneView(madcad.rendering.View):
 			self.projection = Perspective()
 		self.update()
 	
-	def _scene_setting(key, **kwargs):
-		@button(
-			name='', #key.replace('_', ' '),
-			flat=True, 
-			checked=madcad.settings.scene[key],
-			**kwargs
+	# settings buttons for booleans
+	_scene_options = dict(
+		display_points = dict(
+			description="display mesh points", 
+			icon='madcad-display-points', 
+			shortcut='Shift+P'),
+		
+		display_faces = dict(
+			description='display mesh surface', 
+			icon='madcad-display-faces',
+			shortcut='Shift+F'),
+		
+		display_wire = dict( 
+			icon='madcad-display-wire', 
+			description='display mesh triangulations',
+			shortcut='Shift+W'),
+		
+		display_groups = dict( 
+			icon='madcad-display-groups',
+			description='display mesh groups frontiers',
+			shortcut='Shift+G'),
+		
+		display_annotations = dict( 
+			icon='madcad-annotation',
+			description='display annotation and schematics',
+			shortcut='Shift+A'),
+		
+		display_grid = dict( 
+			icon='view-app-grid-symbolic',
+			description='display metric a grid in the background',
+			shortcut='Shift+B'),
+		
+		solid_freemove = dict(
+			icon='madcad-solid-freemove',
+			description='move solids freely in the view',
+			shortcut='F',
 			)
-		def callback(self, value):
-			self.scene.options[key] = value
-			self.scene.touch()
-			self.update()
-		return callback
+		)
+	# settings buttons for kinematic manipulation mode
+	_kinematic_modes = dict(
+		joint = dict(
+			icon='madcad-kinematic-joint',
+			description='move kinematic joint by joint whenever possible',
+			shortcut='J'),
+		
+		translate = dict(
+			icon='madcad-kinematic-translate',
+			description='move kinematic by translating solids',
+			shortcut='T'),
+		
+		rotate = dict(
+			icon='madcad-kinematic-rotate', 
+			description='move kinematic by rotating solids',
+			shortcut='R'),
+		)
 	
-	display_points = _scene_setting('display_points', 
-		icon='madcad-display-points', 
-		description='display mesh points',
-		shortcut='Shift+P')
-	display_faces = _scene_setting('display_faces', 
-		icon='madcad-display-faces', 
-		description='display mesh surface',
-		shortcut='Shift+F')
-	display_wire = _scene_setting('display_wire', 
-		icon='madcad-display-wire', 
-		description='display mesh triangulations',
-		shortcut='Shift+W')
-	display_groups = _scene_setting('display_groups', 
-		icon='madcad-display-groups',
-		description='display mesh groups frontiers',
-		shortcut='Shift+G')
-	display_annotations = _scene_setting('display_annotations', 
-		icon='madcad-annotation',
-		description='display annotation and schematics',
-		shortcut='Shift+A')
-	display_grid = _scene_setting('display_grid', 
-		icon='view-app-grid-symbolic',
-		description='display metric a grid in the background',
-		shortcut='Shift+B')
+	def _init_scene_settings(self):
+		''' create the settings buttons '''
+		for name, kwargs in self._scene_options.items():
+			setattr(self, name, Button(
+				self._apply_scene_options, 
+				checkable = True, 
+				flat = True, 
+				# name = name.replace('_', ' '),
+				name = '',
+				**kwargs))
+		modes = QButtonGroup(self)
+		for name, kwargs in self._kinematic_modes.items():
+			button = Button(
+				self._apply_scene_options,
+				checkable=True, 
+				flat=True,
+				# name = name.replace('_', ' '),
+				name = '',
+				**kwargs)
+			modes.addButton(button)
+			setattr(self, 'mode_'+name, button)
+			
+	def _retreive_scene_options(self):
+		''' set all settings button states to the matching values from scene.options '''
+		for name in self._scene_options:
+			getattr(self, name).setChecked(self.scene.options.get(name, False))
+		attr = getattr(self, 'mode_'+self.scene.options['kinematic_manipulation'], None)
+		if attr:
+			attr.setChecked(True)
+			
+	def _apply_scene_options(self):
+		''' set all scene.options settings to the matching values from button states '''
+		for name in self._scene_options:
+			self.scene.options[name] = getattr(self, name).isChecked()
+		for name in self._kinematic_modes:
+			if getattr(self, 'mode_'+name).isChecked():
+				self.scene.options['kinematic_manipulation'] = name
+		self.scene.touch()
+		self.update()
 	
-	@button(icon='madcad-solid-freemove', flat=True, shortcut='F', checked=False)
-	def mode_free(self):
-		''' move solids freely in the view '''
-		self.scene.options['solid-move'] = False
-	
-	@button(icon='madcad-kinematic-joint', flat=True, shortcut='J', checked=True)
-	def mode_joint(self):
-		''' move kinematic joint by joint whenever possible '''
-		self.scene.options['kinematic-mode'] = 'joint'
-	
-	@button(icon='madcad-kinematic-translate', flat=True, shortcut='T', checked=False)
-	def mode_translate(self):
-		''' move kinematic by translating solids '''
-		self.scene.options['kinematic-mode'] = 'translate'
-	
-	@button(icon='madcad-kinematic-rotate', flat=True, shortcut='R', checked=False)
-	def mode_rotate(self):
-		''' move kinematic by rotating solids '''
-		self.scene.options['kinematic-mode'] = 'rotate'
-
 	def orient(self, orientation: fquat):
 		''' change the view orinetation around its center using the given rotation '''
 		nav = self.navigation

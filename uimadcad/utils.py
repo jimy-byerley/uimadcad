@@ -216,6 +216,7 @@ class Button(QPushButton):
 			shortcut:str|QKeySequence=None, 
 			description:str=None, 
 			checked:bool=None,
+			checkable:bool=False,
 			flat:bool=False,
 			menu:QMenu=None,
 			minimal:bool=False,
@@ -245,7 +246,7 @@ class Button(QPushButton):
 			if description:
 				description += '\n\n(shortcut: {})'.format(key)
 		if checked is not None:
-			self.setChecked(checked)
+			checkable = True
 			self.setCheckable(True)
 		if name:  
 			self.setText(name)
@@ -260,6 +261,7 @@ class Button(QPushButton):
 		else:
 			self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 		self.setFlat(flat)
+		self.setCheckable(checkable)
 		self.setFocusPolicy(Qt.NoFocus)
 		if group:
 			group.addAction(self)

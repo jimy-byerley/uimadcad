@@ -66,9 +66,7 @@ class ScriptView(QWidget):
 	def __init__(self, app, parent=None):
 		super().__init__(parent)
 		self.setMinimumSize(100,100)
-		pol = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-		pol.setHorizontalStretch(2)
-		self.setSizePolicy(pol)
+		self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred))
 		Initializer.init(self)
 		
 		self.app = app
