@@ -1,4 +1,6 @@
 import warnings
+import sys
+import os
 from functools import partial
 
 from madcad.qt import Qt, QWidget, QMainWindow, QDockWidget, QLabel, QApplication
@@ -20,18 +22,18 @@ class MainWindow(QMainWindow):
 		self.setDockNestingEnabled(True)
 		
 		self.addToolBar(Qt.LeftToolBarArea, ToolBar('file', [
-			self.new,
-			self.open,
-			self.save,
-			self.save_as,
+			self.app.save,
+			self.app.save_as,
+			self.app.open,
+			self.app.new,
 			]))
 		self.addToolBar(Qt.LeftToolBarArea, ToolBar('execution', [
-			self.execute,
-			self.clear,
-			self.trigger_on_file_change,
+			self.app.execute,
+			self.app.clear,
+			self.app.trigger_on_file_change,
 			None,
-			self.open_uimadcad_settings,
-			self.open_pymadcad_settings,
+			self.app.open_uimadcad_settings,
+			self.app.open_pymadcad_settings,
 			]))
 		self.addToolBar(Qt.LeftToolBarArea, ToolBar('windowing', [
 			self.new_sceneview,
@@ -52,7 +54,8 @@ class MainWindow(QMainWindow):
 		self.resize(*settings.window['size'])
 		self.layout_preset(settings.window['layout'])
 	
-	def layout_preset(self, name):
+	def layout_preset(self, name:str):
+		''' apply the given layout preset, it must match an action of the same name in this class '''
 		method = getattr(self, 'layout_'+name, None)
 		if method:
 			method.trigger()
@@ -60,8 +63,9 @@ class MainWindow(QMainWindow):
 			warnings.warn('unknown layout preset {}'.format(repr(name)))
 			
 	def _layout_clear(self):
+		''' remove all docked widgets from the window '''
 		for child in self.children():
-			if isinstance(child, QDockWidget):
+			if isinstance(child, DockedView):
 				self.removeDockWidget(child)
 	
 	@action(shortcut='Ctrl+Shift+J', icon='madcad-layout-default')
@@ -176,60 +180,7 @@ class MainWindow(QMainWindow):
 	def copy_layout_to_clipboard(self):
 		''' dump the layout state to clipboard (for developers) '''
 		QApplication.clipboard().setText(str(self.saveState()))
-		
-	@action(icon='madcad-configure-uimadcad')
-	def open_uimadcad_settings(self):
-		''' open the settings file of uimadcad '''
-		indev
 	
-	@action(icon='madcad-configure-pymadcad')
-	def open_pymadcad_settings(self):
-		''' open the settings file of pymadcad '''
-		indev
-	
-	@action(icon='media-seek-forward-symbolic', checked=False, shortcut='Ctrl+Shift+T')
-	def trigger_on_file_change(self):
-		''' trigger execution on file change
-			(save from this editor, or from external editor)
-			
-			when disabled, you must trigger manually
-		'''
-		...
-	
-	@action(icon='media-playback-start', shortcut='Ctrl+Return')
-	def execute(self):
-		''' run the script. 
-			a parcimonial interpreter will take care of reexecuting only the changed code
-		'''
-		indev
-		
-	@action(icon='view-refresh', shortcut='Ctrl+Backspace')
-	def clear(self):
-		''' clear all caches of previous executions 
-			next execution will reexecute the whole script from the beginning
-		'''
-		indev
-		
-	
-	@action(icon='document-new-symbolic', shortcut='Ctrl+N')
-	def new(self):
-		''' open a new madcad instance with a blank script '''
-		indev
-	
-	@action(icon='document-open-symbolic', shortcut='Ctrl+O')
-	def open(self):
-		''' close this file and open an other script file '''
-		indev
-	
-	@action(icon='document-save-symbolic', shortcut='Ctrl+S')
-	def save(self):
-		''' save the current edited file '''
-		indev
-	
-	@action(icon='document-save-as-symbolic', shortcut='Ctrl+Shift+S')
-	def save_as(self):
-		''' save as a new file '''
-		indev
 
 		
 class DockedView(QDockWidget):

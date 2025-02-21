@@ -3,6 +3,8 @@ if __name__ == '__main__':
 
 	# import the minimal runtime before checks
 	import sys, os, locale
+
+	import madcad
 	from madcad.qt import (
 		Qt, QTimer,
 		QIcon,
@@ -11,6 +13,7 @@ if __name__ == '__main__':
 	
 	from . import version, settings, resourcedir
 	from .utils import *
+	from .app import Madcad
 	
 	# set Qt opengl context sharing to avoid reinitialization of scenes everytime, (this is for pymadcad display)
 	QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
@@ -19,23 +22,6 @@ if __name__ == '__main__':
 	app.setApplicationName('madcad')
 	app.setApplicationVersion(version)
 	app.setApplicationDisplayName('madcad v{}'.format(version))
-	
-	# check for the presence of pymadcad (and all its dependencies)
-	try:
-		import madcad
-	except ImportError:
-		dialog = QMessageBox(
-					QMessageBox.Critical, 
-					'pymadcad not found', 
-					'uimadcad is unable to import pymadcad, please make sure you installed it.\nPlease refer to the instructions at https://pymadcad.readthedocs.io/en/latest/installation.html\n\nuimadcad is unable to run without pymadcad.', 
-					QMessageBox.Close)
-		dialog.show()
-		
-		qtmain(app)
-		raise
-
-	# import the rest of uimadcad that depends on pymadcad
-	from .app import Madcad
 	
 	# set icons if not provided by the system
 	if not QIcon.themeName() and sys.platform == 'win32':
