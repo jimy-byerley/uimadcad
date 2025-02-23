@@ -14,6 +14,11 @@ if __name__ == '__main__':
 	from . import version, settings, resourcedir
 	from .utils import *
 	from .app import Madcad
+		
+	# parse commandline arguments
+	file = None
+	if len(sys.argv) >= 2:
+		file = sys.argv[1]
 	
 	# set Qt opengl context sharing to avoid reinitialization of scenes everytime, (this is for pymadcad display)
 	QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
@@ -48,7 +53,6 @@ if __name__ == '__main__':
 		settings.use_qt_colors()
 	
 	# start software
-	madcad = Madcad()
-	# TODO load startup file
+	madcad = Madcad(file)
 	
 	qtmain(app)

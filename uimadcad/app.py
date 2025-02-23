@@ -1,7 +1,7 @@
 import sys, os
 from dataclasses import dataclass
 
-from madcad.qt import QObject, QTextDocument, QFileDialog, QErrorMessage
+from madcad.qt import QObject, QTextDocument, QFileDialog, QErrorMessage, QPlainTextDocumentLayout, QApplication
 
 from . import settings
 from .utils import signal, window, action, Initializer
@@ -26,17 +26,26 @@ class Madcad(QObject):
 	file_changed = signal()
 	executed = signal()
 
-	def __init__(self):
+	def __init__(self, file=None):
 		super().__init__()
-		Initializer.init(self)
+		Initializer.process(self)
 		
 		self.active = Active()
 		self.scenes = []
-		self.views = []
+		self.views = set()
 		self.interpreter = Interpreter('<uimadcad>')
 		self.document = QTextDocument(self)
+		self.document.setDocumentLayout(QPlainTextDocumentLayout(self.document))
 		self.window = window(MainWindow(self))
-		# self.progress = Progress()
+		
+		self.load_file(file)
+		
+	def load_file(self, file=None):
+		''' load the content of the file at the given path and replace the current scritpt '''
+		self.active.file = file
+		self.window.setWindowFilePath(self.active.file or 'untitled')
+		self.document.setPlainText(open(self.active.file or settings.locations['startup'], 'r').read())
+		self.document.setModified(False)
 
 	def open_file_external(self, file):
 		''' open a file with an appropriate software decided by the desktop '''
@@ -57,14 +66,14 @@ class Madcad(QObject):
 	@action(icon='madcad-configure-uimadcad')
 	def open_uimadcad_settings(self):
 		''' open the settings file of uimadcad '''
-		self.app.open_file_external(settings.locations['uisettings'])
+		self.open_file_external(settings.locations['uisettings'])
 	
 	@action(icon='madcad-configure-pymadcad')
 	def open_pymadcad_settings(self):
 		''' open the settings file of pymadcad '''
-		self.app.open_file_external(settings.locations['pysettings'])
+		self.open_file_external(settings.locations['pysettings'])
 	
-	@action(icon='media-seek-forward-symbolic', checked=False, shortcut='Ctrl+Shift+T')
+	@action(icon='media-seek-forward', checked=False, shortcut='Ctrl+Shift+T')
 	def trigger_on_file_change(self):
 		''' trigger execution on file change
 			(save from this editor, or from external editor)
@@ -97,7 +106,7 @@ class Madcad(QObject):
 	def open(self):
 		''' close this file and open an other script file '''
 		filename, _ = QFileDialog.getOpenFileName(
-			self, 
+			self.window, 
 			caption = 'open madcad file', 
 			directory = os.curdir, 
 			filter = 'madcad files (*.py)',
@@ -120,6 +129,9 @@ class Madcad(QObject):
 			except OSError as err:
 				popup = QErrorMessage(self.window)
 				popup.showMessage(str(err))
+			else:
+				# inform Qt that the document has been saved in its current state
+				self.document.setModified(False)
 		else:
 			self.save_as.trigger()
 	
@@ -135,4 +147,5 @@ class Madcad(QObject):
 		if not filename:
 			return
 		self.active.file = filename
+		self.window.setWindowFilePath(self.active.file)
 		self.save.trigger()

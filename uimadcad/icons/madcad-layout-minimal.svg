@@ -6,7 +6,7 @@
    version="1.1"
    id="svg8"
    inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
-   sodipodi:docname="madcad-layout-default.svg"
+   sodipodi:docname="madcad-layout-minimal.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -78,12 +78,6 @@
     <g
        id="g969"
        transform="matrix(1.835461,0,0,1.7851199,-4.9215808,-227.40374)">
-      <path
-         style="fill:none;stroke:currentColor;stroke-width:0.219254;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1"
-         d="m 7.1203337,289.33487 0.026172,2.48655"
-         id="path3726-3"
-         sodipodi:nodetypes="cc"
-         class="ColorScheme-Highlight" />
       <rect
          style="fill:none;fill-opacity:0.74958;stroke:#888888;stroke-width:0.21925397;stroke-dasharray:none;paint-order:markers fill stroke"
          id="rect3661"

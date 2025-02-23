@@ -4,7 +4,8 @@ from operator import itemgetter
 from madcad.qt import (
 	Qt, QObject, QEvent, 
 	QPoint, QMargins, QFont, 
-	QWidget, QPushButton, QCheckBox, QComboBox, QLabel, QSizePolicy, QButtonGroup,
+	QWidget, QPushButton, QCheckBox, QComboBox, QLabel, QSizePolicy, QButtonGroup, QActionGroup,
+	QGroupBox,
 	)
 
 import madcad
@@ -22,7 +23,6 @@ class Scene(madcad.rendering.Scene, QObject):
 		QObject.__init__(self)
 		madcad.rendering.Scene.__init__(self, *args, **kwargs)
 		self.app = app
-		app.scenes.append(self)
 		
 		# prevent reference-loop in groups (groups are taken from the execution env, so the user may not want to display it however we are trying to)
 		self.memo = set()
@@ -33,6 +33,9 @@ class Scene(madcad.rendering.Scene, QObject):
 		# application behavior
 		self.composer = SceneComposer(self)
 		self.sync()
+		
+		self.app.scenes.append(self)
+		
 		
 	def sync(self):
 		''' synchronize the scene content with the rest of the application '''
@@ -119,7 +122,6 @@ class Scene(madcad.rendering.Scene, QObject):
 			return box
 		return selbox(self.displays.values())
 
-		
 
 class SceneView(madcad.rendering.View):
 	''' dockable and reparentable scene view widget, bases on madcad.Scene '''
@@ -133,31 +135,29 @@ class SceneView(madcad.rendering.View):
 		# try to reuse existing scene
 		if scene:
 			pass
-		elif app.active.sceneview:
-			scene = app.active.sceneview.scene
-		elif app.scenes:
-			scene = app.scenes[0]
+		elif self.app.active.sceneview:
+			scene = self.app.active.sceneview.scene
+		elif self.app.scenes:
+			scene = self.app.scenes[0]
 		else:
-			scene = Scene(app)
+			scene = Scene(self.app)
 		
 		super().__init__(scene, **kwargs)
 		self.setMinimumSize(100,100)
 		self.setSizePolicy(QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding))
-		Initializer.init(self)
+		Initializer.process(self)
 		self._init_scene_settings()
-		
-		app.views.append(self)
-		if not app.active.sceneview:	app.active.sceneview = self
 		
 		# toolbars
 		self.top = ToolBar('scene', [
 			self.new_view,
 			self.open_composer,
 			spacer(5, 0),
-			self.scroll_selection,
+			self.seek_selection,
 			],
 			orientation=Qt.Horizontal,
 			margins=QMargins(3,3,3,0),
+			icon_size='small',
 			parent=self)
 		
 		self.left = ToolBar('display', [
@@ -181,7 +181,9 @@ class SceneView(madcad.rendering.View):
 			], 
 			orientation=Qt.Vertical, 
 			margins=QMargins(3,3,0,3),
+			icon_size='small',
 			parent=self)
+			
 		self.right = ToolBar('view', [
 			self.projection_switch,
 			self.view_adjust,
@@ -191,7 +193,7 @@ class SceneView(madcad.rendering.View):
 				self.view_mx, self.view_px,
 				self.view_my, self.view_py,
 				])),
-			None,
+			# None,
 			# self.selection_mode,
 			# self.direction_selector,
 			# None,
@@ -200,6 +202,7 @@ class SceneView(madcad.rendering.View):
 			], 
 			orientation=Qt.Vertical, 
 			margins=QMargins(0,3,3,3),
+			icon_size='small',
 			parent=self)
 		
 		self._update_active_scene()
@@ -215,19 +218,27 @@ class SceneView(madcad.rendering.View):
 		# proceed to rendering normally
 		super().paintEvent(evt)
 	
+	def showEvent(self, event):
+		self.app.views.add(self)
+		if not self.app.active.sceneview:	
+			self.app.active.sceneview = self
+	
 	def hideEvent(self, event):
-		self.app.views.remove(self)
+		self.app.views.discard(self)
 		if self.app.active.scriptview is self:
 			self.app.active.scriptview = None
-	
-	def focusOutEvent(self, event):
-		self._toolbars_visible(False)
 		
 	def focusInEvent(self, event):
+		self.app.active.sceneview = self
 		self._retreive_scene_options()
 		self._toolbars_visible(True)
 		self._update_active_scene()
 		self.open_composer.setChecked(False)
+		super().focusInEvent(event)
+	
+	def focusOutEvent(self, event):
+		self._toolbars_visible(False)
+		super().focusOutEvent(event)
 	
 	def changeEvent(self, evt):
 		# update scene when color changes
@@ -257,6 +268,21 @@ class SceneView(madcad.rendering.View):
 				self.top.sizeHint().height(),
 				)
 		
+	def inputEvent(self, event):
+		# reimplement top bar shortcuts here because Qt cannot deambiguate which view the shortcut belongs to
+		if event.type() == QEvent.KeyPress:
+			print(event, event.key(), Qt.Key_Up, int(event.modifiers()), Qt.AltModifier)
+			event.accept()
+			if event.key() == Qt.Key_Return and event.modifiers() & Qt.AltModifier:
+				self.open_composer.setChecked(True)
+			elif event.key() == Qt.Key_Up and event.modifiers() & Qt.AltModifier:
+				self.seek_selection.click()
+			else:
+				event.ignore()
+				return super().inputEvent(event)
+		else:
+			return super().inputEvent(event)
+	
 	def control(self, key, evt):
 		''' overwrite the Scene method, to implement the edition behaviors '''
 		disp = self.scene.displays
@@ -320,12 +346,12 @@ class SceneView(madcad.rendering.View):
 		
 			font = QFont(*settings.scriptview['font'])
 			pointsize = font.pointSize()
-			self.scroll_selection.setFont(font)
-			self.scroll_selection.setText(text)
-			self.scroll_selection.resize(pointsize*len(text), pointsize*2)
-			self.scroll_selection.show()
+			self.seek_selection.setFont(font)
+			self.seek_selection.setText(text)
+			self.seek_selection.resize(pointsize*len(text), pointsize*2)
+			self.seek_selection.show()
 		else:
-			self.scroll_selection.hide()
+			self.seek_selection.hide()
 	
 	def _show_details(self, key, position=None):
 		''' display a detail window for the ident given (grp,sub) '''
@@ -349,25 +375,39 @@ class SceneView(madcad.rendering.View):
 		detail.show()
 		detail.activateWindow()
 	
+	def _toolbars_visible(self, enable):
+		self.right.setVisible(enable)
+		self.left.setVisible(enable)
+	
 	
 	def separate_scene(self):
-		#self.scene = self.scene.duplicate(self.scene.ctx)
+		''' create a new Scene and set it to the current view '''
 		self.set_scene(Scene(self.app, ctx=self.scene.ctx))
 		self.preload()
 		self.scene.sync()
 		
 	def set_scene(self, new):
+		''' set the scene rendered in the view '''
 		if self.scene:
 			self.scene.changed.disconnect(self.update)
 		self.scene = new
 		self.scene.changed.connect(self.update)
 		self.update()
 	
-	def _toolbars_visible(self, enable):
-		self.right.setVisible(enable)
-		self.left.setVisible(enable)
+	def orient(self, orientation: fquat):
+		''' change the view orinetation around its center using the given rotation '''
+		nav = self.navigation
+		if isinstance(nav, Turntable):
+			nav.yaw = roll(orientation)
+			nav.pitch = pi/2 - pitch(orientation)
+		elif isinstance(nav, Orbit):
+			nav.orient = orientation
+		else:
+			raise TypeError('navigation type {} is not supported for standard views'.format(type(nav)))
+		self.update()
 	
-	@button(icon='view-dual-symbolic', flat=True, shortcut='Shift+V')
+	
+	@action(icon='view-dual')
 	def new_view(self):
 		''' create a new view widget '''
 		self.app.window.insert_view(self, SceneView(
@@ -377,9 +417,12 @@ class SceneView(madcad.rendering.View):
 			projection = deepcopy(self.projection),
 			))
 		
-	@button(flat=True, checked=False, shortcut='Shift+C')
+	@button(flat=True, checked=False) #, shortcut='Alt+Return')
 	def open_composer(self, show):
-		''' set the scene to render and its content '''
+		''' set the scene to render and its content 
+		
+			(shortcut: Alt+Return)
+		'''
 		if show:
 			self.scene.composer.view = self
 			self.scene.composer.setParent(self)
@@ -395,19 +438,22 @@ class SceneView(madcad.rendering.View):
 			self.scene.composer.hide()
 			self.setFocus(True)
 	
-	@button(flat=True, shortcut='Home')
-	def scroll_selection(self):
-		''' last selection, click to scroll to it '''
+	@button(flat=True) #, shortcut='Alt+Up')
+	def seek_selection(self):
+		''' last selection, click to scroll to it 
+		
+			(shortcut: Alt+Up)
+		'''
 		indev
 	
-	@button(icon='view-fullscreen', flat=True, shortcut='C')
+	@action(icon='view-fullscreen', shortcut='C')
 	def view_adjust(self):
 		''' center and zoom to displayed objects '''
 		box = self.scene.selectionbox() or self.scene.box()
 		self.center(box.center)
 		self.adjust(box)
 	
-	@button(icon='madcad-view-normal', flat=True, shortcut='N')
+	@action(icon='madcad-view-normal', shortcut='N')
 	def view_normal(self):
 		''' move the view orthogonal to the selected surface '''
 		if not self.scene.active_selection:	return
@@ -459,7 +505,7 @@ class SceneView(madcad.rendering.View):
 				
 			self.update()
 	
-	@button(icon='madcad-projection', flat=True, shortcut='Shift+S')
+	@action(icon='madcad-projection', shortcut='Shift+S')
 	def projection_switch(self):
 		''' switch between perspective and orthographic projection 
 		
@@ -500,7 +546,7 @@ class SceneView(madcad.rendering.View):
 			shortcut='Shift+A'),
 		
 		display_grid = dict( 
-			icon='view-app-grid-symbolic',
+			icon='view-grid',
 			description='display metric a grid in the background',
 			shortcut='Shift+B'),
 		
@@ -531,23 +577,21 @@ class SceneView(madcad.rendering.View):
 	def _init_scene_settings(self):
 		''' create the settings buttons '''
 		for name, kwargs in self._scene_options.items():
-			setattr(self, name, Button(
+			setattr(self, name, Action(
 				self._apply_scene_options, 
 				checkable = True, 
-				flat = True, 
 				# name = name.replace('_', ' '),
 				name = '',
 				**kwargs))
-		modes = QButtonGroup(self)
+		modes = QActionGroup(self)
 		for name, kwargs in self._kinematic_modes.items():
-			button = Button(
+			button = Action(
 				self._apply_scene_options,
-				checkable=True, 
-				flat=True,
+				checkable=True,
 				# name = name.replace('_', ' '),
 				name = '',
 				**kwargs)
-			modes.addButton(button)
+			modes.addAction(button)
 			setattr(self, 'mode_'+name, button)
 			
 	def _retreive_scene_options(self):
@@ -568,18 +612,6 @@ class SceneView(madcad.rendering.View):
 		self.scene.touch()
 		self.update()
 	
-	def orient(self, orientation: fquat):
-		''' change the view orinetation around its center using the given rotation '''
-		nav = self.navigation
-		if isinstance(nav, Turntable):
-			nav.yaw = roll(orientation)
-			nav.pitch = pi/2 - pitch(orientation)
-		elif isinstance(nav, Orbit):
-			nav.orient = orientation
-		else:
-			raise TypeError('navigation type {} is not supported for standard views'.format(type(nav)))
-		self.update()
-		
 	def _standard_view(direction, name, shortcut, orientation):
 		return action(
 			name='{} {}'.format(direction, name), 
@@ -597,9 +629,10 @@ class SceneView(madcad.rendering.View):
 
 
 class SceneComposer(QWidget):
+	''' widget for allowing to select the scene to display and what variables to display '''
 	def __init__(self, scene, parent=None):
 		super().__init__(parent)
-		Initializer.init(self)
+		Initializer.process(self, parent=self)
 		self.scene = scene
 		
 		self.hide_all = False
@@ -628,28 +661,18 @@ class SceneComposer(QWidget):
 		self.hide_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
 		self.hide_list.document().contentsChange.connect(self._content_change)
 		
-		self.setLayout(vlayout([
-			QLabel('scene selection'),
-			hlayout([self.scene_remove, self.scene_selector, self.scene_add]),
-			QLabel('scene composition'),
+		selector = QGroupBox('scene')
+		selector.setLayout(hlayout([self.scene_remove, self.scene_selector, self.scene_add]))
+		
+		composition = QGroupBox('composition')
+		composition.setLayout(vlayout([
 			hlayout([QLabel('show'), self.show_all]),
 			self.show_list,
 			hlayout([QLabel('hide'), self.hide_all]),
 			self.hide_list,
 			]))
-		
-# 		selector = QGroupBox('scene')
-# 		selector.setLayout(hlayout([self.scene_remove, self.scene_selector, self.scene_add]))
-# 		
-# 		composition = QGroupBox('composition')
-# 		composition.setLayout(vlayout([
-# 			hlayout([QLabel('show'), self.show_all]),
-# 			self.show_list,
-# 			hlayout([QLabel('hide'), self.hide_all]),
-# 			self.hide_list,
-# 			]))
-# 			
-# 		self.setLayout(vlayout([selector, composition]))
+			
+		self.setLayout(vlayout([selector, composition]))
 			
 	def focusInEvent(self, evt):
 		self._update_scenes()
@@ -676,7 +699,7 @@ class SceneComposer(QWidget):
 		
 	def _content_change(self):
 		self.scene.sync()
-	
+
 	@button(icon='list-add-symbolic', flat=True)
 	def scene_add(self):
 		''' create a new scene '''
@@ -699,6 +722,7 @@ class SceneComposer(QWidget):
 
 
 class Grid(madcad.displays.GridDisplay):
+	''' display for the scene metric grid '''
 	def __init__(self, scene, **kwargs):
 		super().__init__(scene, fvec3(0), **kwargs)
 	

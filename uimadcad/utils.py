@@ -1,11 +1,11 @@
 from madcad.qt import (
-	Qt, QTimer, Signal, QSize, QMargins,
+	Qt, QTimer, Signal, QSize, QMargins, QStyle,
 	QIcon, QKeySequence, QColor, QTextCharFormat,
 	QWidget, QBoxLayout, QLayoutItem, QVBoxLayout, QHBoxLayout, QSizePolicy,
 	QPushButton, QDockWidget, QToolBar, QActionGroup, QButtonGroup,
 	QMenuBar, QMenu, 
 	QPlainTextEdit,
-	QApplication, QAction,
+	QApplication, QAction, QShortcut,
 	)
 
 import sys
@@ -22,8 +22,8 @@ from madcad.mathutils import vec4, ivec4, vec3, fvec3
 __all__ = [
 	'singleton', 'spawn', 'qtmain', 'qtschedule', 'qtinvoke', 'qtquit',
 	'Initializer',
-	'ToolBar', 'MenuBar', 'Menu', 'Action', 
-	'Button', 'action', 'button', 'group',
+	'ToolBar', 'MenuBar', 'Menu', 'Action', 'Shortcut',
+	'Button', 'action', 'button', 'group', 'shortcut',
 	'PlainTextEdit',
 	'boxlayout', 'vlayout', 'hlayout', 'dock', 'window', 'spacer', 'signal',
 	]
@@ -139,7 +139,12 @@ class Menu(QMenu):
 				self.addAction(action)
 
 class ToolBar(QToolBar):
-	def __init__(self, name:str, widgets:list=(), orientation=Qt.Horizontal, margins:QMargins=None, parent=None):
+	def __init__(self, name:str, 
+			widgets:list=(), 
+			orientation=Qt.Horizontal, 
+			margins:QMargins=None, 
+			icon_size:QSize|str=None,
+			parent=None):
 		super().__init__(name, parent)
 		self.setOrientation(orientation)
 		for widget in widgets:
@@ -149,6 +154,16 @@ class ToolBar(QToolBar):
 				self.addAction(widget)
 			else:
 				self.addWidget(widget)
+		if icon_size:
+			if isinstance(icon_size, str):
+				match icon_size:
+					case 'small':  metric = QStyle.PM_SmallIconSize
+					case 'normal': metric = QStyle.PM_ToolBarIconSize
+					case 'large':  metric = QStyle.PM_LargeIconSize
+					case _:   raise ValueError('bad size {}'.format(repr(icon_size)))
+				size = QApplication.instance().style().pixelMetric(metric)
+				size = QSize(size, size)
+			self.setIconSize(size)
 		if margins:
 			self.layout().setContentsMargins(margins)
 				
@@ -170,7 +185,10 @@ class Action(QAction):
 			shortcut:str|QKeySequence=None, 
 			description:str=None, 
 			checked:bool=None,
+			checkable:bool=False,
 			group=None,
+			priority=QAction.NormalPriority,
+			context=Qt.WindowShortcut,
 			parent=None):
 		super().__init__(parent)
 		if callback:
@@ -196,7 +214,7 @@ class Action(QAction):
 			if description:
 				description += '\n\n(shortcut: {})'.format(key)
 		if checked is not None:
-			self.setCheckable(True)
+			checkable = True
 			self.setChecked(checked)
 		if name:  
 			self.setText(name)
@@ -205,6 +223,9 @@ class Action(QAction):
 			description = dedent(description)
 			self.setToolTip(description)
 			self.setWhatsThis(description)
+		self.setCheckable(checkable)
+		self.setPriority(priority)
+		self.setShortcutContext(context)
 		if group:
 			group.addAction(self)
 			
@@ -247,7 +268,7 @@ class Button(QPushButton):
 				description += '\n\n(shortcut: {})'.format(key)
 		if checked is not None:
 			checkable = True
-			self.setCheckable(True)
+			self.setChecked(checked)
 		if name:  
 			self.setText(name)
 		if description is not None: 
@@ -265,6 +286,10 @@ class Button(QPushButton):
 		self.setFocusPolicy(Qt.NoFocus)
 		if group:
 			group.addAction(self)
+			
+class Shortcut(QShortcut):
+	def __init__(self, callback:callable, shortcut:str, context=Qt.WindowShortcut, parent=None):
+		super().__init__(shortcut, parent, callback)
 
 def propertywrite(func):
 	''' decorator to create a property with only a write function '''
@@ -279,11 +304,11 @@ class Initializer:
 	def decorator(cls):
 		def parametrizer(**kwargs):
 			def decorator(callback):
-				def init(self):
+				def init(self, **kwargs2):
 					bound = partial(callback, self)
 					bound.__name__ = callback.__name__
 					bound.__doc__ = callback.__doc__
-					return cls(bound, **kwargs)
+					return cls(bound, **kwargs, **kwargs2)
 				return Initializer(init)
 			return decorator
 		return parametrizer
@@ -291,13 +316,14 @@ class Initializer:
 	def __init__(self, init):
 		self.init = init
 	
-	def init(obj, *args, **kwargs):
+	def process(obj, **kwargs):
 		for name, initializer in vars(type(obj)).items():
 			if isinstance(initializer, Initializer):
-				setattr(obj, name, initializer.init(obj, *args, **kwargs))
+				setattr(obj, name, initializer.init(obj, **kwargs))
 
 action = Initializer.decorator(Action)
 button = Initializer.decorator(Button)
+shortcut = Initializer.decorator(Shortcut)
 
 
 class PlainTextEdit(QPlainTextEdit):

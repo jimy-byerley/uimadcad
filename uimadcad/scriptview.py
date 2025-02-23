@@ -3,34 +3,266 @@ import re
 from madcad.qt import (
 	QWidget, QPlainTextEdit, QVBoxLayout,
 	QTextCursor, QSyntaxHighlighter, QFont, QFontMetrics, QColor, QTextOption, QPalette, QPainter,
-	Qt, QEvent, QMargins, QSize, QRect, QSizePolicy,
+	Qt, QEvent, QMargins, QSize, QRect, QSizePolicy, QKeySequence,
 	)
 
 from . import settings
-from .utils import Initializer, ToolBar, button, vec_to_color, charformat
+from .utils import Initializer, ToolBar, button, action, Action, vec_to_color, charformat, vlayout, spacer
 
 
-class TextEdit(QPlainTextEdit):
-	''' text editor widget for ScriptView, only here to change some QPlainTextEdit behaviors '''
+class ScriptView(QWidget):
+	''' text editor part of the app frame '''
 	
-	def focusInEvent(self, event):
-		self.parent().focused()
-		super().focusInEvent(event)
+	# NOTE:	for unknow reasons, a widget created as child of QPlainTextEdit is rendered only if created in the __init__
+	
+	bar_margin = 2
+	
+	def __init__(self, app, cursor=None, parent=None):
+		self.app = app
+		self.font = QFont(*settings.scriptview['font'])
 		
-	def focusOutEvent(self, event):
-		self.parent().unfocused()
-		super().leaveEvent(event)
+		# set cursor position on openning
+		if cursor:
+			pass
+		elif self.app.active.scriptview:
+			cursor = app.active.scriptview.editor.textCursor()
 		
+		super().__init__(parent)
+		self.setMinimumSize(200,100)
+		self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred))
+		Initializer.process(self)
+		
+		# text editor widget
+		self.editor = ScriptEdit(self)
+		self.linenumbers = ScriptLines(self.font, self.editor)
+		assert self.app.document is self.editor.document()
+		
+		# # toolbars
+		self.top = ToolBar('top', [
+			self.new_view,
+			spacer(5, 0),
+			self.previous_location,
+			self.next_location,
+			spacer(5, 0),
+			self.seek_location,
+			self.view_selection,
+			],
+			orientation=Qt.Horizontal, 
+			margins=QMargins(3,3,3,0),
+			icon_size='small',
+			parent=self.editor)
+		
+		self.bot = ToolBar('right', [
+			self.undo,
+			self.redo,
+			None,
+			self.indent_increase,
+			self.indent_decrease,
+			self.reformat,
+			None,
+			self.find,
+			self.replace,
+			self.seek_definition,
+			None,
+			self.fontsize_increase,
+			self.fontsize_decrease,
+			self.linewrap,
+			self.show_linenumbers,
+			],
+			orientation=Qt.Horizontal, 
+			margins=QMargins(0,3,3,3),
+			icon_size='small',
+			parent=self.editor)
+		
+		# global layout
+		self.setLayout(vlayout([
+			self.top,
+			self.editor,
+			self.bot,
+			], 
+			margins=QMargins(0,0,0,0), 
+			spacing=0))
+		
+		# other configurations
+		self.setFocusProxy(self.editor)
+		self.editor.updateRequest.connect(self._update_line_numbers)
+		if cursor:
+			self.editor.setTextCursor(cursor)
+		
+		self._update_colors()
+		self._update_active_selection()
+		self._retreive_settings()
+		self._toolbars_visible(False)
+	
 	def keyPressEvent(self, event):
-		cursor = self.textCursor()
-		if cursor.hasSelection():
-			if event.key() == Qt.Key.Key_Tab:		self.indent_increase(cursor)
-			elif event.key() == Qt.Key.Key_Backtab:	self.indent_decrease(cursor)
-			else:	super().keyPressEvent(event)
-		else:		super().keyPressEvent(event)
+		# reimplement top bar shortcuts here because Qt cannot deambiguate which view the shortcut belongs to
+		event.accept()
+		if event.key() == Qt.Key_Left and event.modifiers() & Qt.AltModifier:
+			self.previous_location.trigger()
+		elif event.key() == Qt.Key_Right and event.modifiers() & Qt.AltModifier:
+			self.next_location.trigger()
+		elif event.key() == Qt.Key_Return and event.modifiers() & Qt.AltModifier:
+			self.seek_location.setChecked(True)
+		elif event.key() == Qt.Key_Down and event.modifiers() & Qt.AltModifier:
+			self.view_selection.click()
+		else:
+			event.ignore()
+			return super().keyPressEvent(event)
 	
-	def indent_increase(self, cursor=None):
-		if not cursor:	cursor = self.textCursor()
+	def showEvent(self, event):	
+		self.app.views.add(self)
+		if not self.app.active.scriptview:	
+			self.app.active.scriptview = self
+	
+	def hideEvent(self, event):
+		self.app.views.remove(self)
+		if self.app.active.scriptview is self:
+			self.app.active.scriptview = None
+		
+	def changeEvent(self, event):
+		# detect theme change
+		if event.type() == QEvent.PaletteChange and settings.scriptview['system_theme']:
+			settings.use_qt_colors()
+			self._update_colors()
+		return super().changeEvent(event)
+	
+	def resizeEvent(self, event):
+		super().resizeEvent(event)
+		
+		# self.bot.setGeometry(
+		# 	self.width() - self.bot.sizeHint().width() - self.bar_margin, 
+		# 	max(0, self.height()//2 - self.bot.sizeHint().height()//2),
+		# 	self.bot.sizeHint().width(), 
+		# 	min(self.height(), self.bot.sizeHint().height()),
+		# 	)
+		# if self.top.parent() is self:
+		# 	self.top.setGeometry(
+		# 		self.bar_margin+self.left.width(), 
+		# 		self.bar_margin,
+		# 		self.width()-self.left.width() - self.bar_margin,
+		# 		self.top.sizeHint().height(),
+		# 		)
+		
+		self._update_line_numbers()
+	
+	def _toolbars_visible(self, enable):
+		self.bot.setVisible(enable)
+
+	def _update_colors(self):
+		palette = self.editor.palette()
+		palette.setColor(QPalette.Base, vec_to_color(settings.scriptview['background']))
+		self.editor.setPalette(palette)
+		self.highlighter = Highlighter(self.editor.document(), self.font)
+	
+	def _update_line_numbers(self):
+		# update location label
+		line, column = cursor_location(self.editor.textCursor())
+		self.seek_location.setText('line {}, column {}'.format(line+1, column+1))
+		
+		# update the line number area
+		if self.show_linenumbers.isChecked():
+			# compute number of digits
+			nlines = max(1, self.editor.blockCount())
+			digits = 1
+			while nlines >= 10:		
+				nlines //= 10
+				digits += 1
+			# resize area
+			charwidth = QFontMetrics(self.font).maxWidth()
+			border = charwidth//2
+			width = (digits+3)*charwidth
+			self.editor.setViewportMargins(width, 0, 0, 0)
+			cr = self.editor.contentsRect()	# only this rect has the correct area, with the good margins with the real widget geometry
+			self.linenumbers.setGeometry(QRect(cr.left(), cr.top(), width, cr.height()))
+			self.linenumbers.width = width - border//2
+			self.linenumbers.border = border
+			self.linenumbers.update()
+		else:
+			self.editor.setViewportMargins(0, 0, 0, 0)
+		self.editor.update()
+	
+	def _update_active_selection(self):
+		# if self.scene.active_selection:
+		if True:
+			# text = #TODO
+			text = "machin['truc'].bidule"
+		
+			font = QFont(*settings.scriptview['font'])
+			pointsize = font.pointSize()
+			self.view_selection.setFont(font)
+			self.view_selection.setText(text)
+			self.view_selection.resize(pointsize*len(text), pointsize*2)
+			self.view_selection.show()
+		else:
+			self.view_selection.hide()
+			
+	def _retreive_settings(self):
+		self.show_linenumbers.setChecked(settings.scriptview['linenumbers'])
+		self.linewrap.setChecked(settings.scriptview['linewrap'])
+	
+	@action(icon='view-dual')
+	def new_view(self):
+		''' create a new view widget '''
+		self.app.window.insert_view(self, ScriptView(
+			self.app, 
+			self.editor.textCursor(),
+			))
+			
+	@action(icon='go-previous') #, shortcut='Alt+Left')
+	def previous_location(self):
+		''' move cursor to previous historical position 
+		
+			(shortcut: Alt+Left)
+		'''
+		indev
+		
+	@action(icon='go-next') #, shortcut='Alt+Right')
+	def next_location(self):
+		''' move cursor to next historical position 
+		
+			(shortcut: Alt+Right)
+		'''
+		indev
+	
+	@button(flat=True) #, shortcut='Alt+Return')
+	def seek_location(self):
+		''' cursor position in the script, click to modify 
+			
+			(shortcut: Alt+Return)
+		'''
+		indev
+		
+	@button(flat=True) #, shortcut='Alt+Down')
+	def view_selection(self):
+		''' zoom the object in selected variable in the active sceneview 
+		
+			(shortcut: Alt+Down)
+		'''
+		inbev
+		
+	@action(icon='go-up', shortcut='Alt+Up')
+	def seek_definition(self):
+		''' move cursor to the definition of variable under cursor
+		
+			(mouse: Ctrl+click)
+		'''
+		indev
+		
+	
+	@action(icon='edit-undo', shortcut='Ctrl+Z')
+	def undo(self):
+		''' undo previous changes in history '''
+		self.app.document.undo()
+		
+	@action(icon='edit-redo', shortcut='Ctrl+Y')
+	def redo(self):
+		''' redo next changes in history '''
+		self.app.document.redo()
+	
+	@action(icon='format-indent-more', shortcut='Tab')
+	def indent_increase(self):
+		''' increase the indentation level of the current or selected lines '''
+		cursor = self.editor.textCursor()
 		start, stop = sorted([cursor.position(), cursor.anchor()])
 		cursor.setPosition(start)
 		cursor.movePosition(QTextCursor.StartOfLine)
@@ -39,12 +271,14 @@ class TextEdit(QPlainTextEdit):
 		
 		cursor.insertText(cursor.selectedText().replace('\u2029', '\u2029\t'))
 		
-		cursor = self.textCursor()
+		cursor = self.editor.textCursor()
 		cursor.setPosition(start, cursor.KeepAnchor)
-		self.setTextCursor(cursor)
+		self.editor.setTextCursor(cursor)
 	
-	def indent_decrease(self, cursor=None):
-		if not cursor:	cursor = self.textCursor()
+	@action(icon='format-indent-less', shortcut='Shift+Tab')
+	def indent_decrease(self):
+		''' decrease the indentation level of the current or selected lines '''
+		cursor = self.editor.textCursor()
 		start, stop = sorted([cursor.position(), cursor.anchor()])
 		cursor.setPosition(start)
 		cursor.movePosition(QTextCursor.StartOfLine)
@@ -53,213 +287,107 @@ class TextEdit(QPlainTextEdit):
 		
 		cursor.insertText(cursor.selectedText().replace('\u2029\t', '\u2029'))
 		
-		cursor = self.textCursor()
-		cursor.setPosition(start, cursor.KeepAnchor)
-		self.setTextCursor(cursor)
-	
-
-class ScriptView(QWidget):
-	''' text editor part of the app frame '''
-	
-	# NOTE:	for unknow reasons, a widget created as child of QPlainTextEdit is rendered only if created in the __init__
-	
-	def __init__(self, app, parent=None):
-		super().__init__(parent)
-		self.setMinimumSize(100,100)
-		self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred))
-		Initializer.init(self)
-		
-		self.app = app
-		self.font = QFont(*settings.scriptview['font'])
-		
-		app.views.append(self)
-		if not app.active.scriptview:	app.active.scriptview = self
-		
-		# text editor widget
-		self.editor = TextEdit()
-		self.editor.setDocument(app.document)
-		self.editor.setWordWrapMode(QTextOption.WrapMode.WordWrap 
-									if settings.scriptview['linewrap'] else 
-									QTextOption.WrapMode.NoWrap)
-		self.editor.setTabStopDistance(settings.scriptview['tabsize'] * QFontMetrics(self.font).averageCharWidth()+1.5)
-		self.linenumbers = LineNumbers(self.font, self.editor)
-		
-		# text coloring
-		self.update_colors()
-		# set cursor position on openning
-		if app.active.scriptview:
-			self.editor.setTextCursor(app.active.scriptview.editor.textCursor())
-		else:
-			self.editor.moveCursor(QTextCursor.End)
-		
-		# # toolbars
-		# self.top = ToolBar([
-		# 	self.cursor_location,
-		# 	self.executed_state,
-		# 	self.settings,
-		# 	])
-		# self.right = ToolBar([
-		# 	self.open,
-		# 	self.undo,
-		# 	self.redo,
-		# 	None,
-		# 	self.editor.indent_increase,
-		# 	self.editor.indent_decrease,
-		# 	self.reformat,
-		# 	None,
-		# 	self.find,
-		# 	self.replace,
-		# 	None,
-		# 	Menu('font size', [
-		# 		self.fontsize_increase,
-		# 		self.fontsize_decrease,
-		# 		]),
-		# 	])
-		
-		# global layout
-		layout = QVBoxLayout(spacing=0)
-		layout.addWidget(self.editor)
-		layout.setContentsMargins(QMargins(0,0,0,0))
-		self.setLayout(layout)
-	
-	def changeEvent(self, event):
-		# detect theme change
-		if event.type() == QEvent.PaletteChange and settings.scriptview['system_theme']:
-			settings.use_qt_colors()
-			self.update_colors()
-		return super().changeEvent(event)
-	
-	def hideEvent(self, event):
-		self.app.views.remove(self)
-		if self.app.active.scriptview is self:
-			self.app.active.scriptview = None
-			
-# 	def enterEvent(self, event):
-# 		if self.editor.hasFocus():
-# 			# TODO show toolbars
-# 			pass
-# 		
-# 	def leaveEvent(self, event):
-# 		if not self.editor.hasFocus():	
-# 			# TODO hide toolbars
-# 			pass
-# 	
-	def focused(self):
-		# set active code view
-		self.app.active.scriptview = self
-		
-	def unfocused(self):
-		# TODO hide toolbars
-		pass
-	
-	
-	def _cursorPositionChanged(self):
-		# update location label
-		line, column = cursor_location(self.editor.textCursor())
-		self.label_location.setText('line {}, column {}'.format(line+1, column+1))
-		# interaction with the results
-		self._updatezone()
-		
-	def _updatezone(self):
-		app = self.app
 		cursor = self.editor.textCursor()
+		cursor.setPosition(start, cursor.KeepAnchor)
+		self.editor.setTextCursor(cursor)
 		
-		if cursor.hasSelection():
-			start, stop = cursor.selectionStart(), cursor.selectionEnd()
-			for location in app.interpreter.locations.values():
-				zone = astinterval(location)
-				if start <= zone[0] <= stop or start <= zone[1] <= stop:
-					start = min(start, zone[0])
-					stop = max(stop, zone[0])
-			below = (start, stop)
-		else:
-			below = app.posvar(cursor.position())
-			if below:
-				node = app.interpreter.locations[below]
-				if not isinstance(node, ast.FunctionDef):
-					below = astinterval(node)
-				else:
-					below = None
-				
-		if below:
-			app.displayzones[id(self)] = below
-		else:
-			app.displayzones.pop(id(self), None)
+	@action(icon='format-justify-center', shortcut='Ctrl+Shift+F')
+	def reformat(self):
+		''' reformat selected code to get proper nested indentation 
+			and split long expressions into multiple lines 
+		'''
+		indev
 		
-		app.updatescript()
-		if app.active_sceneview:
-			app.active_sceneview.scene.sync()
-	
-	def _blockCountChanged(self):
-		self.update_linenumbers()
-		
-	def sizeHint(self):
-		return QSize(500,200)
-	
-	def resizeEvent(self, event):
-		super().resizeEvent(event)
-
-		# update the line number area
-		nlines = max(1, self.editor.blockCount())
-		digits = 1
-		while nlines >= 10:		
-			nlines //= 10
-			digits += 1
-		charwidth = QFontMetrics(self.font).maxWidth()
-		border = charwidth//2
-		width = (digits+3)*charwidth
-		self.editor.setViewportMargins(width, 0, 0, 0)
-		cr = self.editor.contentsRect()	# only this rect has the correct area, with the good margins with the real widget geometry
-		self.linenumbers.setGeometry(QRect(cr.left(), cr.top(), width, cr.height()))
-		self.linenumbers.width = width - border//2
-		self.linenumbers.border = border
-		self.linenumbers.update()
-		self.editor.update()
-		
-	def show_linenumbers(self, visible):
-		self.wlinenumbers.setVisible(visible)
-		if visible:
-			self.editor.setViewportMargins(width, 0, 0, 0)
-		else:
-			self.editor.setViewportMargins(0, 0, 0, 0)
-		
-		
-	def update_colors(self):
-		palette = self.editor.palette()
-		palette.setColor(QPalette.Base, vec_to_color(settings.scriptview['background']))
-		self.editor.setPalette(palette)
-		self.highlighter = Highlighter(self.editor.document(), self.font)
-		
-		
+	@action(icon='format-font-size-more', shortcut='Ctrl++')
 	def fontsize_increase(self):
+		''' increase the script font size (purely visual) '''
 		self.font.setPointSize(self.font.pointSize() + 1)
 		self.highlighter = Highlighter(self.editor.document(), self.font)
 	
+	@action(icon='format-font-size-less', shortcut='Ctrl+-')
 	def fontsize_decrease(self):
+		''' decrease the script font size (purely visual) '''
 		self.font.setPointSize(self.font.pointSize() - 1)
 		self.highlighter = Highlighter(self.editor.document(), self.font)
 		
-	def seek_line(self, lineno):
-		''' set cursor and scroll to lineno '''
-		block = self.editor.document().findBlockByLineNumber(lineno-1)
-		cursor = QTextCursor(block)
-		cursor.movePosition(QTextCursor.EndOfLine)
-		self.editor.setTextCursor(cursor)
-		self.editor.ensureCursorVisible()
+	@action(icon='text-wrap', checkable=True, shortcut='F9')
+	def linewrap(self, enable):
+		''' wrap lines when too long for the script view '''
+		if enable:
+			self.editor.setWordWrapMode(QTextOption.WordWrap)
+		else:
+			self.editor.setWordWrapMode(QTextOption.NoWrap)
 	
-	def seek_position(self, position):
-		''' set cursor and scroll to position '''
-		cursor = QTextCursor(self.editor.document())
-		cursor.setPosition(position)
-		self.editor.setTextCursor(cursor)
-		self.editor.ensureCursorVisible()
+	@action(icon='madcad-line-numbers', checkable=True, shortcut='F10')
+	def show_linenumbers(self, visible):
+		''' show line numbers aside of script '''
+		self.linenumbers.setVisible(visible)
+		self._update_line_numbers()
+		
+	@action(icon='edit-find-symbolic', shortcut='Ctrl+F')
+	def find(self):
+		''' find occurences of a text sequence '''
+		indev
+		
+	@action(icon='edit-find-replace', shortcut='Ctrl+R')
+	def replace(self):
+		''' replace a text sequence by an other '''
+		indev
+	
+# 	def seek_line(self, lineno):
+# 		''' set cursor and scroll to lineno '''
+# 		block = self.editor.document().findBlockByLineNumber(lineno-1)
+# 		cursor = QTextCursor(block)
+# 		cursor.movePosition(QTextCursor.EndOfLine)
+# 		self.editor.setTextCursor(cursor)
+# 		self.editor.ensureCursorVisible()
+# 	
+# 	def seek_position(self, position):
+# 		''' set cursor and scroll to position '''
+# 		cursor = QTextCursor(self.editor.document())
+# 		cursor.setPosition(position)
+# 		self.editor.setTextCursor(cursor)
+# 		self.editor.ensureCursorVisible()
 
 
-class LineNumbers(QWidget):
+class ScriptEdit(QPlainTextEdit):
+	''' text editor widget for ScriptView, only here to change some QPlainTextEdit behaviors '''
+	
+	def __init__(self, view: ScriptView):
+		super().__init__(view)
+		
+		self.setDocument(view.app.document)
+		self.setWordWrapMode(QTextOption.WrapMode.WordWrap 
+									if settings.scriptview['linewrap'] else 
+									QTextOption.WrapMode.NoWrap)
+		self.setTabStopDistance(settings.scriptview['tabsize'] * QFontMetrics(view.font).averageCharWidth()+1.5)
+		self.setCursorWidth(QFontMetrics(view.font).averageCharWidth())
+		self.setCenterOnScroll(True)
+	
+	def focusInEvent(self, event):
+		self.parent().app.active.scriptview = self.parent()
+		self.parent()._toolbars_visible(True)
+		super().focusInEvent(event)
+		
+	def focusOutEvent(self, event):
+		self.parent()._toolbars_visible(False)
+		super().focusOutEvent(event)
+	
+	def keyPressEvent(self, event):
+		cursor = self.textCursor()
+		if cursor.hasSelection():
+			if event.key() == Qt.Key.Key_Tab:		self.parent().indent_increase.trigger()
+			elif event.key() == Qt.Key.Key_Backtab:	self.parent().indent_decrease.trigger()
+			else:	super().keyPressEvent(event)
+		else:		super().keyPressEvent(event)
+	
+
+class ScriptLines(QWidget):
 	''' line number display for the text view '''
 	def __init__(self, font, parent):
 		super().__init__(parent)
 		self.font = font
+		self.width = 0
 	def sizeHint(self):
 		return QSize(self.width, 0)
 	def paintEvent(self, event):
@@ -283,6 +411,9 @@ class Highlighter(QSyntaxHighlighter):
 	''' python syntax highlighter for QTextDocument '''
 	def __init__(self, document, font):
 		super().__init__(document)
+		# default font applies everywhere the highlighter doesn't pass, like empty lines
+		document.setDefaultFont(font)
+		# precompute formatting for every case
 		s = settings.scriptview
 		self.fmt_default = charformat(foreground=vec_to_color(s['normal_color']), font=font)
 		self.fmt_keyword = charformat(foreground=vec_to_color(s['keyword_color']), font=font, weight=QFont.ExtraBold)
@@ -291,6 +422,7 @@ class Highlighter(QSyntaxHighlighter):
 		self.fmt_string = charformat(foreground=vec_to_color(s['string_color']), font=font)
 		self.fmt_comment = charformat(foreground=vec_to_color(s['comment_color']), font=font, italic=True, weight=QFont.Thin)
 		self.fmt_operator = charformat(foreground=vec_to_color(s['operator_color']), font=font)
+		# state machine description
 		self.states = {
 			# normal context
 			-1: [self.fmt_default,
@@ -320,8 +452,8 @@ class Highlighter(QSyntaxHighlighter):
 			6: [self.fmt_comment, (re.compile('"""'), self.match_commentend)],
 			7: [self.fmt_comment, (re.compile('"'),   self.match_commentend)],
 			}
-			
-	keywords = {'pass', 'and', 'or', 'if', 'elif', 'else', 'match', 'for', 'while', 'break', 'continue', 'is', 'in', 'not', 'def', 'lambda', 'class', 'yield', 'async', 'await', 'with', 'try', 'except', 'finally', 'raise', 'from', 'import', 'as', 'with', 'return', 'assert'}
+	
+	keywords = {'pass', 'and', 'or', 'if', 'elif', 'else', 'match', 'case', 'for', 'while', 'break', 'continue', 'is', 'in', 'not', 'def', 'lambda', 'class', 'yield', 'async', 'await', 'with', 'try', 'except', 'finally', 'raise', 'from', 'import', 'as', 'with', 'return', 'assert'}
 	constants = {'None', 'True', 'False', 'Ellipsis'}
 	def match_word(self, match):
 		word = match.group(1)
@@ -381,19 +513,8 @@ class Highlighter(QSyntaxHighlighter):
 		self.setCurrentBlockState(-1)
 		return match.end(0)
 	
-	def highlightBlock_(self, text):
-		#print('highlightBlock', type(text), text)
-		self.setFormat(0, len(text), self.fmt_default)
-		for pattern, func in self.patterns:
-			start = 0
-			while True:
-				match = pattern.search(text, start)
-				if match:
-					start = func(match)+1
-				else:
-					break
-	
 	def highlightBlock(self, text):
+		# state machine execution on a block of text (a line of code)
 		self.setCurrentBlockState(self.previousBlockState())
 		start = 0
 		end = len(text)
@@ -411,3 +532,14 @@ class Highlighter(QSyntaxHighlighter):
 						start = match.end(0)-1
 					break
 			start += 1
+
+
+def cursor_location(cursor):
+	return cursor.blockNumber(), cursor.positionInBlock()
+
+def move_text_cursor(cursor, location, movemode=QTextCursor.MoveAnchor):
+	line, column = location
+	if cursor.blockNumber() < line:		cursor.movePosition(cursor.NextBlock, movemode, line-cursor.blockNumber())
+	if cursor.blockNumber() < line:		cursor.movePosition(cursor.PreviousBlock, movemode, cursor.blockNumber()-line)
+	if cursor.columnNumber() < column:	cursor.movePosition(cursor.NextCharacter, movemode, column-cursor.columnNumber())
+	if cursor.columnNumber() > column:	cursor.movePosition(cursor.PreviousCharacter, movemode, cursor.columnNumber()-column)
