@@ -89,7 +89,7 @@ class Madcad(QObject):
 		'''
 		indev
 		
-	@action(icon='view-refresh', shortcut='Ctrl+Backspace')
+	@action(icon='view-refresh')
 	def clear(self):
 		''' clear all caches of previous executions 
 			next execution will reexecute the whole script from the beginning

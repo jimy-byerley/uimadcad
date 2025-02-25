@@ -423,6 +423,7 @@ class SceneView(madcad.rendering.View):
 		
 			(shortcut: Alt+Return)
 		'''
+		self.scene.composer.setVisible(show)
 		if show:
 			self.scene.composer.view = self
 			self.scene.composer.setParent(self)
@@ -432,10 +433,8 @@ class SceneView(madcad.rendering.View):
 				self.scene.composer.sizeHint().width(),
 				min(self.height(), self.scene.composer.sizeHint().height()),
 				)
-			self.scene.composer.show()
-			self.scene.composer.setFocus(True)
+			self.scene.composer.setFocus()
 		else:
-			self.scene.composer.hide()
 			self.setFocus(True)
 	
 	@button(flat=True) #, shortcut='Alt+Up')
@@ -676,6 +675,7 @@ class SceneComposer(QWidget):
 			
 	def focusInEvent(self, evt):
 		self._update_scenes()
+		self.show_list.setFocus()
 			
 	def _update_scenes(self):
 		self.scene_selector.clear()

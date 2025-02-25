@@ -1,13 +1,21 @@
 import re
+from collections import deque
 
+from madcad.mathutils import mix, vec4
 from madcad.qt import (
 	QWidget, QPlainTextEdit, QVBoxLayout,
-	QTextCursor, QSyntaxHighlighter, QFont, QFontMetrics, QColor, QTextOption, QPalette, QPainter,
-	Qt, QEvent, QMargins, QSize, QRect, QSizePolicy, QKeySequence,
+	QTextCursor, QSyntaxHighlighter, QFont, QFontMetrics, QColor, QTextOption, QPalette, QPainter, QTextDocument,
+	QSpinBox, QLabel, QLineEdit,
+	Qt, QEvent, QMargins, QSize, QRect, QSizePolicy, QKeySequence, 
 	)
 
 from . import settings
-from .utils import Initializer, ToolBar, button, action, Action, vec_to_color, charformat, vlayout, spacer
+from .utils import (
+	Initializer, button, action, shortcut,
+	ToolBar, Action, vec_to_color, charformat, spacer, 
+	vlayout, hlayout,
+	color_to_vec, vec_to_color,
+	)
 
 
 class ScriptView(QWidget):
@@ -30,21 +38,20 @@ class ScriptView(QWidget):
 		super().__init__(parent)
 		self.setMinimumSize(200,100)
 		self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred))
-		Initializer.process(self)
+		Initializer.process(self, parent=self)
 		
 		# text editor widget
 		self.editor = ScriptEdit(self)
 		self.linenumbers = ScriptLines(self.font, self.editor)
+		self.navigation = ScriptNavigation(self)
+		self.findreplace = ScriptFindReplace(self)
 		assert self.app.document is self.editor.document()
 		
 		# # toolbars
 		self.top = ToolBar('top', [
 			self.new_view,
 			spacer(5, 0),
-			self.previous_location,
-			self.next_location,
-			spacer(5, 0),
-			self.seek_location,
+			self.open_navigation,
 			self.view_selection,
 			],
 			orientation=Qt.Horizontal, 
@@ -60,8 +67,8 @@ class ScriptView(QWidget):
 			self.indent_decrease,
 			self.reformat,
 			None,
-			self.find,
-			self.replace,
+			self.open_find,
+			self.open_replace,
 			self.seek_definition,
 			None,
 			self.fontsize_increase,
@@ -76,8 +83,10 @@ class ScriptView(QWidget):
 		
 		# global layout
 		self.setLayout(vlayout([
+			self.navigation,
 			self.top,
 			self.editor,
+			self.findreplace,
 			self.bot,
 			], 
 			margins=QMargins(0,0,0,0), 
@@ -93,18 +102,35 @@ class ScriptView(QWidget):
 		self._update_active_selection()
 		self._retreive_settings()
 		self._toolbars_visible(False)
+		self.open_navigation.toggled.emit(False)
+		self.open_find.toggled.emit(False)
 	
 	def keyPressEvent(self, event):
-		# reimplement top bar shortcuts here because Qt cannot deambiguate which view the shortcut belongs to
 		event.accept()
+		
+		# shortcut for buttons (implemented here for priorization between widgets)
+		# reimplement top bar shortcuts here because Qt cannot deambiguate which view the shortcut belongs to
 		if event.key() == Qt.Key_Left and event.modifiers() & Qt.AltModifier:
-			self.previous_location.trigger()
+			self.navigation.previous.click()
 		elif event.key() == Qt.Key_Right and event.modifiers() & Qt.AltModifier:
-			self.next_location.trigger()
-		elif event.key() == Qt.Key_Return and event.modifiers() & Qt.AltModifier:
-			self.seek_location.setChecked(True)
+			self.navigation.next.click()
 		elif event.key() == Qt.Key_Down and event.modifiers() & Qt.AltModifier:
 			self.view_selection.click()
+		
+		# open/close navigation widget
+		elif event.key() == Qt.Key_Return and event.modifiers() & Qt.AltModifier:
+			if not self.navigation.hasFocus():
+				self.open_navigation.setChecked(True)
+				self.navigation.setFocus()
+			else:
+				self.open_navigation.setChecked(False)
+		
+		# escape opened pannel
+		elif event.key() == Qt.Key_Escape and self.open_navigation.isChecked():
+			self.open_navigation.setChecked(False)
+		elif event.key() == Qt.Key_Escape and self.open_find.isChecked():
+			self.open_find.setChecked(False)
+		
 		else:
 			event.ignore()
 			return super().keyPressEvent(event)
@@ -135,6 +161,20 @@ class ScriptView(QWidget):
 		# 	self.bot.sizeHint().width(), 
 		# 	min(self.height(), self.bot.sizeHint().height()),
 		# 	)
+		# scrollbar = self.editor.horizontalScrollBar()
+		# scroll_margin = scrollbar.height() * scrollbar.isVisible()
+		# self.bot.setGeometry(
+		# 	max(0, self.editor.width()//2 - self.bot.sizeHint().width()//2), 
+		# 	self.editor.height() - self.bot.sizeHint().height() - self.bar_margin - scroll_margin,
+		# 	min(self.editor.width(), self.bot.sizeHint().width()),
+		# 	self.bot.sizeHint().height(),
+		# 	)
+		# self.bot.setGeometry(
+		# 	0,
+		# 	self.editor.height()//2,
+		# 	self.bot.sizeHint().width(),
+		# 	self.bot.sizeHint().height(),
+		# 	)
 		# if self.top.parent() is self:
 		# 	self.top.setGeometry(
 		# 		self.bar_margin+self.left.width(), 
@@ -146,7 +186,7 @@ class ScriptView(QWidget):
 		self._update_line_numbers()
 	
 	def _toolbars_visible(self, enable):
-		self.bot.setVisible(enable)
+		self.bot.setVisible(enable or self.findreplace.isVisible())
 
 	def _update_colors(self):
 		palette = self.editor.palette()
@@ -157,7 +197,9 @@ class ScriptView(QWidget):
 	def _update_line_numbers(self):
 		# update location label
 		line, column = cursor_location(self.editor.textCursor())
-		self.seek_location.setText('line {}, column {}'.format(line+1, column+1))
+		self.open_navigation.setText('position: {}:{}'.format(line+1, column+1))
+		
+		left = 0
 		
 		# update the line number area
 		if self.show_linenumbers.isChecked():
@@ -171,14 +213,14 @@ class ScriptView(QWidget):
 			charwidth = QFontMetrics(self.font).maxWidth()
 			border = charwidth//2
 			width = (digits+3)*charwidth
-			self.editor.setViewportMargins(width, 0, 0, 0)
+			left = width
 			cr = self.editor.contentsRect()	# only this rect has the correct area, with the good margins with the real widget geometry
 			self.linenumbers.setGeometry(QRect(cr.left(), cr.top(), width, cr.height()))
 			self.linenumbers.width = width - border//2
 			self.linenumbers.border = border
 			self.linenumbers.update()
-		else:
-			self.editor.setViewportMargins(0, 0, 0, 0)
+		
+		self.editor.setViewportMargins(left, 0, 0, 0)
 		self.editor.update()
 	
 	def _update_active_selection(self):
@@ -195,7 +237,7 @@ class ScriptView(QWidget):
 			self.view_selection.show()
 		else:
 			self.view_selection.hide()
-			
+	
 	def _retreive_settings(self):
 		self.show_linenumbers.setChecked(settings.scriptview['linenumbers'])
 		self.linewrap.setChecked(settings.scriptview['linewrap'])
@@ -207,30 +249,18 @@ class ScriptView(QWidget):
 			self.app, 
 			self.editor.textCursor(),
 			))
-			
-	@action(icon='go-previous') #, shortcut='Alt+Left')
-	def previous_location(self):
-		''' move cursor to previous historical position 
-		
-			(shortcut: Alt+Left)
-		'''
-		indev
-		
-	@action(icon='go-next') #, shortcut='Alt+Right')
-	def next_location(self):
-		''' move cursor to next historical position 
-		
-			(shortcut: Alt+Right)
-		'''
-		indev
-	
-	@button(flat=True) #, shortcut='Alt+Return')
-	def seek_location(self):
+
+	@button(flat=True, checked=False) #, shortcut='Alt+Return')
+	def open_navigation(self, visible):
 		''' cursor position in the script, click to modify 
 			
 			(shortcut: Alt+Return)
 		'''
-		indev
+		self.navigation.setVisible(visible)
+		if visible:
+			self.navigation.setFocus()
+		else:
+			self.setFocus()
 		
 	@button(flat=True) #, shortcut='Alt+Down')
 	def view_selection(self):
@@ -259,9 +289,12 @@ class ScriptView(QWidget):
 		''' redo next changes in history '''
 		self.app.document.redo()
 	
-	@action(icon='format-indent-more', shortcut='Tab')
+	@action(icon='format-indent-more') #, shortcut='Tab')
 	def indent_increase(self):
-		''' increase the indentation level of the current or selected lines '''
+		''' increase the indentation level of the current or selected lines 
+		
+			(shortcut: Tab)
+		'''
 		cursor = self.editor.textCursor()
 		start, stop = sorted([cursor.position(), cursor.anchor()])
 		cursor.setPosition(start)
@@ -275,9 +308,12 @@ class ScriptView(QWidget):
 		cursor.setPosition(start, cursor.KeepAnchor)
 		self.editor.setTextCursor(cursor)
 	
-	@action(icon='format-indent-less', shortcut='Shift+Tab')
+	@action(icon='format-indent-less') #, shortcut='Shift+Tab')
 	def indent_decrease(self):
-		''' decrease the indentation level of the current or selected lines '''
+		''' decrease the indentation level of the current or selected lines 
+		
+			(shortcut: Shift+Tab)
+		'''
 		cursor = self.editor.textCursor()
 		start, stop = sorted([cursor.position(), cursor.anchor()])
 		cursor.setPosition(start)
@@ -324,15 +360,20 @@ class ScriptView(QWidget):
 		self.linenumbers.setVisible(visible)
 		self._update_line_numbers()
 		
-	@action(icon='edit-find-symbolic', shortcut='Ctrl+F')
-	def find(self):
+	@action(icon='edit-find-symbolic', checked=False, shortcut='Ctrl+F')
+	def open_find(self, visible):
 		''' find occurences of a text sequence '''
-		indev
+		if visible:
+			self.findreplace.open(replace=False)
+		else:
+			self.findreplace.hide()
+			self.setFocus()
 		
 	@action(icon='edit-find-replace', shortcut='Ctrl+R')
-	def replace(self):
+	def open_replace(self):
 		''' replace a text sequence by an other '''
-		indev
+		self.open_find.setChecked(True)
+		self.findreplace.open(replace=True)
 	
 # 	def seek_line(self, lineno):
 # 		''' set cursor and scroll to lineno '''
@@ -374,12 +415,17 @@ class ScriptEdit(QPlainTextEdit):
 		super().focusOutEvent(event)
 	
 	def keyPressEvent(self, event):
+		event.ignore()
 		cursor = self.textCursor()
 		if cursor.hasSelection():
-			if event.key() == Qt.Key.Key_Tab:		self.parent().indent_increase.trigger()
-			elif event.key() == Qt.Key.Key_Backtab:	self.parent().indent_decrease.trigger()
-			else:	super().keyPressEvent(event)
-		else:		super().keyPressEvent(event)
+			if event.key() == Qt.Key.Key_Tab:		
+				self.parent().indent_increase.trigger()
+				event.accept()
+			elif event.key() == Qt.Key.Key_Backtab:	
+				self.parent().indent_decrease.trigger()
+				event.accept()
+		if not event.isAccepted():
+			return super().keyPressEvent(event)
 	
 
 class ScriptLines(QWidget):
@@ -407,6 +453,241 @@ class ScriptLines(QWidget):
 			block = block.next()
 
 
+class ScriptNavigation(QWidget):
+	''' cursor navigation panel '''
+	def __init__(self, view, parent=None):
+		self.view = view
+		self.history = deque(maxlen=20)
+		self.index = -1
+		self.last_line = 0
+		self.last_edit = 0
+		
+		super().__init__(parent)
+		self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
+		Initializer.process(self)
+		
+		self.view.editor.cursorPositionChanged.connect(self._update_location_cursor)
+		self.view.editor.document().contentsChange.connect(self._update_location_edit)
+		
+		self.line = QSpinBox()
+		self.setLayout(hlayout([
+			self.previous,
+			self.next,
+			QLabel('line:'),
+			self.line,
+			self.go,
+			]))
+			
+		self.setFocusProxy(self.line)
+		self._update_range()
+		
+	def _update_location_cursor(self):
+		''' update location history with a cursor position change '''
+		cursor = self.view.editor.textCursor()
+		line = cursor.blockNumber()
+		if abs(line - self.last_line) > 1:
+			self._append(cursor.position())
+		self.last_line = line
+			
+	def _update_location_edit(self, position, removed, added):
+		''' update location history with a document change '''
+		if abs(position - self.last_edit) > 1:
+			self.history.append(position)
+		self.last_edit = position
+		
+	def _append(self, position):
+		''' register a position change in the history '''
+		if self.index < 0 or self.history[self.index] != position:
+			while self.index < len(self.history)-1:
+				self.history.pop()
+			self.history.append(position)
+			self.index = len(self.history)-1
+		self._update_range()
+		
+	def _update_range(self):
+		''' update displays when the index or history size changes '''
+		self.previous.setEnabled(self.index > 0)
+		self.next.setEnabled(self.index < len(self.history)-1)
+		
+	def showEvent(self, event):
+		self.line.setValue(self.view.editor.textCursor().blockNumber()+1)
+		self.line.setMinimum(1)
+		self.line.setMaximum(self.view.editor.document().lineCount())
+		
+	def keyPressEvent(self, event):
+		event.accept()
+		if event.key() == Qt.Key_Return:
+			self.go.click()
+		else:
+			event.ignore()
+			super().keyPressEvent(event)
+	
+	@button(icon='go-previous', flat=True) #, shortcut='Alt+Left')
+	def previous(self):
+		''' move cursor to previous historical position 
+		
+			(shortcut: Alt+Left)
+		'''
+		self.index = max(self.index-1, 0)
+		self.seek_position(self.history[self.index])
+		
+	@button(icon='go-next', flat=True) #, shortcut='Alt+Right')
+	def next(self):
+		''' move cursor to next historical position 
+		
+			(shortcut: Alt+Right)
+		'''
+		self.index = min(self.index+1, self.history.maxlen)
+		self.seek_position(self.history[self.index])
+		
+	@button(icon='go-jump', flat=True) #, shortcut='Enter')
+	def go(self):
+		''' go to selected line 
+		
+			(shortcut: Enter)
+		'''
+		self.seek_line(self.line.value()-1)
+		self.view.open_navigation.setChecked(False)
+		self.view.setFocus()
+
+	def seek_line(self, line, column=0):
+		''' move cursor to the given line in document '''
+		cursor = self.view.editor.textCursor()
+		cursor.setPosition(column)
+		cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line)
+		self.view.editor.setTextCursor(cursor)
+		self.view.editor.setFocus()
+	
+	def seek_position(self, position):
+		''' move cursor to the position in document '''
+		cursor = self.view.editor.textCursor()
+		cursor.setPosition(position)
+		self.view.editor.setTextCursor(cursor)
+		self.view.editor.setFocus()
+
+class ScriptFindReplace(QWidget):
+	def __init__(self, view, parent=None):
+		self.view = view
+		super().__init__(None)
+		Initializer.process(self)
+		
+		self.src = QLineEdit()
+		self.dst = QLineEdit()
+		
+		# same font as editor
+		self.src.setFont(view.font)
+		self.dst.setFont(view.font)
+		# line labels are nicer when same size
+		lfind = QLabel('find')
+		lreplace = QLabel('replace')
+		lfind.setMinimumSize(lreplace.sizeHint())
+		# allow fields to expand since buttons may take more space
+		self.src.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+		self.dst.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+		self.src.textChanged.connect(self._reset_colors)
+		self.dst.textChanged.connect(self._reset_colors)
+		
+		self.setLayout(vlayout([
+			hlayout([lfind, spacer(10,0), self.src, self.previous, self.next]),
+			hlayout([lreplace, spacer(10,0), self.dst, self.one, self.all]),
+			],
+			margins = QMargins(15,0,3,3),
+			))
+			
+	def open(self, replace=False):
+		''' run the find/replace tool, use the editor selected text if any '''
+		self.show()
+		self.src.setFocus()
+		
+		pattern = self.view.editor.textCursor().selectedText()
+		self.src.setText(pattern)
+		if replace:
+			if pattern:
+				self.dst.setFocus()
+		else:
+			self.dst.clear()
+	
+	@button()
+	def one(self):
+		''' replace one occurence '''
+		self._find_next()
+		self.view.editor.textCursor().insertText(self.dst.text())
+		
+	@button()
+	def all(self):
+		''' replace all occurences '''
+		editor = self.view.editor
+		src = self.src.text()
+		dst = self.dst.text()
+		
+		# progress in file replacing everything
+		cursor = editor.textCursor()
+		# create an edition block, for later reuse
+		cursor.beginEditBlock()
+		cursor.endEditBlock()
+		cursor.setPosition(1)
+		found = False
+		while True:
+			cursor = editor.document().find(
+				src,
+				cursor,
+				QTextDocument.FindFlags(0))
+			# check result and move cursor
+			if cursor.isNull():
+				break
+			found = True
+			# proceed by joining blocks, because create a big edition block at once may crash Qt
+			cursor.joinPreviousEditBlock()
+			cursor.insertText(dst)
+			cursor.endEditBlock()
+		
+		# taint the replacing text entry according to the success
+		self.dst.setPalette(self._colorize(found))
+		
+	@button(icon='go-up', flat=True, shortcut='Shift+Return')
+	def previous(self):
+		''' find previous occurence '''
+		self._find_next(True)
+		
+	@button(icon='go-down', flat=True, shortcut='Return')
+	def next(self):
+		''' find next occurence '''
+		self._find_next(False)
+		
+	def _find_next(self, reverse=False):
+		''' find next occurence, with custom search direction '''
+		editor = self.view.editor
+		target = editor.document().find(
+			self.src.text(),
+			editor.textCursor(),
+			QTextDocument.FindFlags(0
+				| QTextDocument.FindBackward * reverse
+				))
+		# check result and move cursor
+		if not target.isNull():
+			editor.setTextCursor(target)
+			
+		# taint the pattern text entry according to the success
+		self.src.setPalette(self._colorize(not target.isNull()))
+		
+	def _colorize(self, positive=True):
+		''' create a palette to color text entries like the given color '''
+		color = vec4(0,1,0,0) if positive else vec4(1,0,0,0)
+		palette = self.palette()
+		background = mix(
+			color_to_vec(palette.color(QPalette.Base)), 
+			color, 
+			0.2)
+		palette.setColor(QPalette.Base, vec_to_color(background))
+		return palette
+		
+	def _reset_colors(self):
+		''' reset entries background colors '''
+		palette = self.palette()
+		self.src.setPalette(palette)
+		self.dst.setPalette(palette)
+		
+		
 class Highlighter(QSyntaxHighlighter):
 	''' python syntax highlighter for QTextDocument '''
 	def __init__(self, document, font):

@@ -11,16 +11,9 @@ from madcad.qt import (
 from . import resourcedir
 
 
-execution = {
-	'onstartup': True,			# execution at program startup
-	'trigger': 1,				# execution trigger: {0: manual, 1: on line change, 2: on typing}
-	'checkdanger': 'startup',	# when to check for dangerous code ('never'/False, 'startup'/True, 'always')
-	}
-	
 window = {
 	'size': [900,500],
 	'layout': 'default',
-	'enable_floating': False,	# floating dockable windows, may have performance issues with big meshes
 	'color_preset': 'system',
 	'stylesheet': 'breeze-artificial',
 	}
@@ -57,7 +50,7 @@ locations = {
 	'startup': configdir+'/madcad/startup.py',
 	}
 
-settings = {'execution':execution, 'window':window, 'scriptview':scriptview}
+settings = {'window':window, 'scriptview':scriptview}
 
 
 def qtc(c):

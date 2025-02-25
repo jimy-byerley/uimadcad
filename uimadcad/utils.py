@@ -269,7 +269,7 @@ class Button(QPushButton):
 		if checked is not None:
 			checkable = True
 			self.setChecked(checked)
-		if name:  
+		if name:
 			self.setText(name)
 		if description is not None: 
 			description = dedent(description)
@@ -280,7 +280,7 @@ class Button(QPushButton):
 		if minimal:
 			self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 		else:
-			self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+			self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 		self.setFlat(flat)
 		self.setCheckable(checkable)
 		self.setFocusPolicy(Qt.NoFocus)
@@ -404,7 +404,7 @@ def mix_colors(a: QColor, b: QColor, x: float) -> QColor:
 
 def color_to_vec(color: QColor) -> vec4:
 	color = color.toRgb()
-	return vec3(color.red(), color.green(), color.blue(), color.alpha()) / 255
+	return vec4(color.red(), color.green(), color.blue(), color.alpha()) / 255
 	
 def vec_to_color(color: vec4) -> QColor:
 	if isinstance(color, fvec3):

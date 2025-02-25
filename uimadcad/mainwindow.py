@@ -56,6 +56,25 @@ class MainWindow(QMainWindow):
 		self.resize(*settings.window['size'])
 		self.layout_preset(settings.window['layout'])
 	
+	def keyPressEvent(self, event):
+		event.accept()
+		# reimplement top bar shortcuts here because Qt cannot deambiguate which view the shortcut belongs to
+		if event.key() == Qt.Key_Escape:
+			self._focus_other()
+		else:
+			event.ignore()
+			return super().keyPressEvent(event)
+	
+	# @shortcut(shortcut='Esc')
+	def _focus_other(self):
+		''' switch focus between active sceneview and active scriptview  '''
+		active = self.app.active
+		if active.sceneview and not active.sceneview.hasFocus():
+			active.sceneview.setFocus()
+		elif active.scriptview and not active.scriptview.hasFocus():
+			active.scriptview.setFocus()
+			active.scriptview.editor.ensureCursorVisible()
+	
 	def layout_preset(self, name:str):
 		''' apply the given layout preset, it must match an action of the same name in this class '''
 		method = getattr(self, 'layout_'+name, None)
@@ -70,16 +89,6 @@ class MainWindow(QMainWindow):
 			if isinstance(child, DockedView):
 				self.removeDockWidget(child)
 	
-	@shortcut(shortcut='Esc')
-	def focus_other(self):
-		''' switch focus between active sceneview and active scriptview  '''
-		active = self.app.active
-		if active.sceneview and not active.sceneview.hasFocus():
-			active.sceneview.setFocus()
-		elif active.scriptview and not active.scriptview.hasFocus():
-			active.scriptview.setFocus()
-			active.scriptview.editor.ensureCursorVisible()
-			
 	@action(shortcut='Ctrl+Shift+J', icon='madcad-layout-default')
 	def layout_default(self):
 		''' default layout with a script view and a scene view '''
