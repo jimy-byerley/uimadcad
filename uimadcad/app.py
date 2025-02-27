@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from madcad.qt import QObject, QTextDocument, QFileDialog, QErrorMessage, QPlainTextDocumentLayout, QApplication
 
 from . import settings
-from .utils import signal, window, action, Initializer
+from .utils import signal, window, action, button, Initializer
 from .interpreter import Interpreter
 from .mainwindow import MainWindow
 from .sceneview import Scene
@@ -96,6 +96,10 @@ class Madcad(QObject):
 		'''
 		indev
 		
+	@button(icon='media-playback-stop', flat=True, shortcut='Ctrl+Shift+Return')
+	def stop(self):
+		''' cancel the script execution '''
+		indev
 	
 	@action(icon='document-new-symbolic', shortcut='Ctrl+N')
 	def new(self):

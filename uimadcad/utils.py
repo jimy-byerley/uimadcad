@@ -1,7 +1,7 @@
 from madcad.qt import (
 	Qt, QTimer, Signal, QSize, QMargins, QStyle,
 	QIcon, QKeySequence, QColor, QTextCharFormat,
-	QWidget, QBoxLayout, QLayoutItem, QVBoxLayout, QHBoxLayout, QSizePolicy,
+	QWidget, QBoxLayout, QLayoutItem, QVBoxLayout, QHBoxLayout, QSizePolicy, QSplitter,
 	QPushButton, QDockWidget, QToolBar, QActionGroup, QButtonGroup,
 	QMenuBar, QMenu, 
 	QPlainTextEdit,
@@ -334,6 +334,12 @@ class PlainTextEdit(QPlainTextEdit):
 		
 	def sizeHint(self):
 		return QSize(20, self.document().lineCount())*self.document().defaultFont().pointSize()
+
+class Splitter(QSplitter):
+	def __init__(self, children:list=(), orientation=Qt.Horizontal, parent=None):
+		super().__init__(orientation, parent)
+		for child in children:
+			self.addWidget(child)
 		
 def boxlayout(items: list, orientation=QBoxLayout.TopToBottom, spacing=None, margins=None) -> QBoxLayout:
 	layout = QBoxLayout(orientation)

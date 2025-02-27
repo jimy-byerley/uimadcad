@@ -23,20 +23,36 @@ class MainWindow(QMainWindow):
 		# allows docks to stack horizontally or vertically
 		self.setDockNestingEnabled(True)
 		
+		self.ring = Ring(150)
+		self.status = QLabel()
+		self.errorview = ErrorView(self.app)
+		
+		self.panel = QGroupBox(self)
+		self.panel.setLayout(hlayout([
+			self.ring,
+			self.status,
+			self.errorview,
+			]))
+		self.app.stop.setParent(self.ring)
+			
+		self.status.setText('uimadcad:77.myfunc:12 ...\n12%')
+		
+		self.toolbar_execute = ToolBar('execution', [
+			self.app.execute,
+			self.app.clear,
+			self.open_panel,
+			self.app.trigger_on_file_change,
+			None,
+			self.app.open_uimadcad_settings,
+			self.app.open_pymadcad_settings,
+			])
 		self.addToolBar(Qt.LeftToolBarArea, ToolBar('file', [
 			self.app.save,
 			self.app.save_as,
 			self.app.open,
 			self.app.new,
 			]))
-		self.addToolBar(Qt.LeftToolBarArea, ToolBar('execution', [
-			self.app.execute,
-			self.app.clear,
-			self.app.trigger_on_file_change,
-			None,
-			self.app.open_uimadcad_settings,
-			self.app.open_pymadcad_settings,
-			]))
+		self.addToolBar(Qt.LeftToolBarArea, self.toolbar_execute)
 		self.addToolBar(Qt.LeftToolBarArea, ToolBar('windowing', [
 			self.new_sceneview,
 			self.new_scriptview,
@@ -55,6 +71,10 @@ class MainWindow(QMainWindow):
 		
 		self.resize(*settings.window['size'])
 		self.layout_preset(settings.window['layout'])
+		self.open_panel.toggled.emit(False)
+		# self.set_exception(None)
+		
+		self.set_exception(NameError('truc'))
 	
 	def keyPressEvent(self, event):
 		event.accept()
@@ -64,6 +84,17 @@ class MainWindow(QMainWindow):
 		else:
 			event.ignore()
 			return super().keyPressEvent(event)
+			
+	def resizeEvent(self, event):
+		margin = 3
+		self.panel.setGeometry(
+			self.toolbar_execute.width() + margin, self.height()//2 - self.panel.sizeHint().height()//2,
+			self.panel.sizeHint().width(), self.panel.sizeHint().height(),
+			)
+		self.app.stop.move(
+			self.ring.width()//2 - self.app.stop.sizeHint().width()//2,
+			self.ring.height()//2 - self.app.stop.sizeHint().height()//2,
+			)
 	
 	# @shortcut(shortcut='Esc')
 	def _focus_other(self):
@@ -245,6 +276,15 @@ class MainWindow(QMainWindow):
 		''' dump the layout state to clipboard (for developers) '''
 		QApplication.clipboard().setText(str(self.saveState()))
 	
+	@action(icon='application-menu', checked=False)
+	def open_panel(self, visible):
+		self.panel.setVisible(visible)
+		self.panel.raise_()
+		
+	def set_exception(self, exception:Exception):
+		# self.errorview.set(exception)
+		self.errorview.setVisible(exception is not None)
+		self.status.setVisible(exception is None)
 
 class DockedView(QDockWidget):
 	''' override dedicated to MainWindow, adding a specific behavior for views with a top toolbar '''
@@ -279,3 +319,85 @@ class DockedView(QDockWidget):
 	def close(self):
 		''' the view is not only hidden but also destroyed '''
 		self.parent().removeDockWidget(self)
+
+
+from madcad.qt import QTimer, QPainter, QColor, QPalette, QSize, QGroupBox
+from .errorview import ErrorView
+from time import time
+			
+class Ring(QWidget):
+	line_width = 1
+	bar_width = 5
+	exterior_scale = 0.9
+	interior_scale = 0.7
+	move_frequency = 0.5
+
+	def __init__(self, size, parent=None):
+		self.size = size
+		self.progress = 0.
+		self.progressing = False
+		super().__init__(parent)
+		
+		self.progress = 0.7
+		# self.progressing = True
+		# self.color = self.palette().color(QPalette.Active, QPalette.Highlight)
+		self.color = QColor(255, 0, 0)
+		
+		# refresh periodically
+		self.timer = QTimer(self)
+		self.timer.setInterval(30)
+		self.timer.start()
+		self.timer.timeout.connect(self.update)
+		
+	def sizeHint(self):
+		return QSize(self.size, self.size)
+		
+	def paintEvent(self, event):
+		size = min(self.width(), self.height())
+		move_radius = int(self.interior_scale * size/2)
+		progress_radius = int(self.exterior_scale * size/2)
+		turn = 5760 # number of increments per turn, from QPainter docs
+		start = 0.75
+		
+		
+		painter = QPainter(self)
+		painter.setRenderHints(QPainter.Antialiasing, True)
+		pen = painter.pen()
+		# draw progress ring
+		color_bar = self.color or self.palette().color(QPalette.WindowText)
+		color_line = QColor(color_bar.red(), color_bar.green(), color_bar.blue(), 100)
+		pen.setWidth(self.line_width)
+		pen.setColor(color_line)
+		painter.setPen(pen)
+		painter.drawEllipse(
+			self.width()//2 - progress_radius, self.height()//2 - progress_radius, 
+			2*progress_radius, 2*progress_radius,
+			)
+		pen.setWidth(self.bar_width)
+		pen.setColor(color_bar)
+		painter.setPen(pen)
+		painter.drawArc(
+			self.width()//2 - progress_radius, self.height()//2 - progress_radius, 
+			2*progress_radius, 2*progress_radius,
+			int(turn*start), int(turn*-self.progress),
+			)
+		# draw always rotating ring
+		
+		color_bar = self.palette().color(QPalette.WindowText)
+		color_line = QColor(color_bar.red(), color_bar.green(), color_bar.blue(), 100)
+		pen.setWidth(self.line_width)
+		pen.setColor(color_line)
+		painter.setPen(pen)
+		painter.drawEllipse(
+			self.width()//2 - move_radius, self.height()//2 - move_radius, 
+			2*move_radius, 2*move_radius,
+			)
+		if self.progressing:
+			pen.setWidth(self.bar_width)
+			pen.setColor(color_bar)
+			painter.setPen(pen)
+			painter.drawArc(
+				self.width()//2 - move_radius, self.height()//2 - move_radius, 
+				2*move_radius, 2*move_radius,
+				int(turn*(start - self.move_frequency*time() % 1)), int(turn*0.3),
+				)

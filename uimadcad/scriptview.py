@@ -677,7 +677,7 @@ class ScriptFindReplace(QWidget):
 		background = mix(
 			color_to_vec(palette.color(QPalette.Base)), 
 			color, 
-			0.2)
+			0.1)
 		palette.setColor(QPalette.Base, vec_to_color(background))
 		return palette
 		
