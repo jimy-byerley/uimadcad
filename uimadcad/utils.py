@@ -328,9 +328,11 @@ shortcut = Initializer.decorator(Shortcut)
 
 class PlainTextEdit(QPlainTextEdit):
 	''' text view to specify objects main.currentenv we want to append to main.scene '''
-	def __init__(self, parent=None):
+	def __init__(self, interaction: Qt.TextInteractionFlags = None, parent=None):
 		super().__init__(parent)
 		self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+		if interaction:
+			self.setTextInteractionFlags(interaction)
 		
 	def sizeHint(self):
 		return QSize(20, self.document().lineCount())*self.document().defaultFont().pointSize()

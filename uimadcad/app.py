@@ -96,7 +96,7 @@ class Madcad(QObject):
 		'''
 		indev
 		
-	@button(icon='media-playback-stop', flat=True, shortcut='Ctrl+Shift+Return')
+	@action(icon='media-playback-stop', shortcut='Ctrl+Shift+Return')
 	def stop(self):
 		''' cancel the script execution '''
 		indev

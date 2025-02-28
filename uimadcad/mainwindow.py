@@ -2,15 +2,23 @@ import warnings
 import sys
 import os
 from functools import partial
+from time import time
 
-from madcad.qt import Qt, QWidget, QMainWindow, QDockWidget, QLabel, QApplication, QShortcutEvent, QEvent
+from madcad.qt import (
+	Qt, QApplication, 
+	QWidget, QMainWindow, QDockWidget, QLabel, QGroupBox,
+	QShortcutEvent, QEvent,
+	QTimer, QPainter, QColor, QPalette, QSize, 
+	)
 from madcad.rendering import Orthographic
 from madcad.mathutils import fvec3, fquat, pi
 
 from . import settings
 from .sceneview import SceneView
 from .scriptview import ScriptView
+from .errorview import ErrorView
 from .utils import ToolBar, Button, button, Initializer, action, hlayout, spacer, Menu, Action, shortcut
+
 
 class MainWindow(QMainWindow):
 	def __init__(self, app):
@@ -23,19 +31,7 @@ class MainWindow(QMainWindow):
 		# allows docks to stack horizontally or vertically
 		self.setDockNestingEnabled(True)
 		
-		self.ring = Ring(150)
-		self.status = QLabel()
-		self.errorview = ErrorView(self.app)
-		
-		self.panel = QGroupBox(self)
-		self.panel.setLayout(hlayout([
-			self.ring,
-			self.status,
-			self.errorview,
-			]))
-		self.app.stop.setParent(self.ring)
-			
-		self.status.setText('uimadcad:77.myfunc:12 ...\n12%')
+		self.panel = ExecutionPanel(self.app, self)
 		
 		self.toolbar_execute = ToolBar('execution', [
 			self.app.execute,
@@ -72,10 +68,7 @@ class MainWindow(QMainWindow):
 		self.resize(*settings.window['size'])
 		self.layout_preset(settings.window['layout'])
 		self.open_panel.toggled.emit(False)
-		# self.set_exception(None)
 		
-		self.set_exception(NameError('truc'))
-	
 	def keyPressEvent(self, event):
 		event.accept()
 		# reimplement top bar shortcuts here because Qt cannot deambiguate which view the shortcut belongs to
@@ -86,14 +79,11 @@ class MainWindow(QMainWindow):
 			return super().keyPressEvent(event)
 			
 	def resizeEvent(self, event):
+		super().resizeEvent(event)
 		margin = 3
 		self.panel.setGeometry(
 			self.toolbar_execute.width() + margin, self.height()//2 - self.panel.sizeHint().height()//2,
 			self.panel.sizeHint().width(), self.panel.sizeHint().height(),
-			)
-		self.app.stop.move(
-			self.ring.width()//2 - self.app.stop.sizeHint().width()//2,
-			self.ring.height()//2 - self.app.stop.sizeHint().height()//2,
 			)
 	
 	# @shortcut(shortcut='Esc')
@@ -280,11 +270,7 @@ class MainWindow(QMainWindow):
 	def open_panel(self, visible):
 		self.panel.setVisible(visible)
 		self.panel.raise_()
-		
-	def set_exception(self, exception:Exception):
-		# self.errorview.set(exception)
-		self.errorview.setVisible(exception is not None)
-		self.status.setVisible(exception is None)
+
 
 class DockedView(QDockWidget):
 	''' override dedicated to MainWindow, adding a specific behavior for views with a top toolbar '''
@@ -321,32 +307,88 @@ class DockedView(QDockWidget):
 		self.parent().removeDockWidget(self)
 
 
-from madcad.qt import QTimer, QPainter, QColor, QPalette, QSize, QGroupBox
-from .errorview import ErrorView
-from time import time
-			
+class ExecutionPanel(QGroupBox):
+	def __init__(self, app, parent=None):
+		self.app = app
+		
+		super().__init__(parent)
+	
+		self.ring = Ring(150)
+		self.status = QLabel()
+		self.errorview = ErrorView(self.app)
+		self.stop = Button(self.app.stop.trigger, 
+			icon = self.app.stop.icon(),
+			description = self.app.stop.toolTip(),
+			flat = True,
+			parent=self)
+		
+		self.setLayout(hlayout([
+			self.ring,
+			self.status,
+			self.errorview,
+			]))
+		self.stop.raise_()
+	
+		self.set_progress(0.12)
+		self.status.setText('uimadcad:77.myfunc:12 ...\n12%')
+		self.set_exception(NameError('truc'))
+		
+	def resizeEvent(self, event):
+		super().resizeEvent(event)
+		self.stop.setGeometry(
+			self.ring.x() + self.ring.width()//2 - self.stop.sizeHint().width()//2,
+			self.ring.y() + self.ring.height()//2 - self.stop.sizeHint().height()//2,
+			self.stop.sizeHint().width(),
+			self.stop.sizeHint().height(),
+			)
+	
+	def set_exception(self, exception):
+		self.stop.setEnabled(False)
+		self.status.hide()
+		self.errorview.show()
+		self.errorview.set(exception)
+		self.ring.progressing = False
+		self.ring.color = QColor(255, 0, 0)
+		self.ring.update()
+		
+	def set_progress(self, progress):
+		self.errorview.hide()
+		self.status.show()
+		self.stop.setEnabled(True)
+		self.ring.progressing = True
+		self.ring.progress = progress
+		self.ring.color = self.palette().color(QPalette.Active, QPalette.Highlight)
+		self.ring.update()
+		self.updateGeometry()
+		
+	def set_success(self):
+		self.stop.setEnabled(False)
+		self.errorview.hide()
+		self.status.show()
+		self.ring.progress = 1.
+		self.ring.progressing = False
+		self.ring.color = QColor(0, 255, 0)
+		self.ring.update()
+		self.updateGeometry()
+
 class Ring(QWidget):
+	''' progress ring '''
 	line_width = 1
 	bar_width = 5
 	exterior_scale = 0.9
 	interior_scale = 0.7
 	move_frequency = 0.5
 
-	def __init__(self, size, parent=None):
+	def __init__(self, size, color=None, parent=None):
 		self.size = size
 		self.progress = 0.
 		self.progressing = False
+		self.color = color
 		super().__init__(parent)
-		
-		self.progress = 0.7
-		# self.progressing = True
-		# self.color = self.palette().color(QPalette.Active, QPalette.Highlight)
-		self.color = QColor(255, 0, 0)
 		
 		# refresh periodically
 		self.timer = QTimer(self)
 		self.timer.setInterval(30)
-		self.timer.start()
 		self.timer.timeout.connect(self.update)
 		
 	def sizeHint(self):
@@ -357,8 +399,12 @@ class Ring(QWidget):
 		move_radius = int(self.interior_scale * size/2)
 		progress_radius = int(self.exterior_scale * size/2)
 		turn = 5760 # number of increments per turn, from QPainter docs
-		start = 0.75
+		start = 0.75 # start point is bottom
 		
+		if self.progressing and not self.timer.isActive():
+			self.timer.start()
+		elif not self.progressing and self.timer.isActive():
+			self.timer.stop()
 		
 		painter = QPainter(self)
 		painter.setRenderHints(QPainter.Antialiasing, True)

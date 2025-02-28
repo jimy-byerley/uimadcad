@@ -36,10 +36,10 @@ if __name__ == '__main__':
 		QIcon.setThemeSearchPaths(path)
 		QIcon.setThemeName('breeze')		
 	
-	madcad.settings.load()
 	madcad.settings.install()
-	settings.load()
+	madcad.settings.load()
 	settings.install()
+	settings.load()
 	settings.use_color_preset()
 	settings.use_stylesheet()
 	
