@@ -83,7 +83,8 @@ class MainWindow(QMainWindow):
 		margin = 3
 		self.panel.setGeometry(
 			self.toolbar_execute.width() + margin, self.height()//2 - self.panel.sizeHint().height()//2,
-			self.panel.sizeHint().width(), self.panel.sizeHint().height(),
+			min(self.panel.sizeHint().width(), self.width() - self.toolbar_execute.width() - 2*margin), 
+			min(self.panel.sizeHint().height(), self.height() - 2*margin),
 			)
 	
 	# @shortcut(shortcut='Esc')
@@ -269,6 +270,7 @@ class MainWindow(QMainWindow):
 	@action(icon='application-menu', checked=False)
 	def open_panel(self, visible):
 		self.panel.setVisible(visible)
+		self.panel.adjustSize()
 		self.panel.raise_()
 
 
@@ -313,7 +315,7 @@ class ExecutionPanel(QGroupBox):
 		
 		super().__init__(parent)
 	
-		self.ring = Ring(150)
+		self.ring = MultiRing(150)
 		self.status = QLabel()
 		self.errorview = ErrorView(self.app)
 		self.stop = Button(self.app.stop.trigger, 
@@ -328,10 +330,14 @@ class ExecutionPanel(QGroupBox):
 			self.errorview,
 			]))
 		self.stop.raise_()
+		
+		self.app.active.errorview = self.errorview
 	
-		self.set_progress(0.12)
-		self.status.setText('uimadcad:77.myfunc:12 ...\n12%')
-		self.set_exception(NameError('truc'))
+		# TODO: remove these debug values
+		# self.set_progress(0.12)
+		self.set_progress({'toyal':0.2, 'myfunc':0.4, 'completefunc':1., 'subfunc':0.1})
+		# self.set_exception(NameError('truc'))
+		# self.set_success()
 		
 	def resizeEvent(self, event):
 		super().resizeEvent(event)
@@ -350,26 +356,123 @@ class ExecutionPanel(QGroupBox):
 		self.ring.progressing = False
 		self.ring.color = QColor(255, 0, 0)
 		self.ring.update()
+		self.adjustSize()
+		self.adjustSize()
 		
 	def set_progress(self, progress):
 		self.errorview.hide()
 		self.status.show()
 		self.stop.setEnabled(True)
 		self.ring.progressing = True
-		self.ring.progress = progress
+		self.ring.progress = [progress 
+			for scope, progress in progress.items() 
+			if progress < 1. ]
+		self.status.setText('\n'.join('{}: {}%'.format(scope, int(progress*100))  
+			for scope, progress in progress.items()
+			if progress < 1. ))
 		self.ring.color = self.palette().color(QPalette.Active, QPalette.Highlight)
 		self.ring.update()
-		self.updateGeometry()
+		self.adjustSize()
 		
 	def set_success(self):
 		self.stop.setEnabled(False)
 		self.errorview.hide()
 		self.status.show()
-		self.ring.progress = 1.
+		self.status.setText('calculation succeed\n100%')
+		self.ring.progress = [1.]
 		self.ring.progressing = False
 		self.ring.color = QColor(0, 255, 0)
 		self.ring.update()
-		self.updateGeometry()
+		self.adjustSize()
+
+class MultiRing(QWidget):
+	''' progress ring '''
+	line_width = 1
+	bar_width = 5
+	radius_exterior = 0.9
+	radius_step = 0.1
+	radius_interior = 0.3
+	move_frequency = 0.5
+
+	def __init__(self, size, color=None, parent=None):
+		self.size = size
+		self.progress = [1.]
+		self.progressing = False
+		self.color = color
+		super().__init__(parent)
+		
+		# refresh periodically
+		self.timer = QTimer(self)
+		self.timer.setInterval(30)
+		self.timer.timeout.connect(self.update)
+		
+	def sizeHint(self):
+		return QSize(self.size, self.size)
+		
+	def paintEvent(self, event):
+		size = min(self.width(), self.height())
+		turn = 5760 # number of increments per turn, from QPainter docs
+		start = 0.75 # start point is bottom
+		
+		if self.progressing and not self.timer.isActive():
+			self.timer.start()
+		elif not self.progressing and self.timer.isActive():
+			self.timer.stop()
+		
+		painter = QPainter(self)
+		painter.setRenderHints(QPainter.Antialiasing, True)
+		pen = painter.pen()
+		
+		# represent scopes in insertion order
+		scale = self.radius_exterior
+		for i, progress in enumerate(self.progress):
+			# draw progress ring
+			progress_radius = int(scale * size/2)
+			color_bar = self.color or self.palette().color(QPalette.WindowText)
+			color_line = QColor(color_bar.red(), color_bar.green(), color_bar.blue(), 100)
+			
+			pen.setWidth(self.line_width)
+			pen.setColor(color_line)
+			painter.setPen(pen)
+			painter.drawEllipse(
+				self.width()//2 - progress_radius, self.height()//2 - progress_radius, 
+				2*progress_radius, 2*progress_radius,
+				)
+			pen.setWidth(self.bar_width)
+			pen.setColor(color_bar)
+			painter.setPen(pen)
+			painter.drawArc(
+				self.width()//2 - progress_radius, self.height()//2 - progress_radius, 
+				2*progress_radius, 2*progress_radius,
+				int(turn*start), int(turn*-progress),
+				)
+			# radius for next bar
+			scale -= self.radius_step
+			if scale <= self.radius_interior:
+				break
+		
+		# draw always rotating ring
+		move_radius = int(scale * size/2)
+		color_bar = self.palette().color(QPalette.WindowText)
+		color_line = QColor(color_bar.red(), color_bar.green(), color_bar.blue(), 100)
+		
+		pen.setWidth(self.line_width)
+		pen.setColor(color_line)
+		painter.setPen(pen)
+		painter.drawEllipse(
+			self.width()//2 - move_radius, self.height()//2 - move_radius, 
+			2*move_radius, 2*move_radius,
+			)
+		if self.progressing:
+			pen.setWidth(self.bar_width)
+			pen.setColor(color_bar)
+			painter.setPen(pen)
+			painter.drawArc(
+				self.width()//2 - move_radius, self.height()//2 - move_radius, 
+				2*move_radius, 2*move_radius,
+				int(turn*(start - self.move_frequency*time() % 1)), int(turn*0.3),
+				)
+
 
 class Ring(QWidget):
 	''' progress ring '''

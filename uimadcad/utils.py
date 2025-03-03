@@ -364,6 +364,11 @@ def vlayout(items: list, **kwargs) -> QVBoxLayout:
 	
 def hlayout(items: list, **kwargs) -> QHBoxLayout:
 	return boxlayout(items, orientation=QBoxLayout.LeftToRight, **kwargs)
+	
+def widget(layout, parent=None) -> QWidget:
+	widget = QWidget(parent)
+	widget.setLayout(layout)
+	return widget
 
 def dock(widget, title, closable=True, floatable=True):
 	''' create a QDockWidget '''

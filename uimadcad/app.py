@@ -1,14 +1,17 @@
 import sys, os
 from dataclasses import dataclass
 
-from madcad.qt import QObject, QTextDocument, QFileDialog, QErrorMessage, QPlainTextDocumentLayout, QApplication
+from processional import SlaveThread
+from madcad.qt import (
+	QObject, QApplication, QTimer,
+	QTextDocument, QFileDialog, QErrorMessage, QPlainTextDocumentLayout,
+	)
 
 from . import settings
-from .utils import signal, window, action, button, Initializer
+from .utils import signal, window, action, button, Initializer, qtschedule
 from .interpreter import Interpreter
 from .mainwindow import MainWindow
 from .sceneview import Scene
-# from .progressbar import Progress
 
 
 @dataclass
@@ -37,6 +40,7 @@ class Madcad(QObject):
 		self.document = QTextDocument(self)
 		self.document.setDocumentLayout(QPlainTextDocumentLayout(self.document))
 		self.window = window(MainWindow(self))
+		self.thread = SlaveThread()
 		
 		self.load_file(file)
 		
@@ -87,19 +91,45 @@ class Madcad(QObject):
 		''' run the script. 
 			a parcimonial interpreter will take care of reexecuting only the changed code
 		'''
-		indev
+		self.stop.trigger()
+		self.window.open_panel.setChecked(True)
+		code = self.document.toPlainText()
 		
+		progress = {}
+		def step(scope, step, steps):
+			@qtschedule
+			def update():
+				progress[scope] = step/steps
+				self.window.panel.set_progress(progress)
+		
+		step(self.interpreter.filename, 0, 1)
+		
+		@self.thread.schedule
+		def execution():
+			try:
+				self.interpreter.execute(code, step)
+			except Exception as err:
+				@qtschedule
+				def update(err = err):
+					self.window.panel.set_exception(err)
+			else:
+				@qtschedule
+				def update():
+					self.window.panel.set_success()
+					QTimer.singleShot(1000, lambda: self.window.open_panel.setChecked(True))
+	
 	@action(icon='view-refresh')
 	def clear(self):
 		''' clear all caches of previous executions 
 			next execution will reexecute the whole script from the beginning
 		'''
-		indev
+		self.stop.trigger()
+		self.interpreter = Interpreter(self.interpreter.filename)
 		
 	@action(icon='media-playback-stop', shortcut='Ctrl+Shift+Return')
 	def stop(self):
 		''' cancel the script execution '''
-		indev
+		self.interpreter.interrupt()
 	
 	@action(icon='document-new-symbolic', shortcut='Ctrl+N')
 	def new(self):

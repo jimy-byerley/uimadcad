@@ -215,7 +215,7 @@ def test_parcimonize():
 	from copy import deepcopy
 	
 	filename = '<input>'
-	code = normalizeindent('''
+	code = normalize_indent('''
 		from math import sin, cos
 
 		def foo():
@@ -247,10 +247,10 @@ def test_parcimonize():
 	previous = {}
 	
 	result = Module(
-		list(parcimonize(cache=cache, scope=filename, args=(), code=original_ast, previous=previous)),
+		list(parcimonize(cache=cache, scope=filename, args=(), code=original_ast.body, previous=previous)),
 		type_ignores=[])
 	nprint('\n'.join(dump(node) for node in result.body))
-	complete(result)
+	fix_missing_locations(result)
 	bytecode = compile(result, filename, 'exec')
 	dis(bytecode)
 	print('original', len(original_bytecode.co_code), 'parcimonized', len(bytecode.co_code))
@@ -270,7 +270,7 @@ def test_parcimonize():
 	result = Module(
 		list(parcimonize(cache=cache, scope=filename, args=(), code=second_ast, previous=previous)),
 		type_ignores=[])
-	complete(result)
+	fix_missing_locations(result)
 	bytecode = compile(result, filename, 'exec')
 	nprint('cache', cache)
 	assert 'b1' not in cache['<input>'][ArgumentsKey(())]
@@ -332,8 +332,8 @@ def annotate(tree: AST, text: str):
 	currentpos = 0
 	for node in walk(tree):
 		if hasattr(node, 'lineno'):
-			target = astloc(node)
-			node.position = advancepos(text, target, currentpos, currentloc)
+			target = _loc(node)
+			node.position = _advancepos(text, target, currentpos, currentloc)
 			currentloc = target
 			currentpos = node.position
 	
@@ -341,7 +341,7 @@ def annotate(tree: AST, text: str):
 	# find the end of each node
 	def recursive(node):
 		# process subnodes first
-		astpropagate(node, recursive)
+		propagate(node, recursive)
 		
 		# node specific length calculation
 		if isinstance(node, Name):
@@ -400,6 +400,12 @@ def test_annotate():
 	indev
 	
 def flatten(code: list, nodes={Call, BoolOp, BinOp, Tuple, List, Return}, vars:set=None) -> list:
+	''' unroll all expressions and assign temporary values to hidden variables
+	
+		inplace node modifications
+		
+		yield the new sequence of instruction
+	'''
 	if vars is None:
 		vars = set()
 	
@@ -431,24 +437,22 @@ def flatten(code: list, nodes={Call, BoolOp, BinOp, Tuple, List, Return}, vars:s
 			
 		# in a block, captures should create variables inside the block
 		elif isinstance(node, (Module, FunctionDef, Lambda, For, While, With)):
-			node.body = flatten(node.body, nodes)
+			node.body = list(flatten(node.body, nodes))
 		elif isinstance(node, If):
-			node.body = flatten(node.body, vars=vars)
-			node.orelse = flatten(node.orelse, vars=vars)
+			node.body = list(flatten(node.body, vars=vars))
+			node.orelse = list(flatten(node.orelse, vars=vars))
 		elif isinstance(node, Match):
 			node.subject = capture(node.subject)
-			node.cases = [flatten(child, vars=vars)  for child in node.cases]
+			node.cases = [list(flatten(child, vars=vars))  for child in node.cases]
 	
 	captured = []
-	i = 0
-	while i < len(code):
+	for node in code:
 		# process statement
-		capture(code[i])
+		capture(node)
 		# add captured values juste before statement
-		code[i:i] = captured
-		i += 1+len(captured)
+		yield from captured
+		yield node
 		captured.clear()
-	return code
 	
 def test_flatten():
 	from pnprint import nprint
@@ -460,11 +464,12 @@ def test_flatten():
 		else:
 			d = 1 + 3 + 4
 		'''))
-	flatten(code.body)
-	complete(code)
-	compile(code, '<flatten>', 'exec')
+	code.body = list(flatten(code.body))
+	fix_missing_locations(code)
 	nprint(dump(code))
+	compile(code, '<flatten>', 'exec')
 	ro, wo, rw = usage(code)
+	nprint(ro, wo, rw)
 	assert ro == {'range'}
 	assert wo == {'a'}
 	assert rw == {'b', 'd', '_temp3', 'c', '_temp2', 'i', '_temp1'}
@@ -472,21 +477,21 @@ def test_flatten():
 def steppize(code:list, scope:str):
 	def filter(node):
 		if isinstance(node, (Module, FunctionDef)):
-			steppize(node.body, scope+'.'+node.name)
+			node.body = steppize(node.body, scope+'.'+node.name)
+		elif isinstance(node, expr):
+			pass
 		else:
 			propagate(node, filter)
 	
-	result = []
 	l = len(code)
-	for i,node in enumerate(code):
+	for i, node in enumerate(code):
 		propagate(node, filter)
-		result.append(code)
-		result.append(Call(
+		yield node
+		yield Expr(Call(
 			func = Name('_madcad_step', Load()),
-			args = [Constant(scope), Constant(i/l)],
+			args = [Constant(scope), Constant(i), Constant(l)],
 			keywords = [],
 			))
-	return result
 
 def report(code:list, scope:str):
 	''' change the given code to report its variables to madcad '''
@@ -500,12 +505,28 @@ def report(code:list, scope:str):
 		filter(node)
 	
 	code.append(Assign(
-		targets = [Subscript(Name('_madcad_scopes', Load()), scope, Store())],
+		targets = [Subscript(Name('_madcad_scopes', Load()), Constant(scope), Store())],
 		value = Call(Name('_madcad_vars', Load()), args=[], keywords=[]),
 		))
 	return code
 
-
+def locate(code:list, scope:str, locations=None):
+	''' change the given code to report its variables to madcad '''
+	if locations is None:
+		locations = {}
+	locations[scope] = {}
+	def filter(node):
+		if isinstance(node, (Module, FunctionDef)):
+			locate(node.body, scope+'.'+node.name, locations)
+		elif isinstance(node, Assign) and len(node.targets) == 1 and isinstance(node.targets[0], Name):
+			locations[scope][node.targets[0].id] = node.value
+		else:
+			propagate(node, filter)
+	
+	for node in code:
+		filter(node)
+	
+	return locations
 	
 	
 
@@ -533,12 +554,6 @@ def usage(node) -> (set, set, set):
 				else:
 					wo.add(node.id)
 	return ro, wo, rw
-
-def complete(parent):
-	for node in walk(parent):
-		node.lineno = getattr(node, 'lineno', 0)
-		node.col_offset = getattr(node, 'col_offset', 0)
-		
 
 def equal(a: AST, b: AST) -> bool:
 	''' check that the operations performed by node a are equivalent to operations performed by node b '''
@@ -578,7 +593,7 @@ def propagate(node, process):
 			for i,child in enumerate(value):
 				replacement = process(child)
 				if replacement:
-					value[i:i+1] = replacement
+					value[i] = replacement
 
 
 def normalize_indent(text):
@@ -609,19 +624,19 @@ def normalize_indent(text):
 # 		propagate(node, recursive)
 # 	recursive(tree)
 
-# def _advancepos(text, loc, startpos=0, startloc=(1,0), tab=1):
-# 	''' much like textpos but starts from a point (with startpos and startloc) and can advance forward or backward '''
-# 	i = startpos
-# 	l,c = startloc
-# 	while l < loc[0]:	
-# 		i = text.find('\n', i)+1
-# 		l += 1
-# 	while l > loc[0]:
-# 		i = text.rfind('\n', 0, i)
-# 		l -= 1
-# 	i = text.rfind('\n', 0, i)+1
-# 	i += loc[1]
-# 	return i
+def _advancepos(text, loc, startpos=0, startloc=(1,0), tab=1):
+	''' much like textpos but starts from a point (with startpos and startloc) and can advance forward or backward '''
+	i = startpos
+	l,c = startloc
+	while l < loc[0]:	
+		i = text.find('\n', i)+1
+		l += 1
+	while l > loc[0]:
+		i = text.rfind('\n', 0, i)
+		l -= 1
+	i = text.rfind('\n', 0, i)+1
+	i += loc[1]
+	return i
 		
 	
 		
@@ -634,9 +649,9 @@ def normalize_indent(text):
 # 			return i
 # 	return len(tree.body)
 		
-# def _loc(node):
-# 	''' text location of an AST node '''
-# 	return (node.lineno, node.col_offset)
+def _loc(node):
+	''' text location of an AST node '''
+	return (node.lineno, node.col_offset)
 
 # def textpos(text, loc, tab=1):
 # 	''' string index of the given text location (line,column) '''
