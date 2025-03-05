@@ -16,13 +16,17 @@ class Interpreter:
 		self.vars = {}
 		self.scopes = {}
 		self.stops = []
+		self.exception = None
+		self.wo = set()
+		self.ro = set()
+		self.rw = set()
 		
 		# TODO: remove these debug values
-		import madcad
-		self.scopes[filename] = {
-			'cube': madcad.brick(width=madcad.vec3(1)),
-			'base': madcad.mat4(),
-			}
+		# import madcad
+		# self.scopes[filename] = {
+		# 	'cube': madcad.brick(width=madcad.vec3(1)),
+		# 	'base': madcad.mat4(),
+		# 	}
 	
 	def execute(self, source:str, step:callable):
 		''' execute the code in the given string
@@ -32,6 +36,9 @@ class Interpreter:
 				
 				step(scope: str, current_line: int, total_lines: int)
 		'''
+		from pnprint import nprint
+		nprint(self.cache)
+		
 		code = self.ast = ast.parse(source)
 		ast.annotate(code, source)
 		code = list(ast.parcimonize(self.cache, self.filename, (), code.body, self.previous))
@@ -43,8 +50,8 @@ class Interpreter:
 		code = ast.Module(code, type_ignores=[])
 		ast.fix_missing_locations(code)
 		
-		from pnprint import nprint
-		nprint(ast.dump(code))
+		# nprint(ast.dump(code))
+		nprint(self.cache)
 		
 		# TODO: add stop points
 		

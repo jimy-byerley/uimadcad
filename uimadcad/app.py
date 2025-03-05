@@ -116,9 +116,11 @@ class Madcad(QObject):
 				@qtschedule
 				def update():
 					self.window.panel.set_success()
-					QTimer.singleShot(1000, lambda: self.window.open_panel.setChecked(True))
+					QTimer.singleShot(1000, lambda: self.window.open_panel.setChecked(False))
+			
+			self.active.sceneview.scene.sync()
 	
-	@action(icon='view-refresh')
+	@action(icon='view-refresh', shortcut='Ctrl+Shift+Backspace')
 	def clear(self):
 		''' clear all caches of previous executions 
 			next execution will reexecute the whole script from the beginning

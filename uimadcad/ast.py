@@ -2,12 +2,16 @@ from ast import *
 from collections import Counter
 from itertools import chain
 from functools import partial
+from copy import deepcopy
+
+from pnprint import nprint
 
 
 def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict) -> iter:
 	''' make a code lazily executable by reusing as much previous results as possible '''
 	assigned = Counter()
 	changed = set()
+	memo = dict()
 	
 	# new ast body
 	yield from _scope_init(scope, args)
@@ -39,7 +43,7 @@ def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict)
 				if not cache[scope]:
 					cache.pop(scope)
 					
-		previous[key] = node
+		previous[key] = deepcopy(node, memo)
 		
 		# functions are caching in separate scopes
 		if isinstance(node, FunctionDef):
@@ -147,13 +151,18 @@ def _cache_use(key: hash, targets: list, generate: list) -> list:
 				comparators = [Constant(value=None)]
 				),
 			# run the generating code
-			body = generate,
+			body = [
+					Expr(Call(Name('print', Load()), args=[Constant('generate'), Constant(key)], keywords=[])),
+				] + generate,
 			# retreive from cache
-			orelse = [Assign(targets, Call(
-				func = Name('_madcad_copy', Load()),
-				args = [Name('_madcad_tmp', Load())],
-				keywords = [],
-				))],
+			orelse = [
+				Assign(targets, Call(
+					func = Name('_madcad_copy', Load()),
+					args = [Name('_madcad_tmp', Load())],
+					keywords = [],
+					)),
+				Expr(Call(Name('print', Load()), args=[Constant('cache'), Constant(key)], keywords=[])),
+				],
 			),
 		]
 

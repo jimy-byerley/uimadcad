@@ -102,11 +102,14 @@ class Scene(madcad.rendering.Scene, QObject):
 		assert ido not in self.memo, 'there should not be recursion loops in cascading displays'
 		
 		self.memo.add(ido)
-		try:		disp = super().display(obj, former)
+		try:		
+			disp = super().display(obj, former)
 		except Exception as err:     
-			self.app.showerror(err)
+			self.app.panel.set_exception(err)
+			self.window.open_panel.setChecked(True)
 			raise
-		finally:	self.memo.remove(ido)
+		finally:
+			self.memo.remove(ido)
 		disp.source = obj
 		return disp
 	
@@ -234,6 +237,8 @@ class SceneView(madcad.rendering.View):
 		self._toolbars_visible(True)
 		self._update_active_scene()
 		self.open_composer.setChecked(False)
+		self.app.window.clear_panel(self)
+		# self.app.window.open_panel.setChecked(False)
 		super().focusInEvent(event)
 	
 	def focusOutEvent(self, event):
@@ -271,7 +276,6 @@ class SceneView(madcad.rendering.View):
 	def inputEvent(self, event):
 		# reimplement top bar shortcuts here because Qt cannot deambiguate which view the shortcut belongs to
 		if event.type() == QEvent.KeyPress:
-			print(event, event.key(), Qt.Key_Up, int(event.modifiers()), Qt.AltModifier)
 			event.accept()
 			if event.key() == Qt.Key_Return and event.modifiers() & Qt.AltModifier:
 				self.open_composer.setChecked(True)

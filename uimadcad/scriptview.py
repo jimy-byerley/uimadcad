@@ -406,12 +406,16 @@ class ScriptEdit(QPlainTextEdit):
 		self.setCenterOnScroll(True)
 	
 	def focusInEvent(self, event):
-		self.parent().app.active.scriptview = self.parent()
-		self.parent()._toolbars_visible(True)
+		view = self.parent()
+		view.app.active.scriptview = view
+		view._toolbars_visible(True)
+		view.app.window.clear_panel(view)
+		# view.app.window.open_panel.setChecked(False)
 		super().focusInEvent(event)
 		
 	def focusOutEvent(self, event):
-		self.parent()._toolbars_visible(False)
+		view = self.parent()
+		view._toolbars_visible(False)
 		super().focusOutEvent(event)
 	
 	def keyPressEvent(self, event):

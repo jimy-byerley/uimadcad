@@ -8,7 +8,7 @@ from madcad.qt import (
 	Qt, QApplication, 
 	QWidget, QMainWindow, QDockWidget, QLabel, QGroupBox,
 	QShortcutEvent, QEvent,
-	QTimer, QPainter, QColor, QPalette, QSize, 
+	QTimer, QPainter, QColor, QPalette, QSize, QRectF, QPoint,
 	)
 from madcad.rendering import Orthographic
 from madcad.mathutils import fvec3, fquat, pi
@@ -91,7 +91,9 @@ class MainWindow(QMainWindow):
 	def _focus_other(self):
 		''' switch focus between active sceneview and active scriptview  '''
 		active = self.app.active
-		if active.sceneview and not active.sceneview.hasFocus():
+		if self.app.window.panel.isVisible():
+			self.app.window.open_panel.setChecked(False)
+		elif active.sceneview and not active.sceneview.hasFocus():
 			active.sceneview.setFocus()
 		elif active.scriptview and not active.scriptview.hasFocus():
 			active.scriptview.setFocus()
@@ -267,11 +269,31 @@ class MainWindow(QMainWindow):
 		''' dump the layout state to clipboard (for developers) '''
 		QApplication.clipboard().setText(str(self.saveState()))
 	
-	@action(icon='application-menu', checked=False)
+	@action(icon='application-menu', checked=False, shortcut='Ctrl+Backspace')
 	def open_panel(self, visible):
+		''' open the status panel
+		
+			- if an execution is running, it presents the scopes progression bars
+			- if the last execution failed, it shows its traceback
+		'''
 		self.panel.setVisible(visible)
 		self.panel.adjustSize()
 		self.panel.raise_()
+		
+	def clear_panel(self, widget: QWidget):
+		''' hide the panel if the given widget is below '''
+		if not self.panel.isVisible():
+			return
+		panel = QRectF(
+			self.panel.mapToGlobal(QPoint(0,0)),
+			self.panel.mapToGlobal(QPoint(self.panel.width(), self.panel.height())),
+			)
+		widget = QRectF(
+			widget.mapToGlobal(QPoint(0,0)),
+			widget.mapToGlobal(QPoint(widget.width(), widget.height())),
+			)
+		if panel.intersects(widget):
+			self.open_panel.setChecked(False)
 
 
 class DockedView(QDockWidget):
@@ -349,6 +371,7 @@ class ExecutionPanel(QGroupBox):
 			)
 	
 	def set_exception(self, exception):
+		''' show the given exception with its traceback in the status panel '''
 		self.stop.setEnabled(False)
 		self.status.hide()
 		self.errorview.show()
@@ -360,6 +383,7 @@ class ExecutionPanel(QGroupBox):
 		self.adjustSize()
 		
 	def set_progress(self, progress):
+		''' show the given execution progress in the status panel '''
 		self.errorview.hide()
 		self.status.show()
 		self.stop.setEnabled(True)
@@ -375,6 +399,7 @@ class ExecutionPanel(QGroupBox):
 		self.adjustSize()
 		
 	def set_success(self):
+		''' show that last execution was successfull in the status panel '''
 		self.stop.setEnabled(False)
 		self.errorview.hide()
 		self.status.show()
