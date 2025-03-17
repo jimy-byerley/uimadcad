@@ -517,6 +517,7 @@ class ScriptNavigation(QWidget):
 		self.line.setValue(self.view.editor.textCursor().blockNumber()+1)
 		self.line.setMinimum(1)
 		self.line.setMaximum(self.view.editor.document().lineCount())
+		self.line.lineEdit().selectAll()
 		
 	def keyPressEvent(self, event):
 		event.accept()

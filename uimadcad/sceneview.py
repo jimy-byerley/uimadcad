@@ -5,11 +5,12 @@ from madcad.qt import (
 	Qt, QObject, QEvent, 
 	QPoint, QMargins, QFont, 
 	QWidget, QPushButton, QCheckBox, QComboBox, QLabel, QSizePolicy, QButtonGroup, QActionGroup,
+	QTextCursor,
 	QGroupBox,
 	)
 
 import madcad
-from madcad.rendering import Perspective, Orthographic, Turntable, Orbit, Group
+from madcad.rendering import Perspective, Orthographic, Turntable, Orbit, Group, displayable
 from madcad.mathutils import *
 from . import settings
 from .utils import *
@@ -39,28 +40,41 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 	def sync(self):
 		''' synchronize the scene content with the rest of the application '''
+		# name = self.app.active.scope
+		name = self.app.interpreter.filename # TODO: remove this debug value
+		scope = self.app.interpreter.scopes.get(name)
+		usage = self.app.interpreter.usages.get(name)
+			
+		# from pnprint import nprint
+		# nprint('usage', usage)
+		
 		keys = set()
-		# hide_all is hidding all default displays
-		if not self.composer.hide_all:
-			# default displays are the writen only variables
-			for key in self.app.intepreter.wo:
+		if usage is not None:
+			# hide_all is hidding all default displays
+			if not self.composer.hide_all:
+				# default displays are the writen only variables
+				for key in usage.wo:
+					keys.add(key)
+				for key in usage.ro:
+					keys.add(key)
+			# show_all is showing all variables in the scopes
+			if self.composer.show_all:
+				for key in scope:
+					keys.add(key)
+			# hide_set selects displays to hide despite previous settings
+			for key in self.composer.hide_set:
+				keys.discard(key)
+			# show set selects displays to show despite previous settings
+			for key in self.composer.show_set:
 				keys.add(key)
-		# show_all is showing all variables in the scopes
-		if self.composer.show_all:
-			for key in self.app.interpreter.scopes:
-				keys.add(key)
-		# hide_set selects displays to hide despite previous settings
-		for key in self.composer.hide_set:
-			keys.discard(key)
-		# show set selects displays to show despite previous settings
-		for key in self.composer.show_set:
-			keys.add(key)
 		
 		# recreate the scene dictionnary
 		new = {}
 		for key in keys:
-			obj = self.app.interpreter.scopes.get(key, None)
-			if obj is not None:
+			if key.startswith('_madcad_'):
+				continue
+			obj = scope.get(key, None)
+			if displayable(obj):
 				new[key] = obj
 		new.update(self.additions)
 		
@@ -105,8 +119,8 @@ class Scene(madcad.rendering.Scene, QObject):
 		try:		
 			disp = super().display(obj, former)
 		except Exception as err:     
-			self.app.panel.set_exception(err)
-			self.window.open_panel.setChecked(True)
+			self.app.window.panel.set_exception(err)
+			self.app.window.open_panel.setChecked(True)
 			raise
 		finally:
 			self.memo.remove(ido)
@@ -320,7 +334,6 @@ class SceneView(madcad.rendering.View):
 				self._update_active_selection()
 			self.scene.touch()
 			self.update()
-			self.app.updatescript()
 			evt.accept()
 		
 		# show details
@@ -637,6 +650,7 @@ class SceneComposer(QWidget):
 		super().__init__(parent)
 		Initializer.process(self, parent=self)
 		self.scene = scene
+		self._spaces = 0
 		
 		self.hide_all = False
 		self.show_all = False
@@ -647,39 +661,39 @@ class SceneComposer(QWidget):
 		self.scene_selector.activated.connect(self._scene_change)
 		self.scene_selector.setToolTip("select the scene to display in the view")
 		
-		self.show_all = Button(name='all', checked=False, 
+		self.show_check = Button(name='all', checked=False, 
 			description="show all objects in all scopes, except those in the hiding list below")
-		self.show_all.clicked.connect(self._content_change)
+		self.show_check.clicked.connect(self._change)
 		
-		self.show_list = PlainTextEdit()
-		self.show_list.setPlaceholderText("variable names separated by spaces or newlines")
-		self.show_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-		self.show_list.document().contentsChange.connect(self._content_change)
+		self.show_entry = PlainTextEdit()
+		self.show_entry.setPlaceholderText("variable names separated by spaces or newlines")
+		self.show_entry.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+		self.show_entry.document().contentsChange.connect(partial(self._entry_change, self.show_entry))
 		
-		self.hide_all = Button(name='all', checked=False,
+		self.hide_check = Button(name='all', checked=False,
 			description="hide all objects in all scopes, except those in the show list above")
-		self.hide_all.clicked.connect(self._content_change)
-		self.hide_list = PlainTextEdit()
-		self.hide_list.setPlaceholderText("variable names separated by spaces or newlines")
-		self.hide_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-		self.hide_list.document().contentsChange.connect(self._content_change)
+		self.hide_check.clicked.connect(self._change)
+		self.hide_entry = PlainTextEdit()
+		self.hide_entry.setPlaceholderText("variable names separated by spaces or newlines")
+		self.hide_entry.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+		self.hide_entry.document().contentsChange.connect(partial(self._entry_change, self.hide_entry))
 		
 		selector = QGroupBox('scene')
 		selector.setLayout(hlayout([self.scene_remove, self.scene_selector, self.scene_add]))
 		
 		composition = QGroupBox('composition')
 		composition.setLayout(vlayout([
-			hlayout([QLabel('show'), self.show_all]),
-			self.show_list,
-			hlayout([QLabel('hide'), self.hide_all]),
-			self.hide_list,
+			hlayout([QLabel('show'), self.show_check]),
+			self.show_entry,
+			hlayout([QLabel('hide'), self.hide_check]),
+			self.hide_entry,
 			]))
 			
 		self.setLayout(vlayout([selector, composition]))
 			
 	def focusInEvent(self, evt):
 		self._update_scenes()
-		self.show_list.setFocus()
+		self.show_entry.setFocus()
 			
 	def _update_scenes(self):
 		self.scene_selector.clear()
@@ -701,8 +715,27 @@ class SceneComposer(QWidget):
 		self.view.scene = self.scene.app.scenes[index]
 		self._update_active_scene()
 		
-	def _content_change(self):
+	def _change(self):
+		''' update boolean flags, and update the scene '''
+		self.show_all = self.show_check.isChecked()
+		self.hide_all = self.hide_check.isChecked() and not self.show_all
 		self.scene.sync()
+		self.view.update()
+		
+	def _entry_change(self, entry):
+		''' called when an entry has been typed to
+			update the sets when a sace char has been inserted or many chars added
+		'''
+		# count the number of psaces, trigger only if spaces were inserted
+		spaces = sum(char.isspace()  for char in entry.toPlainText())
+		if spaces != self._spaces:
+			self._spaces = spaces
+			
+			# update sets
+			self.show_set = set(self.show_entry.toPlainText().split())
+			self.hide_set = set(self.hide_entry.toPlainText().split())
+			
+			self._change()
 
 	@button(icon='list-add-symbolic', flat=True)
 	def scene_add(self):

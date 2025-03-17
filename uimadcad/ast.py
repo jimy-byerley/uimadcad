@@ -1,5 +1,7 @@
+from math import inf
 from ast import *
 from collections import Counter
+from dataclasses import dataclass
 from itertools import chain
 from functools import partial
 from copy import deepcopy
@@ -323,6 +325,9 @@ def results(node: AST, inplace=False) -> iter:
 	elif isinstance(node, (Attribute, Subscript)):
 		yield from results(node.value, inplace)
 	elif isinstance(node, Call):
+		if isinstance(node.func, Attribute):
+			# nprint(node.func, list(results(node.func.value, inplace=True)))
+			yield from results(node.func.value, inplace=True)
 		arg = next(iter(node.args), None) or next(iter(node.keywords), None)
 		if arg:
 			yield from results(arg, inplace=True)
@@ -513,11 +518,12 @@ def report(code:list, scope:str):
 	for node in code:
 		filter(node)
 	
-	code.append(Assign(
-		targets = [Subscript(Name('_madcad_scopes', Load()), Constant(scope), Store())],
-		value = Call(Name('_madcad_vars', Load()), args=[], keywords=[]),
-		))
-	return code
+	return [Try(body=code, handlers=[], orelse=[], finalbody=[
+		Assign(
+			targets = [Subscript(Name('_madcad_scopes', Load()), Constant(scope), Store())],
+			value = Call(Name('_madcad_vars', Load()), args=[], keywords=[]),
+			),
+		])]
 
 def locate(code:list, scope:str, locations=None):
 	''' change the given code to report its variables to madcad '''
@@ -537,32 +543,70 @@ def locate(code:list, scope:str, locations=None):
 	
 	return locations
 	
+def usage(code:list, scope:str, usages:dict=None, stops:dict=None) -> dict:
+	''' analyse the variables usage in all function scopes defined in this AST 
+		
+		Args:
+			usages: dictionnary of scopes usages, updated and returned by this function, leaving it empty creates a new dict
+			stops:  dictionnary of stop points in each scope, useful to know the scope's variables usage before an exception
+	'''
+	if usages is None:	usages = {}
+	if stops is None:	stops = {}
 	
-
-def usage(node) -> (set, set, set):
-	''' return two set of variable names: those used (read or write) in the given ast tree, and those only read '''
 	ro = set()  # only read
 	wo = set() # only written
 	rw = set()  # read and written
-	for node in walk(node):
-		if isinstance(node, Name):
-			if isinstance(node.ctx, Load):
-				if node.id in rw:
-					pass
-				elif node.id in wo:
-					wo.discard(node.id)
-					rw.add(node.id)
+
+	def filter(node):
+		if isinstance(node, (Module, FunctionDef)):
+			usage(node.body, scope+'.'+node.name)
+		# if the current node is after the current scope's end, do not count its usages
+		elif getattr(node, 'lineno', 0) > stops.get(scope, inf):
+			pass
+		# count statement usages
+		elif isinstance(node, (Expr, Assign)):
+			for var in dependencies(node):
+				if var in wo or var in rw:
+					rw.add(var)
 				else:
-					ro.add(node.id)
-			if isinstance(node.ctx, Store):
-				if node.id in rw:
-					pass
-				elif node.id in ro:
-					ro.discard(node.id)
-					rw.add(node.id)
-				else:
-					wo.add(node.id)
-	return ro, wo, rw
+					ro.add(var)
+				wo.discard(var)
+			for var in results(node):
+				ro.discard(var)
+				rw.discard(var)
+				wo.add(var)
+		else:
+			propagate(node, filter)
+	
+	for node in code:
+		filter(node)
+	
+	usages[scope] = Usage(ro, wo, rw)
+	return usages
+
+@dataclass(slots=True)
+class Usage:
+	ro: set
+	''' variables that were always read but never written in the current scope '''
+	wo: set
+	''' variables that were lastly wrote but never read in the current scope '''
+	rw: set
+	''' variables that were wrote then read in the current scope '''
+	
+def fix_locations(node: AST):
+	''' set approximative line and column locations to AST nodes that are missing these 
+		(generally they are procedurally created nodes) 
+	'''
+	for child in iter_child_nodes(node):
+		fix_locations(child)
+		# values from childs
+		if lineno := getattr(child, 'lineno', 0):
+			node.lineno = min(getattr(node, 'lineno', lineno), lineno)
+		if col_offset := getattr(child, 'col_offset', 0):
+			node.col_offset = min(getattr(node, 'col_offset', col_offset), col_offset)
+	# default values
+	node.lineno = getattr(node, 'lineno', 0)
+	node.col_offset = getattr(node, 'col_offset', 0)
 
 def equal(a: AST, b: AST) -> bool:
 	''' check that the operations performed by node a are equivalent to operations performed by node b '''

@@ -19,6 +19,7 @@ class Active:
 	sceneview = None
 	scriptview = None
 	errorview = None
+	scope = None
 	editor = None
 	tool = None
 	file: str = None
@@ -119,6 +120,7 @@ class Madcad(QObject):
 					QTimer.singleShot(1000, lambda: self.window.open_panel.setChecked(False))
 			
 			self.active.sceneview.scene.sync()
+			self.active.sceneview.update()
 	
 	@action(icon='view-refresh', shortcut='Ctrl+Shift+Backspace')
 	def clear(self):
@@ -128,7 +130,7 @@ class Madcad(QObject):
 		self.stop.trigger()
 		self.interpreter = Interpreter(self.interpreter.filename)
 		
-	@action(icon='media-playback-stop', shortcut='Ctrl+Shift+Return')
+	@action(icon='media-playback-stop', shortcut='Ctrl+Backspace')
 	def stop(self):
 		''' cancel the script execution '''
 		self.interpreter.interrupt()

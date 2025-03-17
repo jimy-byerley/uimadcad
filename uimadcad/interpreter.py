@@ -1,5 +1,6 @@
 from copy import deepcopy
 from functools import partial
+import traceback
 
 from . import ast
 
@@ -13,20 +14,11 @@ class Interpreter:
 		self.filename = filename
 		self.previous = {}
 		self.ast = {}
-		self.vars = {}
 		self.scopes = {}
+		self.locations = {}
+		self.usages = {}
 		self.stops = []
 		self.exception = None
-		self.wo = set()
-		self.ro = set()
-		self.rw = set()
-		
-		# TODO: remove these debug values
-		# import madcad
-		# self.scopes[filename] = {
-		# 	'cube': madcad.brick(width=madcad.vec3(1)),
-		# 	'base': madcad.mat4(),
-		# 	}
 	
 	def execute(self, source:str, step:callable):
 		''' execute the code in the given string
@@ -45,13 +37,11 @@ class Interpreter:
 		code = list(ast.flatten(code))
 		code = list(ast.steppize(code, self.filename))
 		code = ast.report(code, self.filename)
-		self.vars = ast.locate(code, self.filename)
+		self.locations = ast.locate(code, self.filename)
+		self.usages = ast.usage(code, self.filename)
 		# ast.complete(code)
 		code = ast.Module(code, type_ignores=[])
-		ast.fix_missing_locations(code)
-		
-		# nprint(ast.dump(code))
-		nprint(self.cache)
+		ast.fix_locations(code)
 		
 		# TODO: add stop points
 		
@@ -63,7 +53,18 @@ class Interpreter:
 			_madcad_step = step,
 			_madcad_vars = vars,
 			)
-		exec(bytecode, module, {})
+		try:
+			exec(bytecode, module, {})
+		except Exception as err:
+			stops = {}
+			for frame, line in traceback.walk_tb(err.__traceback__):
+				name = frame.f_code.co_name
+				if name == '<module>':
+					name = self.filename
+				stops[name] = line
+				# TODO: use a try finally for the scope capture
+			self.usages = ast.usage(code.body, self.filename, stops=stops)
+			raise
 		
 	def interrupt(self):
 		# TODO

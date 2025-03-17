@@ -269,7 +269,7 @@ class MainWindow(QMainWindow):
 		''' dump the layout state to clipboard (for developers) '''
 		QApplication.clipboard().setText(str(self.saveState()))
 	
-	@action(icon='application-menu', checked=False, shortcut='Ctrl+Backspace')
+	@action(icon='application-menu', checked=False, shortcut='Ctrl+Shift+Return')
 	def open_panel(self, visible):
 		''' open the status panel
 		
