@@ -365,7 +365,7 @@ class SceneView(madcad.rendering.View):
 			pointsize = font.pointSize()
 			self.seek_selection.setFont(font)
 			self.seek_selection.setText(text)
-			self.seek_selection.resize(pointsize*len(text), pointsize*2)
+			# self.seek_selection.resize(pointsize*(len(text)+2), self.seek_selection.height())
 			self.seek_selection.show()
 		else:
 			self.seek_selection.hide()
@@ -440,7 +440,6 @@ class SceneView(madcad.rendering.View):
 		
 			(shortcut: Alt+Return)
 		'''
-		self.scene.composer.setVisible(show)
 		if show:
 			self.scene.composer.view = self
 			self.scene.composer.setParent(self)
@@ -450,9 +449,12 @@ class SceneView(madcad.rendering.View):
 				self.scene.composer.sizeHint().width(),
 				min(self.height(), self.scene.composer.sizeHint().height()),
 				)
+			# the rest has to be made after changing parent
 			self.scene.composer.setFocus()
+			self.scene.composer.setVisible(True)
 		else:
 			self.setFocus(True)
+			self.scene.composer.setVisible(False)
 	
 	@button(flat=True) #, shortcut='Alt+Up')
 	def seek_selection(self):

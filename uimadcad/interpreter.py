@@ -32,7 +32,7 @@ class Interpreter:
 		nprint(self.cache)
 		
 		code = self.ast = ast.parse(source)
-		ast.annotate(code, source)
+		# ast.annotate(code, source)
 		code = list(ast.parcimonize(self.cache, self.filename, (), code.body, self.previous))
 		code = list(ast.flatten(code))
 		code = list(ast.steppize(code, self.filename))
@@ -42,6 +42,8 @@ class Interpreter:
 		# ast.complete(code)
 		code = ast.Module(code, type_ignores=[])
 		ast.fix_locations(code)
+		
+		nprint(self.cache)
 		
 		# TODO: add stop points
 		
@@ -53,8 +55,9 @@ class Interpreter:
 			_madcad_step = step,
 			_madcad_vars = vars,
 			)
+		
 		try:
-			exec(bytecode, module, {})
+			exec(bytecode, module, module)
 		except Exception as err:
 			stops = {}
 			for frame, line in traceback.walk_tb(err.__traceback__):

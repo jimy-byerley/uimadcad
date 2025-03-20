@@ -1,3 +1,4 @@
+import types
 from math import inf
 from ast import *
 from collections import Counter
@@ -41,7 +42,7 @@ def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict)
 			# void cache of changed statements
 			if scope in cache:
 				for backups in cache[scope].values():
-					backups.pop(key, None)
+					backups.discard(key)
 				if not cache[scope]:
 					cache.pop(scope)
 					
@@ -158,11 +159,12 @@ def _cache_use(key: hash, targets: list, generate: list) -> list:
 				] + generate,
 			# retreive from cache
 			orelse = [
-				Assign(targets, Call(
-					func = Name('_madcad_copy', Load()),
-					args = [Name('_madcad_tmp', Load())],
-					keywords = [],
-					)),
+				Assign(targets, Name('_madcad_tmp', Load())),
+				# Assign(targets, Call(
+				# 	func = Name('_madcad_copy', Load()),
+				# 	args = [Name('_madcad_tmp', Load())],
+				# 	keywords = [],
+				# 	)),
 				Expr(Call(Name('print', Load()), args=[Constant('cache'), Constant(key)], keywords=[])),
 				],
 			),
@@ -170,39 +172,74 @@ def _cache_use(key: hash, targets: list, generate: list) -> list:
 
 def _cache_get(key) -> Expr:
 	''' expression for accessing the cache value for this variable name in this function's scope '''
-	return Call(Name('_madcad_copy', Load()), 
-		args = [Call(
-			Attribute(Name('_madcad_cache', Load()), 'get', Load()), 
-			args = [Constant(key)],
-			keywords = [],
-			)],
+	return Call(
+		Attribute(Name('_madcad_cache', Load()), 'get', Load()), 
+		args = [Constant(key)],
 		keywords = [],
 		)
 	
 def _cache_set(key, value) -> Expr:
 	''' statment for setting the given value to the given cache key '''
-	return Assign(
-		targets = [Subscript(
-			value = Name('_madcad_cache', Load()), 
-			slice = Constant(key), 
-			ctx = Store())], 
-		value = Call(
-			Name('_madcad_copy', Load()),
-			args = [value],
-			keywords = [],
-			),
-		)
+	return Expr(Call(
+		Attribute(Name('_madcad_cache', Load()), 'set', Load()), 
+		args = [Constant(key), value],
+		keywords = [],
+		))
 
 def global_cache(cache: dict, scope: str, args: tuple):
+	''' function retreiving/creating the caches for a function according to its arguments '''
+	# maximum number of versions kept for this function
+	# when inserting a new version, previous caches will be randomly poped to not get over this limit
+	max_versions = 20
+	
 	if scope not in cache:
 		cache[scope] = {}
 	versions = cache[scope]
 	args = ArgumentsKey(args)
 	if args not in versions:
-		versions[args] = {}
+		if len(versions) > max_versions:
+			versions.popitem()
+		versions[args] = ScopeCache()
 	return versions[args]
 	
-class ArgumentsKey(object):
+class ScopeCache:
+	''' dictionnary of caches for a scope 
+	
+		this class simply provide convenient methods including deepcopy when necessary
+	'''
+	def __init__(self):
+		self.scope = {}
+	
+	# list of types that do not need to be deepcopied (immutable or uncopiable)
+	whitelist = {types.ModuleType, types.FunctionType, str, int, float}
+	
+	def get(self, key):
+		''' retreive a cached value '''
+		cached = self.scope.get(key)
+		if not type(cached) in self.whitelist:
+			try:
+				cached = deepcopy(cached)
+			except TypeError:
+				pass
+		return cached
+	
+	def set(self, key, value):
+		''' cache a value '''
+		if not type(value) in self.whitelist:
+			try:
+				value = deepcopy(value)	
+			except TypeError:
+				pass
+		self.scope[key] = value
+		
+	def discard(self, key):
+		''' discard a cached value, if any '''
+		self.scope.pop(key, None)
+		
+	def __bool__(self):
+		return bool(self.scopes)
+	
+class ArgumentsKey:
 	__slots__ = 'key', 'args'
 	def __init__(self, args):
 		self.key = 0
@@ -442,15 +479,17 @@ def flatten(code: list, nodes={Call, BoolOp, BinOp, Tuple, List, Return}, vars:s
 			return Name(name, Load())
 		# return values get a special name
 		elif isinstance(node, Return):
-			propagate(node.value, capture)
+			if type(node.value) in nodes:
+				propagate(node.value, capture)
 			captured.append(Assign([Name('_return', Store())], node.value))
 			return Return(Name('_return', Load()))
 		# assignemnts are already named so no need for capture again
 		elif isinstance(node, Assign):
-			propagate(node.value, capture)
+			if type(node.value) in nodes:
+				propagate(node.value, capture)
 			
 		# in a block, captures should create variables inside the block
-		elif isinstance(node, (Module, FunctionDef, Lambda, For, While, With)):
+		elif isinstance(node, (Module, FunctionDef, For, While, With)):
 			node.body = list(flatten(node.body, nodes))
 		elif isinstance(node, If):
 			node.body = list(flatten(node.body, vars=vars))

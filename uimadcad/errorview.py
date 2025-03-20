@@ -139,8 +139,6 @@ class ErrorView(QWidget):
 		
 			move the cursor in the traceback to select a scope
 		'''
-		self.scope.setVisible(visible)
-	
 		if visible and self.exception and self.exception.__traceback__:
 			n = self.traceback.textCursor().blockNumber() //2
 			
@@ -173,6 +171,10 @@ class ErrorView(QWidget):
 					else:
 						cursor.insertText(key+':', fmt_key)
 						cursor.insertText(('\n'+formated).replace('\n', '\n    ')+'\n', fmt_value)
+		else:
+			self.traceback.setFocus()
+		
+		self.scope.setVisible(visible)
 	
 	@property
 	def keep(self):	
