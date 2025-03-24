@@ -23,6 +23,7 @@ class Active:
 	editor = None
 	tool = None
 	file: str = None
+	date: float = 0.
 	export: str = None
 
 class Madcad(QObject):
@@ -43,11 +44,16 @@ class Madcad(QObject):
 		self.window = window(MainWindow(self))
 		self.thread = SlaveThread()
 		
+		self._check_change_timer = QTimer(self)
+		self._check_change_timer.setInterval(5000)
+		self._check_change_timer.timeout.connect(self.check_change)
+		
 		self.load_file(file)
 		
 	def load_file(self, file=None):
 		''' load the content of the file at the given path and replace the current scritpt '''
 		self.active.file = file
+		self.active.date = os.path.getmtime(file)
 		self.window.setWindowFilePath(self.active.file or 'untitled')
 		self.document.setPlainText(open(self.active.file or settings.locations['startup'], 'r').read())
 		self.document.setModified(False)
@@ -79,13 +85,26 @@ class Madcad(QObject):
 		self.open_file_external(settings.locations['pysettings'])
 	
 	@action(icon='media-seek-forward', checked=False, shortcut='Ctrl+Shift+T')
-	def trigger_on_file_change(self):
+	def trigger_on_file_change(self, enable):
 		''' trigger execution on file change
 			(save from this editor, or from external editor)
 			
 			when disabled, you must trigger manually
 		'''
-		...
+		if enable:
+			self.load_file(self.active.file)
+			self.execute.trigger()
+			self._check_change_timer.start()
+		else:
+			self._check_change_timer.stop()
+			
+	def check_change(self):
+		''' if enabled, check if the file changed on disk, then reload and reexecute it '''
+		if self.trigger_on_file_change.isChecked():
+			disk = os.path.getmtime(self.active.file)
+			if disk > self.active.date:
+				self.load_file(self.active.file)
+				self.execute.trigger()
 	
 	@action(icon='media-playback-start', shortcut='Ctrl+Return')
 	def execute(self):
@@ -164,6 +183,7 @@ class Madcad(QObject):
 				open(tmpfile, 'w').write(self.document.toPlainText())
 				# erase original file in one system call once saving is done
 				os.replace(tmpfile, self.active.file)
+				self.active.date = os.path.getmtime(self.active.file)
 			except OSError as err:
 				popup = QErrorMessage(self.window)
 				popup.showMessage(str(err))

@@ -87,6 +87,11 @@ class MainWindow(QMainWindow):
 			min(self.panel.sizeHint().height(), self.height() - 2*margin),
 			)
 	
+	def changeEvent(self, event):
+		# window activation should trigger execution if enabled
+		if event.type() == QEvent.ActivationChange and self.isActiveWindow():
+			self.app.check_change()
+	
 	# @shortcut(shortcut='Esc')
 	def _focus_other(self):
 		''' switch focus between active sceneview and active scriptview  '''
@@ -354,12 +359,7 @@ class ExecutionPanel(QGroupBox):
 		self.stop.raise_()
 		
 		self.app.active.errorview = self.errorview
-	
-		# TODO: remove these debug values
-		# self.set_progress(0.12)
-		self.set_progress({'toyal':0.2, 'myfunc':0.4, 'completefunc':1., 'subfunc':0.1})
-		# self.set_exception(NameError('truc'))
-		# self.set_success()
+		self.set_success()
 		
 	def resizeEvent(self, event):
 		super().resizeEvent(event)

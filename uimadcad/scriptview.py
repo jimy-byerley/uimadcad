@@ -1,6 +1,7 @@
 import re
 from collections import deque
 
+from pnprint import nformat, deformat
 from madcad.mathutils import mix, vec4
 from madcad.qt import (
 	QWidget, QPlainTextEdit, QVBoxLayout,
@@ -66,6 +67,8 @@ class ScriptView(QWidget):
 			self.indent_increase,
 			self.indent_decrease,
 			self.reformat,
+			self.comment,
+			self.uncomment,
 			None,
 			self.open_find,
 			self.open_replace,
@@ -289,24 +292,34 @@ class ScriptView(QWidget):
 		''' redo next changes in history '''
 		self.app.document.redo()
 	
-	@action(icon='format-indent-more') #, shortcut='Tab')
-	def indent_increase(self):
-		''' increase the indentation level of the current or selected lines 
-		
-			(shortcut: Tab)
-		'''
+	def _get_block(self) -> QTextCursor:
+		''' retreive a cursor surrounding and completing the selected lines '''
 		cursor = self.editor.textCursor()
 		start, stop = sorted([cursor.position(), cursor.anchor()])
 		cursor.setPosition(start)
 		cursor.movePosition(QTextCursor.StartOfLine)
 		cursor.movePosition(QTextCursor.PreviousCharacter)
 		cursor.setPosition(stop, QTextCursor.KeepAnchor)
+		return cursor
 		
-		cursor.insertText(cursor.selectedText().replace('\u2029', '\u2029\t'))
+	def _set_block(self, cursor, text):
+		''' set the text in the given cursor but keeps it selected '''
+		view = self.editor.textCursor()
+		start = min(view.position(), view.anchor())
 		
-		cursor = self.editor.textCursor()
-		cursor.setPosition(start, cursor.KeepAnchor)
-		self.editor.setTextCursor(cursor)
+		cursor.insertText(text)
+		
+		view.setPosition(start, cursor.KeepAnchor)
+		self.editor.setTextCursor(view)
+	
+	@action(icon='format-indent-more') #, shortcut='Tab')
+	def indent_increase(self):
+		''' increase the indentation level of the current or selected lines 
+		
+			(shortcut: Tab)
+		'''
+		cursor = self._get_block()
+		self._set_block(cursor, cursor.selectedText().replace('\u2029', '\u2029\t'))
 	
 	@action(icon='format-indent-less') #, shortcut='Shift+Tab')
 	def indent_decrease(self):
@@ -314,25 +327,37 @@ class ScriptView(QWidget):
 		
 			(shortcut: Shift+Tab)
 		'''
-		cursor = self.editor.textCursor()
-		start, stop = sorted([cursor.position(), cursor.anchor()])
-		cursor.setPosition(start)
-		cursor.movePosition(QTextCursor.StartOfLine)
-		cursor.movePosition(QTextCursor.PreviousCharacter)
-		cursor.setPosition(stop, QTextCursor.KeepAnchor)
-		
-		cursor.insertText(cursor.selectedText().replace('\u2029\t', '\u2029'))
-		
-		cursor = self.editor.textCursor()
-		cursor.setPosition(start, cursor.KeepAnchor)
-		self.editor.setTextCursor(cursor)
+		cursor = self._get_block()
+		self._set_block(cursor, cursor.selectedText().replace('\u2029\t', '\u2029'))
 		
 	@action(icon='format-justify-center', shortcut='Ctrl+Shift+F')
 	def reformat(self):
 		''' reformat selected code to get proper nested indentation 
 			and split long expressions into multiple lines 
 		'''
-		indev
+		cursor = self._get_block()
+		raw = cursor.selectedText()
+		i = 0
+		while raw[i].isspace():
+			i += 1
+		indentation = raw[:i]
+		reformated = '\n'+nformat(
+			deformat(raw.replace(indentation, '\n')), 
+			width=50
+			)
+		self._set_block(cursor, reformated.replace('\n', indentation))
+		
+	@action(icon='edit-comment', shortcut='Ctrl+D')
+	def comment(self):
+		''' change selected lines or current line into comments to disable them '''
+		cursor = self._get_block()
+		self._set_block(cursor, cursor.selectedText().replace('\u2029', '\u2029#'))
+		
+	@action(icon='delete-comment', shortcut='Ctrl+Shift+D')
+	def uncomment(self):
+		''' uncomment selected lines or current line in order to reenable them '''
+		cursor = self._get_block()
+		self._set_block(cursor, cursor.selectedText().replace('\u2029#', '\u2029'))
 		
 	@action(icon='format-font-size-more', shortcut='Ctrl++')
 	def fontsize_increase(self):
