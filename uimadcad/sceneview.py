@@ -1,6 +1,9 @@
 from functools import partial
 from operator import itemgetter
 
+import numpy as np
+import moderngl as mgl
+
 from madcad.qt import (
 	Qt, QObject, QEvent, 
 	QPoint, QMargins, QFont, 
@@ -25,11 +28,15 @@ class Scene(madcad.rendering.Scene, QObject):
 		madcad.rendering.Scene.__init__(self, *args, **kwargs)
 		self.app = app
 		
+		# selected displays
+		self.selection = set()
+		self.active = None
 		# prevent reference-loop in groups (groups are taken from the execution env, so the user may not want to display it however we are trying to)
 		self.memo = set()
 		# scene data
 		self.additions = {		# systematic scene additions
 			'__grid__': madcad.rendering.Displayable(Grid),
+			'__highlight__': madcad.rendering.Displayable(Highlight),
 			}
 		# application behavior
 		self.composer = SceneComposer(self)
@@ -138,6 +145,16 @@ class Scene(madcad.rendering.Scene, QObject):
 					box.union(disp.box.transform(disp.world))
 			return box
 		return selbox(self.displays.values())
+		
+	def clear_selection(self):
+		''' clear selection index and deselect displays '''
+		for key in self.selection:
+			try:
+				item = self.item(key)
+			except KeyError:
+				continue
+			item.selected = False
+		self.selection.clear()
 
 
 class SceneView(madcad.rendering.View):
@@ -147,6 +164,7 @@ class SceneView(madcad.rendering.View):
 	
 	def __init__(self, app, scene=None, **kwargs):
 		self.app = app
+		self.hover = None
 		self._last_empty = True
 		
 		# try to reuse existing scene
@@ -162,6 +180,7 @@ class SceneView(madcad.rendering.View):
 		super().__init__(scene, **kwargs)
 		self.setMinimumSize(100,100)
 		self.setSizePolicy(QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding))
+		self.handler.setMouseTracking(True)
 		Initializer.process(self)
 		self._init_scene_settings()
 		
@@ -225,7 +244,65 @@ class SceneView(madcad.rendering.View):
 		self._update_active_scene()
 		self._update_active_selection()
 		self._toolbars_visible(False)
+	
+	def init(self):
+		import numpy as np
+		ctx = self.scene.ctx
+		assert ctx, 'context is not initialized'
 		
+		size = ivec2(self.width(), self.height())
+		# if the size is not a multiple of 4, it seems that openGL or Qt doesn't understand its strides well
+		m = 4
+		size += (-size%m)
+		
+		# release framebuffers before reinitializing them
+		if self.fb_final:
+			if size == self.fb_final.size:
+				return
+			self.fb_final.release()
+			self.fb_screen.release()
+			self.fb_ident.release()
+			self.map_ident = None
+			self.map_depth = None
+			self.map_color = None
+
+		# self.fb_frame is already created and sized by Qt
+		self.fb_final = ctx.simple_framebuffer(size)
+		self.fb_screen = ctx.simple_framebuffer(size, samples=4)
+		self.tx_ident = ctx.texture(2*size, components=1, dtype='u2')
+		self.tx_depth = ctx.depth_texture(2*size)
+		self.fb_ident_multi = ctx.framebuffer(self.tx_ident, self.tx_depth)
+		self.fb_ident = ctx.framebuffer(ctx.renderbuffer(size, components=1, dtype='u2'), ctx.depth_renderbuffer(size))
+		self.targets = [ 
+			('ident', self.fb_ident_multi, self.setup_ident),
+			('screen', self.fb_screen, self.setup_screen),
+			]
+		w, h = size
+		self.downsample_ident = DownsampleIdent(self.scene)
+		# self.map_ident = np.empty((2*h,2*w), dtype='u2')
+		# self.map_depth = np.empty((2*h,2*w), dtype='f4')
+		# self.map_ident = np.empty((h,w), dtype='u2')
+		# self.map_depth = np.empty((h,w), dtype='f4')
+		# self.buf_ident = np.empty(2*h*2*w, dtype='u2')
+		# self.buf_depth = np.empty(2*h*2*w, dtype='f4')
+		
+		self.map_ident = madcad.rendering.CheapMap(self.fb_ident, attachment=0)
+		self.map_depth = madcad.rendering.CheapMap(self.fb_ident, attachment=-1)
+		
+		# self.map_ident = self.map_ident_multi[::2, ::2]
+		# self.map_depth = self.map_depth_multi[::2, ::2]
+		self.map_color = np.empty((h,w,3), dtype='u1')
+		
+	def render(self):
+		super().render()
+		self.fb_ident.use()
+		self.downsample_ident.render(self)
+		# self.fb_ident.read_into(self.map_ident_multi, viewport=self.fb_ident.viewport, components=1, dtype='u2')
+		# self.fb_ident.read_into(self.map_depth_multi, viewport=self.fb_ident.viewport, components=1, attachment=-1, dtype='f4')
+		# self.scene.ctx.copy_framebuffer(self.fb_ident, self.fb_ident_multi)
+		# self.map_ident[:] = np.asarray(self.fb_ident.color_attachments[0]).reshape(self.fb_ident.size)[::2, ::2]
+		# self.fresh.add('fb_ident')
+	
 	def paintEvent(self, evt):
 		# if scene is no more empty, adjust the view automatically
 		empty = self.scene.box().isempty()
@@ -288,6 +365,22 @@ class SceneView(madcad.rendering.View):
 				)
 		
 	def inputEvent(self, event):
+		# deselection at any click when shift is not held
+		if event.type() == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton and not event.modifiers() & Qt.ShiftModifier:
+			self.scene.clear_selection()
+			self.update()
+		# hover objects
+		elif event.type() == QEvent.MouseMove and event.buttons() == Qt.NoButton:
+			pos = self.somenear(event.pos())
+			if pos:
+				item = self.itemat(pos)[:-1]
+				if item != self.hover:
+					self.hover = item
+					self.update()
+			else:
+				self.hover = None
+				self.update()
+			return
 		# reimplement top bar shortcuts here because Qt cannot deambiguate which view the shortcut belongs to
 		if event.type() == QEvent.KeyPress:
 			event.accept()
@@ -299,45 +392,29 @@ class SceneView(madcad.rendering.View):
 				event.ignore()
 				return super().inputEvent(event)
 		else:
+			event.ignore()
 			return super().inputEvent(event)
 	
 	def control(self, key, evt):
 		''' overwrite the Scene method, to implement the edition behaviors '''
+		self.update()
 		disp = self.scene.displays
 		stack = []
 		for i in range(1,len(key)):
 			disp = disp[key[i-1]]
-			disp.control(self, key[:i], key[i:], evt)
-			if evt.isAccepted(): return
+			path, sub = key[:i], key[i:]
+			print('control', path, sub, disp, evt.isAccepted())
+			disp.control(self, path, sub, evt)
+			# update selection index
+			if disp.selected:
+				self.scene.selection.add(path)
+				self.scene.active = path
+			# stop at first parent display catching it
+			if evt.isAccepted():  break
 			stack.append(disp)
 		
-		# sub selection
-		if evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.LeftButton:
-			disp = stack[-1]
-			# select what is under cursor
-			if type(disp).__name__ in ('SolidDisplay', 'WebDisplay'):
-				disp.vertices.selectsub(key[-1])
-				disp.selected = any(disp.vertices.flags & 0x1)
-			else:
-				disp.selected = not disp.selected
-			# make sure that a display is selected if one of its sub displays is
-			for disp in reversed(stack):
-				if hasattr(disp, '__iter__'):
-					disp.selected = any(sub.selected	for sub in disp)
-			self.scene.selected = any(sub.selected    for sub in self.scene.displays.values())
-			
-			if disp.selected:
-				self.scene.active_selection = key
-				self._update_active_selection()
-			elif not disp.selected and self.scene.active_selection == key:
-				self.scene.active_selection = None
-				self._update_active_selection()
-			self.scene.touch()
-			self.update()
-			evt.accept()
-		
 		# show details
-		elif evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.RightButton:
+		if evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.RightButton:
 			self._show_details(key, evt.pos())
 			evt.accept()
 		
@@ -772,3 +849,178 @@ class Grid(madcad.displays.GridDisplay):
 	def render(self, view):
 		self.center = view.navigation.center
 		super().render(view)
+
+
+class DownsampleIdent(madcad.rendering.Display):
+	''' simple display used to downsample the ident map to the screen size '''
+	def __init__(self, scene):
+		self.va = scene.resource('downsample_ident', self.load)
+		
+	def load(self, scene):
+		shader = scene.ctx.program(
+			vertex_shader = self.vertex_shader,
+			fragment_shader = self.fragment_shader,
+			)
+		vertices = scene.ctx.buffer(np.array([(0,0), (0,1), (1,1), (0,0), (1,1), (1,0)], 'f4'))
+		return scene.ctx.vertex_array(shader, [(vertices, '2f', 'v_position')], mode=mgl.TRIANGLES)
+	
+	def render(self, view):
+		view.scene.ctx.disable(mgl.DEPTH_TEST)
+		view.tx_ident.use(0)
+		view.tx_depth.use(1)
+		self.va.program['ident'] = 0
+		self.va.program['depth'] = 1
+		self.va.program['width'] = 1/vec2(view.tx_ident.size)
+		self.va.render()
+				
+	vertex_shader = '''
+		#version 330
+
+		in vec2 v_position;
+		out vec2 position;
+		
+		void main() {
+			position = v_position;
+			gl_Position = vec4(2*v_position - 1, 0, 1);
+		}
+		'''
+		
+	fragment_shader = '''
+		#version 330
+
+		uniform usampler2D ident;
+		uniform sampler2D depth;
+		uniform vec2 width;
+		in vec2 position;
+		out uint ident_pool;
+
+		const int kernel = 2;
+		
+		void main() {
+			float depth_pool = 1.;
+			ident_pool = uint(0);
+			for (int x=0; x<kernel; x++) {
+				for (int y=0; y<kernel; y++) {
+					vec2 pixel = position + (vec2(x, y)+0.5)*width;
+					float depth_sample = texture(depth, pixel).r;
+					uint ident_sample = texture(ident, pixel).r;
+					if (depth_sample < depth_pool) {
+						depth_pool = depth_sample;
+						ident_pool = ident_sample;
+					}
+				}
+			}
+			gl_FragDepth = depth_pool;
+		}
+		'''
+		
+class Highlight(madcad.rendering.Display):
+	def __init__(self, scene):
+		self.va = scene.resource('highlight', self.load)
+		
+	def load(self, scene):
+		shader = scene.ctx.program(
+			vertex_shader = self.vertex_shader,
+			fragment_shader = self.fragment_shader,
+			)
+		vertices = scene.ctx.buffer(np.array([(0,0), (0,1), (1,1), (0,0), (1,1), (1,0)], 'f4'))
+		return scene.ctx.vertex_array(shader, [(vertices, '2f', 'v_position')], mode=mgl.TRIANGLES)
+		
+	def stack(self, scene):
+		return ((), 'screen', 3, self.render),
+		
+	def render(self, view):
+		view.scene.ctx.disable(mgl.DEPTH_TEST)
+		view.tx_ident.use(0)
+		self.va.program['idents'] = 0
+		self.va.program['width'] = 1/vec2(view.fb_screen.size)
+		stack = view.scene.stacks.get('ident')
+		if not stack:
+				return
+		for i in range(len(stack)):
+			key = stack[i][0]
+			if key in view.scene.selection:
+				self.va.program['highlight'] = fvec4(madcad.settings.display['select_color_line'], 1)
+			elif key == view.hover:
+				self.va.program['highlight'] = fvec4(0, 0.7, 1, 0.7)
+				# self.va.program['highlight'] = madcad.settings.display['highlight_color']
+			else:
+				continue
+			self.va.program['interval'] = vec2(view.steps[i-1]+1 if i else 1, view.steps[i])
+			self.va.render()
+		
+# 		start = 0
+# 		stop = 0
+# 		for i in range(len(stack)):
+# 			key = stack[i][0]
+# 			selected = any(key[:i] in view.scene.selection  for i in reversed(range(len(key))))
+# 			if selected:
+# 				if start > stop:
+# 					render = True
+# 				else:
+# 					stop = view.steps[i]
+# 			else:
+# 				
+# 			if render:
+# 				self.va.program['highlight'] = fvec4(madcad.settings.display['select_color_line'], 1)
+# 			elif key == view.hover:
+# 				self.va.program['highlight'] = fvec4(0, 0.7, 1, 0.7)
+# 				# self.va.program['highlight'] = madcad.settings.display['highlight_color']
+# 			else:
+# 				continue
+# 			self.va.program['interval'] = vec2(view.steps[i-1]+1 if i else 1, view.steps[i])
+# 			self.va.render()
+				
+	vertex_shader = '''
+		#version 330
+
+		in vec2 v_position;
+		out vec2 position;
+		
+		void main() {
+			position = v_position;
+			gl_Position = vec4(2*v_position - 1, 0, 1);
+		}
+		'''
+		
+	fragment_shader = '''
+		#version 330
+
+		uniform usampler2D idents;
+		uniform vec4 highlight;
+		uniform vec2 interval;
+		uniform vec2 width;
+		in vec2 position;
+		out vec4 color;
+
+		// the kernel points are repeated at serveral scale to mutlisample and antialias the outline
+		const int samples_size = 2;
+		const float samples[samples_size] = float[](1, 0.5);
+		
+		// the kernel set comparison points to check whether position is on an outline
+		const int kernel_size = 4;
+		const vec2 kernel[kernel_size] = vec2[](
+			vec2(-1,0), vec2(+1,0),
+			vec2(0,-1), vec2(0,+1)
+		);
+
+		void main() {
+			float middle = texture(idents, position).r;
+			float border = 0;
+			int inside = int(interval.x <= middle) & int(middle <= interval.y);
+			for (int i=0; i<kernel_size; i++) {
+				float sum = 0.;
+				for (int j=0; j<samples_size; j++) {
+					vec2 neighboor = position + kernel[i]*samples[j]*width;
+					if (neighboor.x < 0 || neighboor.y < 0 || neighboor.x > 1 || neighboor.y > 1)
+						continue;
+					float aside = texture(idents, neighboor).r;
+					sum += inside ^ (int(interval.x <= aside) & int(aside <= interval.y));
+				}
+				border = max(border, sum/samples_size);
+			}
+			float intensity = border + 0.05 * inside;
+			
+			color = vec4(highlight.rgb, highlight.a * intensity);
+		}
+		'''

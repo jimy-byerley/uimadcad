@@ -337,6 +337,7 @@ class ScriptView(QWidget):
 		'''
 		cursor = self._get_block()
 		raw = cursor.selectedText()
+		# TODO: better handle case where first lines are empty
 		i = 0
 		while raw[i].isspace():
 			i += 1
