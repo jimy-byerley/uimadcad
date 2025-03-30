@@ -29,7 +29,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.app = app
 		
 		# selected displays
-		self.selection = set()
+		self.selection = Selection()
 		self.active = None
 		# prevent reference-loop in groups (groups are taken from the execution env, so the user may not want to display it however we are trying to)
 		self.memo = set()
@@ -146,15 +146,30 @@ class Scene(madcad.rendering.Scene, QObject):
 			return box
 		return selbox(self.displays.values())
 		
+	def select(self, key, sub=()):
+		''' select the object matchnig the given key '''
+		self.selection.add(key)
+		self.active = (key, sub)
+		
+	def deselect(self, key):
+		''' deselect the object matching the given key '''
+		self.selection.discard(key)
+		
 	def clear_selection(self):
 		''' clear selection index and deselect displays '''
-		for key in self.selection:
-			try:
-				item = self.item(key)
-			except KeyError:
-				continue
-			item.selected = False
+		def clear(display, selection):
+			if selection is None:
+				display.selected = False
+			else:
+				for k, sub in selection.items():
+					try:
+						clear(display[k], sub)
+					except (KeyError, IndexError):
+						continue
+		clear(self.displays, self.selection.root)
 		self.selection.clear()
+		self.active = None
+		
 
 
 class SceneView(madcad.rendering.View):
@@ -190,6 +205,8 @@ class SceneView(madcad.rendering.View):
 			self.open_composer,
 			spacer(5, 0),
 			self.seek_selection,
+			self.select_parent,
+			self.select_child,
 			],
 			orientation=Qt.Horizontal,
 			margins=QMargins(3,3,3,0),
@@ -266,11 +283,11 @@ class SceneView(madcad.rendering.View):
 			self.map_depth = None
 			self.map_color = None
 
-		# self.fb_frame is already created and sized by Qt
+		ident_samples = 2
 		self.fb_final = ctx.simple_framebuffer(size)
 		self.fb_screen = ctx.simple_framebuffer(size, samples=4)
-		self.tx_ident = ctx.texture(2*size, components=1, dtype='u2')
-		self.tx_depth = ctx.depth_texture(2*size)
+		self.tx_ident = ctx.texture(ident_samples*size, components=1, dtype='u2')
+		self.tx_depth = ctx.depth_texture(ident_samples*size)
 		self.fb_ident_multi = ctx.framebuffer(self.tx_ident, self.tx_depth)
 		self.fb_ident = ctx.framebuffer(ctx.renderbuffer(size, components=1, dtype='u2'), ctx.depth_renderbuffer(size))
 		self.targets = [ 
@@ -279,29 +296,31 @@ class SceneView(madcad.rendering.View):
 			]
 		w, h = size
 		self.downsample_ident = DownsampleIdent(self.scene)
-		# self.map_ident = np.empty((2*h,2*w), dtype='u2')
-		# self.map_depth = np.empty((2*h,2*w), dtype='f4')
-		# self.map_ident = np.empty((h,w), dtype='u2')
-		# self.map_depth = np.empty((h,w), dtype='f4')
-		# self.buf_ident = np.empty(2*h*2*w, dtype='u2')
-		# self.buf_depth = np.empty(2*h*2*w, dtype='f4')
 		
 		self.map_ident = madcad.rendering.CheapMap(self.fb_ident, attachment=0)
 		self.map_depth = madcad.rendering.CheapMap(self.fb_ident, attachment=-1)
-		
-		# self.map_ident = self.map_ident_multi[::2, ::2]
-		# self.map_depth = self.map_depth_multi[::2, ::2]
 		self.map_color = np.empty((h,w,3), dtype='u1')
 		
 	def render(self):
+# 		self.init()
+# 		empty = ()
+# 		selected = []
+# 		for target, frame, setup in self.targets:
+# 			if target != 'ident':
+# 				continue
+# 			frame = self.fb_ident_multi
+# 			self.target = frame
+# 			frame.use()
+# 			frame.clear()
+# 			setup()
+# 			for key, priority, func in self.scene.stacks.get(target,empty):
+# 				if self.scene.selection.isabove(key) or self.hover and beginwith(key, self.hover):
+# 					print('render selected', key)
+# 					func(self)
+		
 		super().render()
 		self.fb_ident.use()
 		self.downsample_ident.render(self)
-		# self.fb_ident.read_into(self.map_ident_multi, viewport=self.fb_ident.viewport, components=1, dtype='u2')
-		# self.fb_ident.read_into(self.map_depth_multi, viewport=self.fb_ident.viewport, components=1, attachment=-1, dtype='f4')
-		# self.scene.ctx.copy_framebuffer(self.fb_ident, self.fb_ident_multi)
-		# self.map_ident[:] = np.asarray(self.fb_ident.color_attachments[0]).reshape(self.fb_ident.size)[::2, ::2]
-		# self.fresh.add('fb_ident')
 	
 	def paintEvent(self, evt):
 		# if scene is no more empty, adjust the view automatically
@@ -403,7 +422,6 @@ class SceneView(madcad.rendering.View):
 		for i in range(1,len(key)):
 			disp = disp[key[i-1]]
 			path, sub = key[:i], key[i:]
-			print('control', path, sub, disp, evt.isAccepted())
 			disp.control(self, path, sub, evt)
 			# update selection index
 			if disp.selected:
@@ -611,6 +629,42 @@ class SceneView(madcad.rendering.View):
 			self.projection = Orthographic()
 		else:
 			self.projection = Perspective()
+		self.update()
+	
+	@action(icon='go-right', shortcut='Alt+Right')
+	def select_child(self):
+		''' select the parent object of the active selection
+			active selection is the last object you clicked 
+		'''
+		if not self.scene.active:
+			return
+		key, sub = self.scene.active
+		if len(sub) < 1:
+			return
+		self.scene.deselect(key)
+		# try:
+		# 	self.scene.item(key).selected = False
+		# except (KeyError, IndexError):
+		# 	pass
+		self.scene.select((*key, sub[0]), sub[1:])
+		self.update()
+	
+	@action(icon='go-left', shortcut='Alt+Left')
+	def select_parent(self):
+		''' select the child object of the active selection
+			which child it takes depends on what you clicked to select it
+		'''
+		if not self.scene.active:
+			return
+		key, sub = self.scene.active
+		if len(key) < 2:
+			return
+		self.scene.deselect(key)
+		# try:
+		# 	self.scene.item(key).selected = False
+		# except (KeyError, IndexError):
+		# 	pass
+		self.scene.select(key[:-1], (key[-1], *sub))
 		self.update()
 	
 	# settings buttons for booleans
@@ -836,6 +890,88 @@ class SceneComposer(QWidget):
 		else:
 			self.scene_add.trigger()
 
+class Selection:
+	__slots__ = 'root'
+	
+	def __init__(self):
+		self.root = {}
+	
+	def add(self, key):
+		if not key:
+			return
+		node = self.root
+		for i in range(len(key)-1):
+			k = key[i]
+			# create recursive nodes until the terminal node
+			if k not in node:
+				node[k] = {}
+			# if we find an early terminal node, consider key is already in the selection
+			if node[k] is None:
+				return
+			node = node[k]
+		# create terminal node
+		node[key[-1]] = None
+	
+	def discard(self, key):
+		if not key:
+			return
+		node = self.root
+		# search for presence of the given key
+		stack = []
+		for k in key:
+			stack.append((k, node))
+			# if key item is not found, then key was not selected, no need for deselection
+			if k not in node:
+				return
+			node = node[k]
+			# if a terminal node is encountered earlier than expected, it is removed anyway
+			if node is None:
+				break
+		for k, node in reversed(stack):
+			# remove selection key
+			node.pop(k, None)
+			# if node has other selection, keep it
+			if node:
+				break
+				
+	def clear(self):
+		self.root.clear()
+	
+	def isabove(self, key):
+		if not key:
+			return False
+		node = self.root
+		for k in key:
+			# if any key item is missing, then key is considered not in the selection
+			if k not in node:
+				return False
+			node = node[k]
+			if node is None:
+				return True
+		return False
+		
+	def contains(self, key):
+		if not key:
+			return False
+		node = self.root
+		for k in key:
+			if node.get(k) is None:
+				return False
+			node = node[k]
+		return node is None
+		
+	def isbelow(self, key):
+		if not key:
+			return False
+		node = self.root
+		for k in key:
+			if node.get(k) is None:
+				return False
+			node = node[k]
+		return True
+
+	def __repr__(self):
+		return '{}({})'.format(type(self).__name__, self.root)
 
 class Grid(madcad.displays.GridDisplay):
 	''' display for the scene metric grid '''
@@ -913,10 +1049,19 @@ class DownsampleIdent(madcad.rendering.Display):
 			gl_FragDepth = depth_pool;
 		}
 		'''
+
+def beginwith(sequence, pattern):
+	if len(pattern) > len(sequence):
+		return False
+	for i in range(len(pattern)):
+		if pattern[i] != sequence[i]:
+			return False
+	return True
 		
 class Highlight(madcad.rendering.Display):
 	def __init__(self, scene):
 		self.va = scene.resource('highlight', self.load)
+		self.highlights = []
 		
 	def load(self, scene):
 		shader = scene.ctx.program(
@@ -936,40 +1081,39 @@ class Highlight(madcad.rendering.Display):
 		self.va.program['width'] = 1/vec2(view.fb_screen.size)
 		stack = view.scene.stacks.get('ident')
 		if not stack:
-				return
-		for i in range(len(stack)):
-			key = stack[i][0]
-			if key in view.scene.selection:
+			return
+		
+		ranges = []
+		start = 0
+		stop = 0
+		current = 0
+		for item, step in zip(stack, view.steps):
+			key = item[0]
+			if view.scene.selection.isabove(key):
+				highlight = 1
+			elif view.hover and beginwith(key, view.hover):
+				highlight = 2
+			else:
+				highlight = 0
+			if current != highlight:
+				if current:
+					ranges.append((start, stop, current))
+				start = stop+1
+				current = highlight
+			stop = step
+		if current:
+			ranges.append((start, stop, current))
+		
+		for start, stop, highlight in ranges:
+			if highlight == 1:
 				self.va.program['highlight'] = fvec4(madcad.settings.display['select_color_line'], 1)
-			elif key == view.hover:
+			elif highlight == 2:
 				self.va.program['highlight'] = fvec4(0, 0.7, 1, 0.7)
-				# self.va.program['highlight'] = madcad.settings.display['highlight_color']
 			else:
 				continue
-			self.va.program['interval'] = vec2(view.steps[i-1]+1 if i else 1, view.steps[i])
+			self.va.program['interval'] = vec2(start, stop)
 			self.va.render()
-		
-# 		start = 0
-# 		stop = 0
-# 		for i in range(len(stack)):
-# 			key = stack[i][0]
-# 			selected = any(key[:i] in view.scene.selection  for i in reversed(range(len(key))))
-# 			if selected:
-# 				if start > stop:
-# 					render = True
-# 				else:
-# 					stop = view.steps[i]
-# 			else:
-# 				
-# 			if render:
-# 				self.va.program['highlight'] = fvec4(madcad.settings.display['select_color_line'], 1)
-# 			elif key == view.hover:
-# 				self.va.program['highlight'] = fvec4(0, 0.7, 1, 0.7)
-# 				# self.va.program['highlight'] = madcad.settings.display['highlight_color']
-# 			else:
-# 				continue
-# 			self.va.program['interval'] = vec2(view.steps[i-1]+1 if i else 1, view.steps[i])
-# 			self.va.render()
+			
 				
 	vertex_shader = '''
 		#version 330
