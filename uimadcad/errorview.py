@@ -79,11 +79,11 @@ class ErrorView(QWidget):
 		fmt_traceback = charformat(font=self.font, foreground=palette.color(QPalette.Text))
 		fmt_code = charformat(font=self.font, foreground=vec_to_color(mix(
 						color_to_vec(palette.color(QPalette.Text)), 
-						color_to_vec(palette.color(QPalette.Background)),
+						color_to_vec(palette.color(QPalette.Window)),
 						0.5)))
 		fmt_error = charformat(font=self.font, background=vec_to_color(mix(
 						color_to_vec(QColor(255,100,100)),
-						color_to_vec(palette.color(QPalette.Background)),
+						color_to_vec(palette.color(QPalette.Window)),
 						0.2)))
 		if type(exception) == SyntaxError and exception.filename == self.app.interpreter.filename:
 			cursor.insertText('  File \"{}\", line {}\n'.format(exception.filename, exception.lineno), fmt_traceback)

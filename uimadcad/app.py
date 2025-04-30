@@ -53,7 +53,7 @@ class Madcad(QObject):
 	def load_file(self, file=None):
 		''' load the content of the file at the given path and replace the current scritpt '''
 		self.active.file = file
-		self.active.date = os.path.getmtime(file)
+		self.active.date = os.path.getmtime(file) if file else 0
 		self.window.setWindowFilePath(self.active.file or 'untitled')
 		self.document.setPlainText(open(self.active.file or settings.locations['startup'], 'r').read())
 		self.document.setModified(False)

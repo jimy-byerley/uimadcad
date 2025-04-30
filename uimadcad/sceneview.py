@@ -13,7 +13,8 @@ from madcad.qt import (
 	)
 
 import madcad
-from madcad.rendering import Perspective, Orthographic, Turntable, Orbit, Group, displayable
+from madcad.rendering.d3 import Perspective, Orthographic, Turntable, Orbit
+from madcad.mesh import Mesh, Web, Wire
 from madcad.mathutils import *
 from . import settings
 from .utils import *
@@ -22,38 +23,35 @@ from .utils import *
 QEventGLContextChange = 215	# opengl context change event type, not yet defined in PyQt5
 
 class Scene(madcad.rendering.Scene, QObject):
-	def __init__(self, app, *args, **kwargs):
-		# data graph setup
-		QObject.__init__(self)
-		madcad.rendering.Scene.__init__(self, *args, **kwargs)
-		self.app = app
-		
-		# selected displays
-		self.selection = Selection()
-		self.active = None
+	def __init__(self, app, context=None):
+		# active selection path
+		self.active_selection = None
+		self.active_path = None
 		# prevent reference-loop in groups (groups are taken from the execution env, so the user may not want to display it however we are trying to)
 		self.memo = set()
 		# scene data
 		self.additions = {		# systematic scene additions
 			'__grid__': madcad.rendering.Displayable(Grid),
-			'__highlight__': madcad.rendering.Displayable(Highlight),
+			# '__highlight__': madcad.rendering.Displayable(Highlight),
 			}
 		# application behavior
 		self.composer = SceneComposer(self)
-		self.sync()
 		
+		# data graph setup
+		QObject.__init__(self)
+		madcad.rendering.Scene.__init__(self, context=context)
+		self.app = app
 		self.app.scenes.append(self)
+		self.root = Root(self, world=fmat4())
 		
-		
+		self.sync()
+	
 	def sync(self):
 		''' synchronize the scene content with the rest of the application '''
 		# name = self.app.active.scope
 		name = self.app.interpreter.filename # TODO: remove this debug value
 		scope = self.app.interpreter.scopes.get(name)
 		usage = self.app.interpreter.usages.get(name)
-			
-		# from pnprint import nprint
-		# nprint('usage', usage)
 		
 		keys = set()
 		if usage is not None:
@@ -81,41 +79,11 @@ class Scene(madcad.rendering.Scene, QObject):
 			if key.startswith('_madcad_'):
 				continue
 			obj = scope.get(key, None)
-			if displayable(obj):
+			if self.displayable(obj):
 				new[key] = obj
 		new.update(self.additions)
 		
-		super().sync(new)
-	
-	def restack(self):
-		''' update the rendering calls stack from the current scene's displays.
-			this is called automatically on `dequeue()`
-		'''
-		# recreate stacks
-		for stack in self.stacks.values():
-			stack.clear()
-		for key,display in self.displays.items():
-			for frame in display.stack(self):
-				if len(frame) != 4:
-					raise ValueError('wrong frame format in the stack from {}\n\t got {}'.format(display, frame))
-				sub,target,priority,func = frame
-				full = (key,*sub)
-				
-				# selected objects are showing their annotations
-				try:	i = full.index('annotations')
-				except ValueError:	pass
-				else:
-					if i:	disp = self.item(full[:i+1])
-					else:	disp = self
-					if not self.options['display_annotations'] and not disp.selected:
-						continue
-				
-				if target not in self.stacks:	self.stacks[target] = []
-				stack = self.stacks[target]
-				stack.append((full, priority, func))
-		# sort the stack using the specified priorities
-		for stack in self.stacks.values():
-			stack.sort(key=itemgetter(1))
+		super().update(new)
 	
 	def display(self, obj, former=None):
 		# TODO: implement this recursion check in pymadcad rather than uimadcad
@@ -134,45 +102,50 @@ class Scene(madcad.rendering.Scene, QObject):
 		disp.source = obj
 		return disp
 	
-	def selectionbox(self):
-		''' return the bounding box of the selection '''
-		def selbox(level):
-			box = Box(fvec3(inf), fvec3(-inf))
-			for disp in level:
-				if isinstance(disp, Group):
-					box.union(selbox(disp.displays.values()))
-				elif disp.selected:
-					box.union(disp.box.transform(disp.world))
-			return box
-		return selbox(self.displays.values())
-		
-	def select(self, key, sub=()):
-		''' select the object matchnig the given key '''
-		self.selection.add(key)
-		self.active = (key, sub)
-		
-	def deselect(self, key):
-		''' deselect the object matching the given key '''
-		self.selection.discard(key)
-		
-	def clear_selection(self):
-		''' clear selection index and deselect displays '''
-		def clear(display, selection):
-			if selection is None:
-				display.selected = False
+	def selection_add(self, display, sub=None):
+		super().selection_add(display, sub)
+		if display.selected:
+			if sub is None:
+				self.active_path = display.key
+				self.active_selection = display
 			else:
-				for k, sub in selection.items():
-					try:
-						clear(display[k], sub)
-					except (KeyError, IndexError):
-						continue
-		clear(self.displays, self.selection.root)
-		self.selection.clear()
-		self.active = None
+				self.active_path = (*display.key, sub)
+				self.active_selection = display
+	
+	def selection_clear(self):
+		super().selection_clear()
+		self.active_selection = None
+		self.active_path = None
+	
+	def selection_box(self):
+		''' return the bounding box of the selection '''
+		return boundingbox(disp.box  for disp in self.selection)
+
+	def format_key(self, key:tuple):
+		text = []
+		for k in key:
+			if isinstance(k, str):
+				if text:
+					text.append('.')
+				text.append(k)
+			else:
+				text.append('[')
+				text.append(repr(k))
+				text.append(']')
+		return ''.join(text)
 		
+class Root(madcad.rendering.Group):
+	''' override for the scene root display, hiding annotations when the user sets '''
+	def stack(self, scene):
+		for step in super().stack(scene):
+			if not isinstance(step, madcad.rendering.Step):
+				step = madcad.rendering.Step(*step)
+			if step.display.key[0] == 'annotations':
+				continue
+			yield step
 
 
-class SceneView(madcad.rendering.View):
+class SceneView(madcad.rendering.QView3D):
 	''' dockable and reparentable scene view widget, bases on madcad.Scene '''
 	
 	bar_margin = 0
@@ -195,7 +168,6 @@ class SceneView(madcad.rendering.View):
 		super().__init__(scene, **kwargs)
 		self.setMinimumSize(100,100)
 		self.setSizePolicy(QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding))
-		self.handler.setMouseTracking(True)
 		Initializer.process(self)
 		self._init_scene_settings()
 		
@@ -204,9 +176,9 @@ class SceneView(madcad.rendering.View):
 			self.new_view,
 			self.open_composer,
 			spacer(5, 0),
-			self.seek_selection,
 			self.select_parent,
 			self.select_child,
+			self.seek_selection,
 			],
 			orientation=Qt.Horizontal,
 			margins=QMargins(3,3,3,0),
@@ -246,8 +218,10 @@ class SceneView(madcad.rendering.View):
 				self.view_mx, self.view_px,
 				self.view_my, self.view_py,
 				])),
+			None,
+			self.selection_multiple,
+			self.selection_sub,
 			# None,
-			# self.selection_mode,
 			# self.direction_selector,
 			# None,
 			# self.reset_pose,
@@ -262,69 +236,9 @@ class SceneView(madcad.rendering.View):
 		self._update_active_selection()
 		self._toolbars_visible(False)
 	
-	def init(self):
-		import numpy as np
-		ctx = self.scene.ctx
-		assert ctx, 'context is not initialized'
-		
-		size = ivec2(self.width(), self.height())
-		# if the size is not a multiple of 4, it seems that openGL or Qt doesn't understand its strides well
-		m = 4
-		size += (-size%m)
-		
-		# release framebuffers before reinitializing them
-		if self.fb_final:
-			if size == self.fb_final.size:
-				return
-			self.fb_final.release()
-			self.fb_screen.release()
-			self.fb_ident.release()
-			self.map_ident = None
-			self.map_depth = None
-			self.map_color = None
-
-		ident_samples = 2
-		self.fb_final = ctx.simple_framebuffer(size)
-		self.fb_screen = ctx.simple_framebuffer(size, samples=4)
-		self.tx_ident = ctx.texture(ident_samples*size, components=1, dtype='u2')
-		self.tx_depth = ctx.depth_texture(ident_samples*size)
-		self.fb_ident_multi = ctx.framebuffer(self.tx_ident, self.tx_depth)
-		self.fb_ident = ctx.framebuffer(ctx.renderbuffer(size, components=1, dtype='u2'), ctx.depth_renderbuffer(size))
-		self.targets = [ 
-			('ident', self.fb_ident_multi, self.setup_ident),
-			('screen', self.fb_screen, self.setup_screen),
-			]
-		w, h = size
-		self.downsample_ident = DownsampleIdent(self.scene)
-		
-		self.map_ident = madcad.rendering.CheapMap(self.fb_ident, attachment=0)
-		self.map_depth = madcad.rendering.CheapMap(self.fb_ident, attachment=-1)
-		self.map_color = np.empty((h,w,3), dtype='u1')
-		
-	def render(self):
-# 		self.init()
-# 		empty = ()
-# 		selected = []
-# 		for target, frame, setup in self.targets:
-# 			if target != 'ident':
-# 				continue
-# 			frame = self.fb_ident_multi
-# 			self.target = frame
-# 			frame.use()
-# 			frame.clear()
-# 			setup()
-# 			for key, priority, func in self.scene.stacks.get(target,empty):
-# 				if self.scene.selection.isabove(key) or self.hover and beginwith(key, self.hover):
-# 					print('render selected', key)
-# 					func(self)
-		
-		super().render()
-		self.fb_ident.use()
-		self.downsample_ident.render(self)
-	
 	def paintEvent(self, evt):
 		# if scene is no more empty, adjust the view automatically
-		empty = self.scene.box().isempty()
+		empty = self.scene.root.box.isempty()
 		if not empty and self._last_empty:
 			self.adjust()
 		self._last_empty = empty
@@ -384,22 +298,6 @@ class SceneView(madcad.rendering.View):
 				)
 		
 	def inputEvent(self, event):
-		# deselection at any click when shift is not held
-		if event.type() == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton and not event.modifiers() & Qt.ShiftModifier:
-			self.scene.clear_selection()
-			self.update()
-		# hover objects
-		elif event.type() == QEvent.MouseMove and event.buttons() == Qt.NoButton:
-			pos = self.somenear(event.pos())
-			if pos:
-				item = self.itemat(pos)[:-1]
-				if item != self.hover:
-					self.hover = item
-					self.update()
-			else:
-				self.hover = None
-				self.update()
-			return
 		# reimplement top bar shortcuts here because Qt cannot deambiguate which view the shortcut belongs to
 		if event.type() == QEvent.KeyPress:
 			event.accept()
@@ -412,57 +310,28 @@ class SceneView(madcad.rendering.View):
 				return super().inputEvent(event)
 		else:
 			event.ignore()
-			return super().inputEvent(event)
-	
-	def control(self, key, evt):
-		''' overwrite the Scene method, to implement the edition behaviors '''
-		self.update()
-		disp = self.scene.displays
-		stack = []
-		for i in range(1,len(key)):
-			disp = disp[key[i-1]]
-			path, sub = key[:i], key[i:]
-			disp.control(self, path, sub, evt)
-			# update selection index
-			if disp.selected:
-				self.scene.selection.add(path)
-				self.scene.active = path
-			# stop at first parent display catching it
-			if evt.isAccepted():  break
-			stack.append(disp)
-		
-		# show details
-		if evt.type() == QEvent.MouseButtonRelease and evt.button() == Qt.RightButton:
-			self._show_details(key, evt.pos())
-			evt.accept()
-		
-		# edition
-		elif evt.type() == QEvent.MouseButtonDblClick and evt.button() == Qt.LeftButton and hasattr(disp, 'source'):
-			name = self.app.interpreter.ids.get(id(disp.source))
-			if name:	
-				if name in self.app.editors:
-					self.app.finishedit(name)
-				else:
-					self.app.edit(name)
-				evt.accept()
+			super().inputEvent(event)
+			
+			if event.type() == QEvent.MouseButtonPress:
+				self._update_active_selection()
 	
 	def _update_active_scene(self):
 		self.open_composer.setText('scene:{}'.format(self.app.scenes.index(self.scene)))
 		self.update()
 	
 	def _update_active_selection(self):
-		# if self.scene.active_selection:
-		if True:
-			# text = format_scenekey(self.scene, self.scene.active_selection)
-			text = "machin['truc'].bidule"
+		if self.scene.active_selection:
+			text = self.scene.format_key(self.scene.active_selection.key)
 		
 			font = QFont(*settings.scriptview['font'])
 			pointsize = font.pointSize()
 			self.seek_selection.setFont(font)
 			self.seek_selection.setText(text)
-			# self.seek_selection.resize(pointsize*(len(text)+2), self.seek_selection.height())
+			self.seek_selection.setEnabled(True)
 			self.seek_selection.show()
 		else:
+			self.seek_selection.setEnabled(False)
+			self.seek_selection.setText('seek selection')
 			self.seek_selection.hide()
 	
 	def _show_details(self, key, position=None):
@@ -548,7 +417,7 @@ class SceneView(madcad.rendering.View):
 			self.scene.composer.setFocus()
 			self.scene.composer.setVisible(True)
 		else:
-			self.setFocus(True)
+			self.setFocus()
 			self.scene.composer.setVisible(False)
 	
 	@button(flat=True) #, shortcut='Alt+Up')
@@ -562,15 +431,15 @@ class SceneView(madcad.rendering.View):
 	@action(icon='view-fullscreen', shortcut='C')
 	def view_adjust(self):
 		''' center and zoom to displayed objects '''
-		box = self.scene.selectionbox() or self.scene.box()
+		box = self.scene.selection_box() or self.scene.root.box
 		self.center(box.center)
 		self.adjust(box)
 	
 	@action(icon='madcad-view-normal', shortcut='N')
 	def view_normal(self):
 		''' move the view orthogonal to the selected surface '''
-		if not self.scene.active_selection:	return
-		disp = self.scene.item(self.scene.active_selection)
+		if not self.scene.active:	return
+		disp = self.scene.active
 		if not disp or not disp.source:	return
 		source = disp.source
 		world = disp.world
@@ -579,7 +448,11 @@ class SceneView(madcad.rendering.View):
 			source = source.mesh()
 		
 		if isinstance(source, (Mesh,Web,Wire)):
-			mesh = source.group(self.scene.active_selection[-1])
+			sub = next(iter(disp.selected), None)
+			if sub is not None:
+				mesh = source.group(sub)
+			else:
+				mesh = source
 			center = mesh.barycenter()
 			direction = vec3(transpose(fmat3(world)) * fvec3(transpose(self.navigation.matrix())[2]))
 			
@@ -606,16 +479,7 @@ class SceneView(madcad.rendering.View):
 			center = mat4(world) * center
 			normal = mat3(fmat3(world)) * normal
 			
-			if isinstance(self.navigation, Turntable):
-				self.navigation.center = fvec3(center)
-				self.navigation.yaw = atan2(normal.x, normal.y)
-				self.navigation.pitch = -atan(normal.z, length(normal.xy))
-			elif isinstance(self.navigation, Orbit):
-				self.navigation.center = fvec3(center)
-				self.navigation.orient *= fquat(quat(direction, normal))
-			else:
-				return
-				
+			self.navigation.sight(normal)
 			self.update()
 	
 	@action(icon='madcad-projection', shortcut='Shift+S')
@@ -636,17 +500,22 @@ class SceneView(madcad.rendering.View):
 		''' select the parent object of the active selection
 			active selection is the last object you clicked 
 		'''
-		if not self.scene.active:
+		active = self.scene.active_path
+		if not active:
 			return
-		key, sub = self.scene.active
-		if len(sub) < 1:
-			return
-		self.scene.deselect(key)
-		# try:
-		# 	self.scene.item(key).selected = False
-		# except (KeyError, IndexError):
-		# 	pass
-		self.scene.select((*key, sub[0]), sub[1:])
+		parent, child = None, self.scene.root
+		sub = None
+		for rank, key in enumerate(active):
+			if isinstance(child.selected, set):
+				sub = key
+				break
+			parent, child = child, child[key]
+			if parent.selected:
+				break
+		self.scene.selection_remove(parent)
+		self.scene.selection_add(child, sub)
+		self.scene.active_path = active
+		self._update_active_selection()
 		self.update()
 	
 	@action(icon='go-left', shortcut='Alt+Left')
@@ -654,17 +523,24 @@ class SceneView(madcad.rendering.View):
 		''' select the child object of the active selection
 			which child it takes depends on what you clicked to select it
 		'''
-		if not self.scene.active:
+		active = self.scene.active_path
+		if not active:
 			return
-		key, sub = self.scene.active
-		if len(key) < 2:
-			return
-		self.scene.deselect(key)
-		# try:
-		# 	self.scene.item(key).selected = False
-		# except (KeyError, IndexError):
-		# 	pass
-		self.scene.select(key[:-1], (key[-1], *sub))
+		parent, child = None, self.scene.root
+		for rank, key in enumerate(active):
+			if isinstance(child.selected, set):
+				parent = child
+				break
+			parent, child = child, child[key]
+			if isinstance(child.selected, set):
+				if None in child.selected:
+					break
+			else:
+				if child.selected:
+					break
+		self.scene.selection_add(parent)
+		self.scene.active_path = active
+		self._update_active_selection()
 		self.update()
 	
 	# settings buttons for booleans
@@ -702,8 +578,27 @@ class SceneView(madcad.rendering.View):
 		solid_freemove = dict(
 			icon='madcad-solid-freemove',
 			description='move solids freely in the view',
-			shortcut='F',
-			)
+			shortcut='F'),
+		
+		selection_multiple = dict(
+			icon='madcad-selection-multiple',
+			description='''
+				switch between 
+				- exclusive selection (selecting an object clear any previoous selection)
+				- inclusive selection (selection an object adds it to the selection
+				
+				click the background to deselect all
+				''',
+			shortcut='Shift'),
+		
+		selection_sub = dict(
+			icon='madcad-selection-sub',
+			description='''
+				switch between selecting
+				- objects subitem when it exists (like groups in meshes)
+				- object as a whole (the complete variable)
+				''',
+			shortcut='Shift+S'),
 		)
 	# settings buttons for kinematic manipulation mode
 	_kinematic_modes = dict(
@@ -841,7 +736,7 @@ class SceneComposer(QWidget):
 		self.view.scene.composer.setParent(self.view)
 		self.view.scene.composer.move(self.pos())
 		self.view.scene.composer.show()
-		self.view.scene.composer.setFocus(True)
+		self.view.scene.composer.setFocus()
 		self.hide()
 			
 	def _scene_change(self, index):
@@ -890,90 +785,7 @@ class SceneComposer(QWidget):
 		else:
 			self.scene_add.trigger()
 
-class Selection:
-	__slots__ = 'root'
-	
-	def __init__(self):
-		self.root = {}
-	
-	def add(self, key):
-		if not key:
-			return
-		node = self.root
-		for i in range(len(key)-1):
-			k = key[i]
-			# create recursive nodes until the terminal node
-			if k not in node:
-				node[k] = {}
-			# if we find an early terminal node, consider key is already in the selection
-			if node[k] is None:
-				return
-			node = node[k]
-		# create terminal node
-		node[key[-1]] = None
-	
-	def discard(self, key):
-		if not key:
-			return
-		node = self.root
-		# search for presence of the given key
-		stack = []
-		for k in key:
-			stack.append((k, node))
-			# if key item is not found, then key was not selected, no need for deselection
-			if k not in node:
-				return
-			node = node[k]
-			# if a terminal node is encountered earlier than expected, it is removed anyway
-			if node is None:
-				break
-		for k, node in reversed(stack):
-			# remove selection key
-			node.pop(k, None)
-			# if node has other selection, keep it
-			if node:
-				break
-				
-	def clear(self):
-		self.root.clear()
-	
-	def isabove(self, key):
-		if not key:
-			return False
-		node = self.root
-		for k in key:
-			# if any key item is missing, then key is considered not in the selection
-			if k not in node:
-				return False
-			node = node[k]
-			if node is None:
-				return True
-		return False
-		
-	def contains(self, key):
-		if not key:
-			return False
-		node = self.root
-		for k in key:
-			if node.get(k) is None:
-				return False
-			node = node[k]
-		return node is None
-		
-	def isbelow(self, key):
-		if not key:
-			return False
-		node = self.root
-		for k in key:
-			if node.get(k) is None:
-				return False
-			node = node[k]
-		return True
-
-	def __repr__(self):
-		return '{}({})'.format(type(self).__name__, self.root)
-
-class Grid(madcad.displays.GridDisplay):
+class Grid(madcad.rendering.d3.marker.GridDisplay):
 	''' display for the scene metric grid '''
 	def __init__(self, scene, **kwargs):
 		super().__init__(scene, fvec3(0), **kwargs)
