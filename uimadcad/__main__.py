@@ -11,10 +11,22 @@ if __name__ == '__main__':
 		QApplication, QErrorMessage, QMessageBox,
 		)
 	
-	from . import version, settings, resourcedir
-	from .utils import *
-	from .app import Madcad
-		
+	from uimadcad import version, settings, resourcedir
+	from uimadcad.utils import *
+	from uimadcad.app import Madcad
+	
+	# import setproctitle
+	# setproctitle.setproctitle(' '.join(['madcad']+sys.argv[1:]))
+	# setproctitle.setproctitle('madcad')
+	
+	if sys.platform == 'linux':
+		from ctypes import cdll, byref, create_string_buffer
+		newname = b'madcad'
+		libc = cdll.LoadLibrary('libc.so.6')
+		buff = create_string_buffer(len(newname)+1)
+		buff.value = newname
+		libc.prctl(15, byref(buff), 0, 0, 0)
+	
 	# parse commandline arguments
 	file = None
 	if len(sys.argv) >= 2:

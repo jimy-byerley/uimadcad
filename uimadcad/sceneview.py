@@ -53,6 +53,9 @@ class Scene(madcad.rendering.Scene, QObject):
 		scope = self.app.interpreter.scopes.get(name)
 		usage = self.app.interpreter.usages.get(name)
 		
+		if scope is None:
+			return
+		
 		keys = set()
 		if usage is not None:
 			# hide_all is hidding all default displays
@@ -119,7 +122,7 @@ class Scene(madcad.rendering.Scene, QObject):
 	
 	def selection_box(self):
 		''' return the bounding box of the selection '''
-		return boundingbox(disp.box  for disp in self.selection)
+		return boundingbox(disp.box.transform(disp.world)  for disp in self.selection)
 
 	def format_key(self, key:tuple):
 		text = []
@@ -312,7 +315,7 @@ class SceneView(madcad.rendering.QView3D):
 			event.ignore()
 			super().inputEvent(event)
 			
-			if event.type() == QEvent.MouseButtonPress:
+			if event.type() == QEvent.MouseButtonRelease:
 				self._update_active_selection()
 	
 	def _update_active_scene(self):
@@ -482,7 +485,7 @@ class SceneView(madcad.rendering.QView3D):
 			self.navigation.sight(normal)
 			self.update()
 	
-	@action(icon='madcad-projection', shortcut='Shift+S')
+	@action(icon='madcad-projection', shortcut='Shift+X')
 	def projection_switch(self):
 		''' switch between perspective and orthographic projection 
 		
@@ -583,9 +586,10 @@ class SceneView(madcad.rendering.QView3D):
 		selection_multiple = dict(
 			icon='madcad-selection-multiple',
 			description='''
-				switch between 
+				enable multiple selection
+				
 				- exclusive selection (selecting an object clear any previoous selection)
-				- inclusive selection (selection an object adds it to the selection
+				- multiple selection (selection an object adds it to the selection
 				
 				click the background to deselect all
 				''',
@@ -594,7 +598,8 @@ class SceneView(madcad.rendering.QView3D):
 		selection_sub = dict(
 			icon='madcad-selection-sub',
 			description='''
-				switch between selecting
+				enable subitem selection
+				
 				- objects subitem when it exists (like groups in meshes)
 				- object as a whole (the complete variable)
 				''',

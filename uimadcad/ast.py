@@ -530,7 +530,7 @@ def test_flatten():
 def steppize(code:list, scope:str):
 	def filter(node):
 		if isinstance(node, (Module, FunctionDef)):
-			node.body = steppize(node.body, scope+'.'+node.name)
+			node.body = list(steppize(node.body, scope+'.'+node.name))
 		elif isinstance(node, expr):
 			pass
 		else:
