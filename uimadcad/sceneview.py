@@ -20,10 +20,8 @@ from . import settings
 from .utils import *
 
 
-QEventGLContextChange = 215	# opengl context change event type, not yet defined in PyQt5
-
 class Scene(madcad.rendering.Scene, QObject):
-	def __init__(self, app, context=None):
+	def __init__(self, app, context=None, options=None):
 		# active selection path
 		self.active_selection = None
 		self.active_path = None
@@ -39,7 +37,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 		# data graph setup
 		QObject.__init__(self)
-		madcad.rendering.Scene.__init__(self, context=context)
+		madcad.rendering.Scene.__init__(self, context=context, options=options)
 		self.app = app
 		self.app.scenes.append(self)
 		self.root = Root(self, world=fmat4())
@@ -87,6 +85,13 @@ class Scene(madcad.rendering.Scene, QObject):
 		new.update(self.additions)
 		
 		super().update(new)
+		
+	def prepare(self):
+		super().prepare()
+		# if scene is no more empty, adjust the view automatically
+		for view in self.app.views:
+			if isinstance(view, SceneView) and view.scene is self:
+				view._populated_adjust()
 	
 	def display(self, obj, former=None):
 		# TODO: implement this recursion check in pymadcad rather than uimadcad
@@ -238,16 +243,8 @@ class SceneView(madcad.rendering.QView3D):
 		self._update_active_scene()
 		self._update_active_selection()
 		self._toolbars_visible(False)
-	
-	def paintEvent(self, evt):
-		# if scene is no more empty, adjust the view automatically
-		empty = self.scene.root.box.isempty()
-		if not empty and self._last_empty:
-			self.adjust()
-		self._last_empty = empty
-		# proceed to rendering normally
-		super().paintEvent(evt)
-	
+		self._populated_adjust()
+		
 	def showEvent(self, event):
 		self.app.views.add(self)
 		if not self.app.active.sceneview:	
@@ -303,20 +300,36 @@ class SceneView(madcad.rendering.QView3D):
 	def inputEvent(self, event):
 		# reimplement top bar shortcuts here because Qt cannot deambiguate which view the shortcut belongs to
 		if event.type() == QEvent.KeyPress:
-			event.accept()
 			if event.key() == Qt.Key_Return and event.modifiers() & Qt.AltModifier:
+				event.accept()
 				self.open_composer.setChecked(True)
 			elif event.key() == Qt.Key_Up and event.modifiers() & Qt.AltModifier:
+				event.accept()
 				self.seek_selection.click()
-			else:
-				event.ignore()
-				return super().inputEvent(event)
-		else:
+		# implement mouse shortcuts here since they cannot be defined using other Qt means
+		elif event.type() == QEvent.Type.MouseButtonRelease:
+			if event.button() == Qt.MouseButton.BackButton:
+				event.accept()
+				self.select_parent.trigger()
+			elif event.button() == Qt.MouseButton.ForwardButton:
+				event.accept()
+				self.select_child.trigger()
+		
+		if not event.isAccepted():
 			event.ignore()
 			super().inputEvent(event)
 			
 			if event.type() == QEvent.MouseButtonRelease:
 				self._update_active_selection()
+	
+	def _populated_adjust(self):
+		''' if scene is no more empty, adjust the view automatically '''
+		box = self.scene.root.box
+		empty = box.isempty()
+		if self._last_empty and not empty:
+			self.center(box.center)
+			self.adjust(box)
+		self._last_empty = empty
 	
 	def _update_active_scene(self):
 		self.open_composer.setText('scene:{}'.format(self.app.scenes.index(self.scene)))
@@ -541,6 +554,7 @@ class SceneView(madcad.rendering.QView3D):
 			else:
 				if child.selected:
 					break
+		self.scene.selection_remove(child)
 		self.scene.selection_add(parent)
 		self.scene.active_path = active
 		self._update_active_selection()
@@ -775,7 +789,7 @@ class SceneComposer(QWidget):
 		''' create a new scene '''
 		former = self.view.scene
 		self.view.scene = Scene(self.scene.app, 
-			ctx = former.ctx, 
+			context = former.context, 
 			options = former.options,
 			)
 		self._update_active_scene()

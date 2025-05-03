@@ -597,6 +597,7 @@ class ScriptNavigation(QWidget):
 		self.view.editor.setFocus()
 
 class ScriptFindReplace(QWidget):
+	''' find and replace form for `ScriptEdit` '''
 	def __init__(self, view, parent=None):
 		self.view = view
 		super().__init__(None)
@@ -720,7 +721,7 @@ class ScriptFindReplace(QWidget):
 		
 		
 class Highlighter(QSyntaxHighlighter):
-	''' python syntax highlighter for QTextDocument '''
+	''' python syntax highlighter for `ScriptEdit` '''
 	def __init__(self, document, font):
 		super().__init__(document)
 		# default font applies everywhere the highlighter doesn't pass, like empty lines
