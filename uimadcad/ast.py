@@ -1,3 +1,4 @@
+from __future__ import annotations
 import types
 from math import inf
 from ast import *
@@ -10,7 +11,7 @@ from copy import deepcopy
 from pnprint import nprint
 
 
-def parcimonize(cache: dict, scope: str, args: list, code: iter, previous: dict) -> iter:
+def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previous: dict) -> Iterable[AST]:
 	''' make a code lazily executable by reusing as much previous results as possible '''
 	assigned = Counter()
 	changed = set()
@@ -450,7 +451,7 @@ def annotate(tree: AST, text: str):
 def test_annotate():
 	indev
 	
-def flatten(code: list, nodes={Call, BoolOp, BinOp, Tuple, List, Return}, vars:set=None) -> list:
+def flatten(code: Iterable[AST], nodes={Call, BoolOp, BinOp, Tuple, List, Return, ListComp, DictComp}, vars:set=None) -> list:
 	''' unroll all expressions and assign temporary values to hidden variables
 	
 		inplace node modifications
@@ -469,25 +470,32 @@ def flatten(code: list, nodes={Call, BoolOp, BinOp, Tuple, List, Return}, vars:s
 			if name not in vars:
 				vars.add(name)
 				return name
+				
+	allowed = {Call, BoolOp, BinOp, Tuple, List, Attribute, Subscript}
 	
 	def capture(node: AST):
 		# an expression not already captured at a lower level has to be captured with a temporary name
-		if isinstance(node, expr) and type(node) in nodes:
-			propagate(node, capture)
-			name = tempname()
-			captured.append(Assign([Name(name, Store())], node))
-			return Name(name, Load())
+		if isinstance(node, expr):
+			if type(node) in allowed:
+				propagate(node, capture)
+			if type(node) in nodes:
+				name = tempname()
+				captured.append(Assign([Name(name, Store())], node))
+				return Name(name, Load())
 		# return values get a special name
 		elif isinstance(node, Return):
-			if type(node.value) in nodes:
+			if type(node.value) in allowed:
 				propagate(node.value, capture)
-			captured.append(Assign([Name('_return', Store())], node.value))
-			return Return(Name('_return', Load()))
+			if type(node.value) in nodes:
+				captured.append(Assign([Name('_return', Store())], node.value))
+				return Return(Name('_return', Load()))
 		# assignemnts are already named so no need for capture again
 		elif isinstance(node, Assign):
-			if type(node.value) in nodes:
+			if type(node.value) in allowed:
 				propagate(node.value, capture)
-			
+		elif isinstance(node, keyword):
+			capture(node.value)
+		
 		# in a block, captures should create variables inside the block
 		elif isinstance(node, (Module, FunctionDef, For, While, With)):
 			node.body = list(flatten(node.body, nodes))
@@ -506,8 +514,30 @@ def flatten(code: list, nodes={Call, BoolOp, BinOp, Tuple, List, Return}, vars:s
 		yield from captured
 		yield node
 		captured.clear()
-	
+		
 def test_flatten():
+	code = parse(normalize_indent('''\
+		a = (b+c)+d
+		'''))
+	code.body = list(flatten(code.body))
+	nprint(dump(code))
+	fix_missing_locations(code)
+	compile(code, '<flatten>', 'exec')
+	assert isinstance(code.body[-1].value, BinOp)
+	assert isinstance(code.body[-1].value.left, Name)
+	
+	code = parse(normalize_indent('''\
+		b = [5] + [i+1 for i in range(5)]
+		'''))
+	code.body = list(flatten(code.body))
+	nprint(dump(code))
+	fix_missing_locations(code)
+	compile(code, '<flatten>', 'exec')
+	assert isinstance(code.body[-1].value, BinOp)
+	assert isinstance(code.body[-1].value.left, Name)
+	assert isinstance(code.body[-1].value.right, Name)
+	
+def test_usage():
 	from pnprint import nprint
 	code = parse(normalize_indent('''\
 		a = (b+c)+d
@@ -527,7 +557,7 @@ def test_flatten():
 	assert wo == {'a'}
 	assert rw == {'b', 'd', '_temp3', 'c', '_temp2', 'i', '_temp1'}
 	
-def steppize(code:list, scope:str):
+def steppize(code:list[AST], scope:str):
 	def filter(node):
 		if isinstance(node, (Module, FunctionDef)):
 			node.body = list(steppize(node.body, scope+'.'+node.name))
@@ -546,7 +576,7 @@ def steppize(code:list, scope:str):
 			keywords = [],
 			))
 
-def report(code:list, scope:str):
+def report(code:list[AST], scope:str) -> list[AST]:
 	''' change the given code to report its variables to madcad '''
 	def filter(node):
 		if isinstance(node, (Module, FunctionDef)):
@@ -564,7 +594,7 @@ def report(code:list, scope:str):
 			),
 		])]
 
-def locate(code:list, scope:str, locations=None):
+def locate(code:Iterable[AST], scope:str, locations=None) -> dict:
 	''' change the given code to report its variables to madcad '''
 	if locations is None:
 		locations = {}
@@ -572,8 +602,10 @@ def locate(code:list, scope:str, locations=None):
 	def filter(node):
 		if isinstance(node, (Module, FunctionDef)):
 			locate(node.body, scope+'.'+node.name, locations)
-		elif isinstance(node, Assign) and len(node.targets) == 1 and isinstance(node.targets[0], Name):
-			locations[scope][node.targets[0].id] = node.value
+		elif isinstance(node, Assign):
+			for target in node.targets:
+				if isinstance(target, Name):
+					locations[scope][target.id] = node
 		else:
 			propagate(node, filter)
 	
@@ -671,7 +703,7 @@ def equal(a: AST, b: AST) -> bool:
 			return False
 	return True
 
-def propagate(node, process):
+def propagate(node: AST, process: callable):
 	''' apply process to node's children 
 		if process returns something not None, it's used to inplace replace the child in the node
 	'''
@@ -745,18 +777,18 @@ def _loc(node):
 	''' text location of an AST node '''
 	return (node.lineno, node.col_offset)
 
-# def textpos(text, loc, tab=1):
-# 	''' string index of the given text location (line,column) '''
-# 	i = 0
-# 	l, c = 1, 0
-# 	while l < loc[0]:	
-# 		i = text.find('\n', i)+1
-# 		l += 1
-# 	while c < loc[1]:
-# 		if text[i] == '\t':	c += tab
-# 		else:				c += 1
-# 		i += 1
-# 	return i
+def textpos(text, loc, tab=1):
+	''' string index of the given text location (line,column) '''
+	i = 0
+	l, c = 1, 0
+	while l < loc[0]:	
+		i = text.find('\n', i)+1
+		l += 1
+	while c < loc[1]:
+		if text[i] == '\t':	c += tab
+		else:				c += 1
+		i += 1
+	return i
 
 # def textloc(text, pos, tab=1, start=(1,0)):
 # 	''' text location for the given string index '''

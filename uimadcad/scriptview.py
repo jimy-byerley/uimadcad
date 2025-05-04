@@ -1,11 +1,11 @@
 import re
 from collections import deque
 
-from pnprint import nformat, deformat
+from pnprint import nformat, deformat, nprint
 from madcad.mathutils import mix, vec4
 from madcad.qt import (
-	QWidget, QPlainTextEdit, QVBoxLayout,
-	QTextCursor, QSyntaxHighlighter, QFont, QFontMetrics, QColor, QTextOption, QPalette, QPainter, QTextDocument,
+	QWidget, QPlainTextEdit, QTextEdit, QVBoxLayout,
+	QTextCursor, QSyntaxHighlighter, QFont, QFontMetrics, QColor, QBrush, QTextOption, QPalette, QPainter, QTextDocument,
 	QSpinBox, QLabel, QLineEdit,
 	Qt, QEvent, QMargins, QSize, QRect, QSizePolicy, QKeySequence, 
 	)
@@ -13,9 +13,9 @@ from madcad.qt import (
 from . import settings
 from .utils import (
 	Initializer, button, action, shortcut,
-	ToolBar, Action, vec_to_color, charformat, spacer, 
+	ToolBar, Action, vec_to_qcolor, charformat, extraselection, spacer, 
 	vlayout, hlayout,
-	color_to_vec, vec_to_color,
+	color_to_vec, vec_to_qcolor,
 	)
 
 
@@ -29,6 +29,7 @@ class ScriptView(QWidget):
 	def __init__(self, app, cursor=None, parent=None):
 		self.app = app
 		self.font = QFont(*settings.scriptview['font'])
+		self.selection = []
 		
 		# set cursor position on openning
 		if cursor:
@@ -41,7 +42,6 @@ class ScriptView(QWidget):
 		self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred))
 		Initializer.process(self, parent=self)
 		
-		# text editor widget
 		self.editor = ScriptEdit(self)
 		self.linenumbers = ScriptLines(self.font, self.editor)
 		self.navigation = ScriptNavigation(self)
@@ -98,6 +98,8 @@ class ScriptView(QWidget):
 		# other configurations
 		self.setFocusProxy(self.editor)
 		self.editor.updateRequest.connect(self._update_line_numbers)
+		self.editor.cursorPositionChanged.connect(self._update_current_location)
+		# self.editor.cursorPositionChanged.connect(self._update_active_selection)
 		if cursor:
 			self.editor.setTextCursor(cursor)
 		
@@ -192,16 +194,18 @@ class ScriptView(QWidget):
 		self.bot.setVisible(enable or self.findreplace.isVisible())
 
 	def _update_colors(self):
+		''' update widget colors according to settings '''
 		palette = self.editor.palette()
-		palette.setColor(QPalette.Base, vec_to_color(settings.scriptview['background']))
+		# background colors
+		palette.setColor(QPalette.Base, vec_to_qcolor(settings.scriptview['background']))
+		palette.setColor(QPalette.ColorRole.Highlight, vec_to_qcolor(settings.scriptview['highlight_background']))
+		# no color change for highligted text, so the syntax and extra selections will stay visible
+		palette.setBrush(QPalette.ColorRole.HighlightedText, QBrush(Qt.NoBrush))
+		
 		self.editor.setPalette(palette)
 		self.highlighter = Highlighter(self.editor.document(), self.font)
 	
 	def _update_line_numbers(self):
-		# update location label
-		line, column = cursor_location(self.editor.textCursor())
-		self.open_navigation.setText('position: {}:{}'.format(line+1, column+1))
-		
 		left = 0
 		
 		# update the line number area
@@ -226,20 +230,63 @@ class ScriptView(QWidget):
 		self.editor.setViewportMargins(left, 0, 0, 0)
 		self.editor.update()
 	
+	def _update_current_location(self):
+		cursor = self.editor.textCursor()
+		# update location label
+		line, column = cursor_location(cursor)
+		self.open_navigation.setText('position: {}:{}'.format(line+1, column+1))
+		
+		if cursor.hasSelection():
+			start, stop = sorted([cursor.position(), cursor.anchor()])
+			self.selection = list(self.app.interpreter.names_crossing(range(start, stop)))
+		else:
+			try:
+				item = self.app.interpreter.name_at(cursor.position())
+			except IndexError:
+				self.selection = []
+			else:
+				self.app.active.scope = item.scope
+				self.selection = [item]
+				self._update_active_selection()
+
+		self._update_highlights()
+		if self.app.active.sceneview:
+			self.app.active.sceneview.scene.sync()
+	
 	def _update_active_selection(self):
-		# if self.scene.active_selection:
-		if True:
-			# text = #TODO
-			text = "machin['truc'].bidule"
+		if self.selection:
+			active = self.selection[0]
+			text = active.scope+'.'+active.name
+			# text = "machin['truc'].bidule"
 		
 			font = QFont(*settings.scriptview['font'])
 			pointsize = font.pointSize()
 			self.view_selection.setFont(font)
 			self.view_selection.setText(text)
-			self.view_selection.resize(pointsize*len(text), pointsize*2)
+			self.view_selection.setEnabled(True)
 			self.view_selection.show()
 		else:
+			self.view_selection.setEnabled(False)
+			self.view_selection.setText('seek selection')
 			self.view_selection.hide()
+	
+	def _update_highlights(self):
+		s = settings.scriptview
+		selected = charformat(background=vec_to_qcolor(s['selected_background']))
+		highlighted = charformat(background=vec_to_qcolor(s['highlight_background']))
+		highlights = []
+		for item in self.selection:
+			cursor = self.editor.textCursor()
+			cursor.setPosition(item.range.start, cursor.MoveMode.MoveAnchor)
+			cursor.setPosition(item.range.stop, cursor.MoveMode.KeepAnchor)
+			highlights.append(extraselection(cursor, selected))
+			# TODO remove this
+			# nprint('highlight', item.range, cursor.position(), cursor.anchor(), ast.dump(item.node), repr(cursor.selectedText()))
+		if self.app.active.sceneview:
+			for disp in self.app.active.sceneview.scene.selection:
+				pass
+				#TODO
+		self.editor.setExtraSelections(highlights)
 	
 	def _retreive_settings(self):
 		self.show_linenumbers.setChecked(settings.scriptview['linenumbers'])
@@ -710,7 +757,7 @@ class ScriptFindReplace(QWidget):
 			color_to_vec(palette.color(QPalette.Base)), 
 			color, 
 			0.1)
-		palette.setColor(QPalette.Base, vec_to_color(background))
+		palette.setColor(QPalette.Base, vec_to_qcolor(background))
 		return palette
 		
 	def _reset_colors(self):
@@ -728,13 +775,13 @@ class Highlighter(QSyntaxHighlighter):
 		document.setDefaultFont(font)
 		# precompute formatting for every case
 		s = settings.scriptview
-		self.fmt_default = charformat(foreground=vec_to_color(s['normal_color']), font=font)
-		self.fmt_keyword = charformat(foreground=vec_to_color(s['keyword_color']), font=font, weight=QFont.ExtraBold)
-		self.fmt_call = charformat(foreground=vec_to_color(s['call_color']), font=font)
-		self.fmt_constant = charformat(foreground=vec_to_color(s['number_color']), font=font)
-		self.fmt_string = charformat(foreground=vec_to_color(s['string_color']), font=font)
-		self.fmt_comment = charformat(foreground=vec_to_color(s['comment_color']), font=font, italic=True, weight=QFont.Thin)
-		self.fmt_operator = charformat(foreground=vec_to_color(s['operator_color']), font=font)
+		self.fmt_default = charformat(foreground=vec_to_qcolor(s['normal_color']), font=font)
+		self.fmt_keyword = charformat(foreground=vec_to_qcolor(s['keyword_color']), font=font, weight=QFont.ExtraBold)
+		self.fmt_call = charformat(foreground=vec_to_qcolor(s['call_color']), font=font)
+		self.fmt_constant = charformat(foreground=vec_to_qcolor(s['number_color']), font=font)
+		self.fmt_string = charformat(foreground=vec_to_qcolor(s['string_color']), font=font)
+		self.fmt_comment = charformat(foreground=vec_to_qcolor(s['comment_color']), font=font, italic=True, weight=QFont.Thin)
+		self.fmt_operator = charformat(foreground=vec_to_qcolor(s['operator_color']), font=font)
 		# state machine description
 		self.states = {
 			# normal context

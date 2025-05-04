@@ -1,10 +1,10 @@
 from madcad.qt import (
 	Qt, QTimer, Signal, QSize, QMargins, QStyle,
-	QIcon, QKeySequence, QColor, QTextCharFormat,
+	QIcon, QKeySequence, QColor, QTextCharFormat, QTextCursor,
 	QWidget, QBoxLayout, QLayoutItem, QVBoxLayout, QHBoxLayout, QSizePolicy, QSplitter,
 	QPushButton, QDockWidget, QToolBar, QActionGroup, QButtonGroup,
 	QMenuBar, QMenu, 
-	QPlainTextEdit,
+	QPlainTextEdit, QTextEdit,
 	QApplication, QAction, QShortcut,
 	)
 
@@ -393,7 +393,7 @@ def spacer(w: int, h: int) -> QWidget:
 
 signal = Signal
 
-def charformat(background=None, foreground=None, italic=None, overline=None, strikeout=None, weight=None, font=None):
+def charformat(background=None, foreground=None, italic=None, overline=None, strikeout=None, weight=None, font=None) -> QTextCharFormat:
 	''' create a QTextCharFormat '''
 	fmt = QTextCharFormat()
 	if background:	fmt.setBackground(background)
@@ -404,6 +404,13 @@ def charformat(background=None, foreground=None, italic=None, overline=None, str
 	if weight:					fmt.setFontWeight(weight)
 	if font:	fmt.setFont(font)
 	return fmt
+
+def extraselection(cursor: QTextCursor, format: QTextCharFormat) -> QTextEdit.ExtraSelection:
+	''' create an ExtraSelection '''
+	o = QTextEdit.ExtraSelection()
+	o.cursor = cursor
+	o.format = format
+	return o
 
 def mix_colors(a: QColor, b: QColor, x: float) -> QColor:
 	a = a.toRgb()
@@ -419,7 +426,7 @@ def color_to_vec(color: QColor) -> vec4:
 	color = color.toRgb()
 	return vec4(color.red(), color.green(), color.blue(), color.alpha()) / 255
 	
-def vec_to_color(color: vec4) -> QColor:
+def vec_to_qcolor(color: vec4) -> QColor:
 	if isinstance(color, fvec3):
 		color = vec3(color)
 	if isinstance(color, vec3):

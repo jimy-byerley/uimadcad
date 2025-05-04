@@ -35,6 +35,10 @@ class Scene(madcad.rendering.Scene, QObject):
 		# application behavior
 		self.composer = SceneComposer(self)
 		
+		# for optimization purpose
+		if options is None:
+			options = {}
+		options['track_source'] = True
 		# data graph setup
 		QObject.__init__(self)
 		madcad.rendering.Scene.__init__(self, context=context, options=options)
@@ -92,23 +96,6 @@ class Scene(madcad.rendering.Scene, QObject):
 		for view in self.app.views:
 			if isinstance(view, SceneView) and view.scene is self:
 				view._populated_adjust()
-	
-	def display(self, obj, former=None):
-		# TODO: implement this recursion check in pymadcad rather than uimadcad
-		ido = id(obj)
-		assert ido not in self.memo, 'there should not be recursion loops in cascading displays'
-		
-		self.memo.add(ido)
-		try:		
-			disp = super().display(obj, former)
-		except Exception as err:     
-			self.app.window.panel.set_exception(err)
-			self.app.window.open_panel.setChecked(True)
-			raise
-		finally:
-			self.memo.remove(ido)
-		disp.source = obj
-		return disp
 	
 	def selection_add(self, display, sub=None):
 		super().selection_add(display, sub)

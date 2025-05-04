@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 from copy import deepcopy
 from functools import partial
+from dataclasses import dataclass
+from bisect import bisect_right
 import traceback
 
 from . import ast
@@ -15,7 +19,8 @@ class Interpreter:
 		self.previous = {}
 		self.ast = {}
 		self.scopes = {}
-		self.locations = {}
+		self.definitions = {}
+		self.locations = []
 		self.usages = {}
 		self.stops = []
 		self.exception = None
@@ -29,21 +34,45 @@ class Interpreter:
 				step(scope: str, current_line: int, total_lines: int)
 		'''
 		from pnprint import nprint
-		nprint(self.cache)
+		nprint('cache', self.cache)
 		
 		code = self.ast = ast.parse(source)
+		
+		self.definitions = ast.locate(ast.flatten(deepcopy(code.body)), self.filename)
+		nprint('definitions', self.definitions)
+		locations = []
+		for scope, definitions in self.definitions.items():
+			for name, node in definitions.items():
+				if haslocation(node):
+					located = node
+				else:
+					located = node.value
+				if not haslocation(located):
+					continue
+				locations.append(Located(
+					node,
+					# range(node.position, node.end_position), 
+					range(
+						ast.textpos(source, (located.lineno, located.col_offset)), 
+						ast.textpos(source, (located.end_lineno, located.end_col_offset)),
+						),
+					scope, 
+					name,
+					))
+		self.locations = sorted(locations, key=lambda item: item.range.start)
+		nprint('locations', self.locations)
+		
 		# ast.annotate(code, source)
-		code = list(ast.parcimonize(self.cache, self.filename, (), code.body, self.previous))
+		code = ast.parcimonize(self.cache, self.filename, (), code.body, self.previous)
 		code = list(ast.flatten(code))
+		
 		code = list(ast.steppize(code, self.filename))
 		code = ast.report(code, self.filename)
-		self.locations = ast.locate(code, self.filename)
 		self.usages = ast.usage(code, self.filename)
-		# ast.complete(code)
 		code = ast.Module(code, type_ignores=[])
 		ast.fix_locations(code)
 		
-		nprint(self.cache)
+		nprint('cache', self.cache)
 		
 		# TODO: add stop points
 		
@@ -68,10 +97,42 @@ class Interpreter:
 				# TODO: use a try finally for the scope capture
 			self.usages = ast.usage(code.body, self.filename, stops=stops)
 			raise
-		
+			
+	def names_crossing(self, area:range) -> Iterator[Located]:
+		''' yield variables with text range crossing the given position range '''
+		stop = bisect_right(self.locations, area.stop, key=lambda item: item.range.start)
+		for i in reversed(range(0, stop)):
+			item = self.locations[i]
+			if item.range.start in area or item.range.stop in area:
+				yield item
+			else:
+				break
+					
+	def name_at(self, position:int) -> Located:
+		''' find the variable with the smallest text range enclosing the given position '''
+		stop = bisect_right(self.locations, position, key=lambda item: item.range.start)
+		for i in reversed(range(0, stop)):
+			item = self.locations[i]
+			if position in item.range:
+				return item
+		raise IndexError('no node at the given position')
+	
 	def interrupt(self):
 		# TODO
 		pass
+		
+@dataclass
+class Located:
+	node: AST
+	range: range
+	scope: str
+	name: str
+	
+def haslocation(node):
+	return ( 
+		hasattr(node, 'lineno') and hasattr(node, 'end_lineno') 
+		and hasattr(node, 'col_offset') and hasattr(node, 'end_col_offset') 
+		)
 		
 def test_interpreter():
 	indev

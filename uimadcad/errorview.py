@@ -11,7 +11,7 @@ from .utils import (
     PlainTextEdit, Splitter, 
     hlayout, vlayout, widget,
     button, Initializer, 
-    charformat, color_to_vec, vec_to_color,
+    charformat, color_to_vec, vec_to_qcolor,
     )
 
 
@@ -77,20 +77,21 @@ class ErrorView(QWidget):
 		cursor = QTextCursor(document)
 		palette = self.palette()
 		fmt_traceback = charformat(font=self.font, foreground=palette.color(QPalette.Text))
-		fmt_code = charformat(font=self.font, foreground=vec_to_color(mix(
+		fmt_code = charformat(font=self.font, foreground=vec_to_qcolor(mix(
 						color_to_vec(palette.color(QPalette.Text)), 
 						color_to_vec(palette.color(QPalette.Window)),
 						0.5)))
-		fmt_error = charformat(font=self.font, background=vec_to_color(mix(
+		fmt_error = charformat(font=self.font, background=vec_to_qcolor(mix(
 						color_to_vec(QColor(255,100,100)),
 						color_to_vec(palette.color(QPalette.Window)),
 						0.2)))
 		if type(exception) == SyntaxError and exception.filename == self.app.interpreter.filename:
 			cursor.insertText('  File \"{}\", line {}\n'.format(exception.filename, exception.lineno), fmt_traceback)
-			offset = exception.offset
-			while offset > 0 and exception.text[offset-1].isalnum():	offset -= 1
-			cursor.insertText('    '+exception.text[:offset], fmt_code)
-			cursor.insertText(exception.text[offset:], fmt_error)
+			if exception.text:
+				offset = exception.offset
+				while offset > 0 and exception.text[offset-1].isalnum():	offset -= 1
+				cursor.insertText('    '+exception.text[:offset], fmt_code)
+				cursor.insertText(exception.text[offset:], fmt_error)
 		else:
 			tb = traceback.extract_tb(exception.__traceback__)
 			i = next((i for i in range(len(tb)) if tb[i].filename == self.app.interpreter.filename), 0)
