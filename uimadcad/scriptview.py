@@ -237,11 +237,14 @@ class ScriptView(QWidget):
 		self.open_navigation.setText('position: {}:{}'.format(line+1, column+1))
 		
 		if cursor.hasSelection():
-			start, stop = sorted([cursor.position(), cursor.anchor()])
+			start, stop = sorted([
+				self.app.reindex.downgrade(cursor.position()), 
+				self.app.reindex.downgrade(cursor.anchor()),
+				])
 			self.selection = list(self.app.interpreter.names_crossing(range(start, stop)))
 		else:
 			try:
-				item = self.app.interpreter.name_at(cursor.position())
+				item = self.app.interpreter.name_at(self.app.reindex.downgrade(cursor.position()))
 			except IndexError:
 				self.selection = []
 			else:
@@ -277,8 +280,8 @@ class ScriptView(QWidget):
 		highlights = []
 		for item in self.selection:
 			cursor = self.editor.textCursor()
-			cursor.setPosition(item.range.start, cursor.MoveMode.MoveAnchor)
-			cursor.setPosition(item.range.stop, cursor.MoveMode.KeepAnchor)
+			cursor.setPosition(self.app.reindex.upgrade(item.range.start), cursor.MoveMode.MoveAnchor)
+			cursor.setPosition(self.app.reindex.upgrade(item.range.stop-1)+1, cursor.MoveMode.KeepAnchor)
 			highlights.append(extraselection(cursor, selected))
 			# TODO remove this
 			# nprint('highlight', item.range, cursor.position(), cursor.anchor(), ast.dump(item.node), repr(cursor.selectedText()))
@@ -903,3 +906,197 @@ def move_text_cursor(cursor, location, movemode=QTextCursor.MoveAnchor):
 	if cursor.blockNumber() < line:		cursor.movePosition(cursor.PreviousBlock, movemode, cursor.blockNumber()-line)
 	if cursor.columnNumber() < column:	cursor.movePosition(cursor.NextCharacter, movemode, column-cursor.columnNumber())
 	if cursor.columnNumber() > column:	cursor.movePosition(cursor.PreviousCharacter, movemode, cursor.columnNumber()-column)
+
+from arrex import typedlist
+from bisect import bisect_right
+
+class SubstitutionIndex:
+	def __init__(self):
+		self._src = typedlist((0,), int)  # represent the index in the original sequence
+		self._dst = typedlist((0,), int)  # represent the index in the modified sequence
+	
+	def clear(self):
+		''' clear all discontiguities '''
+		del self._src[1:]
+		del self._dst[1:]
+		self._src[0] = 0
+		self._dst[0] = 0
+	
+	def substitute(self, position:int, remove:int=0, add:int=0):
+		''' change the index to remove and add a number of elements
+			
+			complexity is O(n)
+		'''
+		i = bisect_right(self._dst, position)-1
+		change = add - remove
+		new_src = position - self._dst[i] + self._src[i]
+		new_dst = position + change
+		if self._src[i] == new_src or self._dst[i] >= new_dst:
+			self._src[i] = new_src
+			self._dst[i] = new_dst
+		else:
+			self._src.insert(i+1, position - self._dst[i] + self._src[i])
+			self._dst.insert(i+1, position + change)
+			i += 1
+		for j in range(i+1, len(self._dst)):
+			self._dst[j] += change
+	
+	def upgrade(self, position:int) -> int:
+		''' convert the given position before substitution to position after substitution 
+		
+			complexity is O(log(n))
+		'''
+		i = bisect_right(self._src, position)-1
+		up = position - self._src[i] + self._dst[i]
+		if up < self._dst[i]:
+			up = self._dst[i]
+		elif i+1 < len(self._src) and up > self._dst[i+1]:
+			up = self._dst[i+1]
+		return up
+		
+	def downgrade(self, position:int) -> int:
+		''' convert the given position after substitution to position before substitution 
+		
+			complexity is O(log(n))
+		'''
+		i = bisect_right(self._dst, position)-1
+		down = position - self._dst[i] + self._src[i]
+		if down < self._src[i]:
+			down = self._src[i]
+		elif i+1 < len(self._src) and down > self._src[i+1]:
+			down = self._src[i+1]
+		return down
+	
+	def steps(self) -> int:
+		''' return the number of index discontiguities '''
+		return len(self._src) -1
+
+from dataclasses import dataclass
+			
+class SubstitutionIndex_:
+	def __init__(self):
+		self._root = self._node(0, 0, None, None)
+		
+	def substitute(self, position:int, remove:int=0, add:int=0):
+		''' insert a substitution at the given position '''
+		change = add - remove
+		# node, offset = self._seek(position, 1)
+		
+		print('  seek', target, factor)
+		node = self._root
+		parent1 = parent2 = None
+		offset = 0
+		while node:
+			parent1, parent2 = node, parent1
+			before = offset
+			after = offset + node.increment
+			print('    bisect', target, node.position + before*factor, node.position + after*factor)
+			if target < node.position + before*factor:
+				offset = before
+				node = node.before
+			elif target > node.position + after*factor:
+				offset = after
+				node = node.after
+			else:
+				offset = after
+				break
+		
+		new = position - offset
+		if new < node.position:
+			node.before = child = self._node(new, change, node.before, None)
+		elif new > node.position:
+			node.after = child = self._node(new, change, None, node.after)
+		else:
+			node.increment = change
+			
+		sided1 = parent1.after is None or parent1.before is None
+		sided2 = parent2.after is None or parent2.before is None
+		if sided1 and sided2:
+			if (parent1.after is None) == (parent2.after is None):
+				indev
+	
+	def upgrade(self, position:int) -> int:
+		''' convert the given position before substitution to position after substitution '''
+		node, offset = self._seek(position, 0)
+		return position + offset
+		
+	def downgrade(self, position:int) -> int:
+		''' convert the given position after substitution to position before substitution '''
+		node, offset = self._seek(position, 1)
+		return position - offset
+		
+	def _seek(self, target:int, factor:int) -> int:
+		print('  seek', target, factor)
+		node = self._root
+		parent = None
+		offset = 0
+		while node:
+			parent = node
+			before = offset
+			after = offset + node.increment
+			print('    bisect', target, node.position + before*factor, node.position + after*factor)
+			if target < node.position + before*factor:
+				offset = before
+				node = node.before
+			elif target > node.position + after*factor:
+				offset = after
+				node = node.after
+			else:
+				offset = after
+				break
+		return parent, offset
+	
+	@dataclass
+	class _node:
+		position: int
+		increment: int
+		before: object
+		after: object
+		
+def test_substitution_index():
+	def assert_eq(name, a, b):
+		assert a == b, (name,':', a, 'should be', b)
+	
+	def check():
+		for dst, src in enumerate(reference):
+			if src is None:
+				continue
+			assert_eq(src, index.upgrade(src), dst)
+			assert_eq(dst, index.downgrade(dst), src)
+	
+	def test(position, remove=0, add=0):
+		print()
+		index.substitute(position, remove, add)
+		reference[position-remove:position] = [None]*add
+		nprint('src', index._src)
+		nprint('dst', index._dst)
+		check()
+		
+	index = SubstitutionIndex()
+	reference = list(range(30))
+	
+	# test our check
+	check()
+	
+	# test reliability of the resulting index
+	test(10, remove=2)
+	test(16, remove=2)
+	test(10, remove=2)
+	test(9, remove=2)
+	
+	test(10, add=2)
+	test(9, add=2)
+	test(8, add=2)
+	test(20, remove=2, add=2)
+
+	index = SubstitutionIndex()
+	reference = list(range(30))
+	
+	# test fusion of edited zones
+	test(10, add=1)
+	test(11, add=1)
+	test(12, add=2)
+	test(14, add=2)
+	assert index.steps() == 1
+	test(17, add=1)
+	assert index.steps() == 2
