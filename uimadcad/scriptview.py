@@ -1,6 +1,8 @@
 import re
 from collections import deque
+from bisect import bisect_right
 
+from arrex import typedlist
 from pnprint import nformat, deformat, nprint
 from madcad.mathutils import mix, vec4
 from madcad.qt import (
@@ -907,10 +909,9 @@ def move_text_cursor(cursor, location, movemode=QTextCursor.MoveAnchor):
 	if cursor.columnNumber() < column:	cursor.movePosition(cursor.NextCharacter, movemode, column-cursor.columnNumber())
 	if cursor.columnNumber() > column:	cursor.movePosition(cursor.PreviousCharacter, movemode, cursor.columnNumber()-column)
 
-from arrex import typedlist
-from bisect import bisect_right
 
 class SubstitutionIndex:
+	''' reindexation between a fixed sequence and a changed sequence '''
 	def __init__(self):
 		self._src = typedlist((0,), int)  # represent the index in the original sequence
 		self._dst = typedlist((0,), int)  # represent the index in the modified sequence
@@ -971,88 +972,7 @@ class SubstitutionIndex:
 		''' return the number of index discontiguities '''
 		return len(self._src) -1
 
-from dataclasses import dataclass
-			
-class SubstitutionIndex_:
-	def __init__(self):
-		self._root = self._node(0, 0, None, None)
-		
-	def substitute(self, position:int, remove:int=0, add:int=0):
-		''' insert a substitution at the given position '''
-		change = add - remove
-		# node, offset = self._seek(position, 1)
-		
-		print('  seek', target, factor)
-		node = self._root
-		parent1 = parent2 = None
-		offset = 0
-		while node:
-			parent1, parent2 = node, parent1
-			before = offset
-			after = offset + node.increment
-			print('    bisect', target, node.position + before*factor, node.position + after*factor)
-			if target < node.position + before*factor:
-				offset = before
-				node = node.before
-			elif target > node.position + after*factor:
-				offset = after
-				node = node.after
-			else:
-				offset = after
-				break
-		
-		new = position - offset
-		if new < node.position:
-			node.before = child = self._node(new, change, node.before, None)
-		elif new > node.position:
-			node.after = child = self._node(new, change, None, node.after)
-		else:
-			node.increment = change
-			
-		sided1 = parent1.after is None or parent1.before is None
-		sided2 = parent2.after is None or parent2.before is None
-		if sided1 and sided2:
-			if (parent1.after is None) == (parent2.after is None):
-				indev
-	
-	def upgrade(self, position:int) -> int:
-		''' convert the given position before substitution to position after substitution '''
-		node, offset = self._seek(position, 0)
-		return position + offset
-		
-	def downgrade(self, position:int) -> int:
-		''' convert the given position after substitution to position before substitution '''
-		node, offset = self._seek(position, 1)
-		return position - offset
-		
-	def _seek(self, target:int, factor:int) -> int:
-		print('  seek', target, factor)
-		node = self._root
-		parent = None
-		offset = 0
-		while node:
-			parent = node
-			before = offset
-			after = offset + node.increment
-			print('    bisect', target, node.position + before*factor, node.position + after*factor)
-			if target < node.position + before*factor:
-				offset = before
-				node = node.before
-			elif target > node.position + after*factor:
-				offset = after
-				node = node.after
-			else:
-				offset = after
-				break
-		return parent, offset
-	
-	@dataclass
-	class _node:
-		position: int
-		increment: int
-		before: object
-		after: object
-		
+
 def test_substitution_index():
 	def assert_eq(name, a, b):
 		assert a == b, (name,':', a, 'should be', b)
