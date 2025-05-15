@@ -12,7 +12,7 @@ from madcad.qt import (
 	Qt, QEvent, QMargins, QSize, QRect, QSizePolicy, QKeySequence, 
 	)
 
-from . import settings
+from . import settings, ast
 from .utils import (
 	Initializer, button, action, shortcut,
 	ToolBar, Action, vec_to_qcolor, charformat, extraselection, spacer, 
@@ -279,19 +279,47 @@ class ScriptView(QWidget):
 		s = settings.scriptview
 		selected = charformat(background=vec_to_qcolor(s['selected_background']))
 		highlighted = charformat(background=vec_to_qcolor(s['highlight_background']))
+		
 		highlights = []
+		# selections from the script view
 		for item in self.selection:
-			cursor = self.editor.textCursor()
-			cursor.setPosition(self.app.reindex.upgrade(item.range.start), cursor.MoveMode.MoveAnchor)
-			cursor.setPosition(self.app.reindex.upgrade(item.range.stop-1)+1, cursor.MoveMode.KeepAnchor)
-			highlights.append(extraselection(cursor, selected))
-			# TODO remove this
-			# nprint('highlight', item.range, cursor.position(), cursor.anchor(), ast.dump(item.node), repr(cursor.selectedText()))
+			highlights.append(extraselection(self._reindex_cursor(item.range), selected))
+		# selection from the scene view
 		if self.app.active.sceneview:
-			for disp in self.app.active.sceneview.scene.selection:
-				pass
-				#TODO
+			# TODO clean this mess
+			nprint('locations', self.app.interpreter.locations)
+			nprint('scopes', self.app.interpreter.scopes.keys())
+			index = {id(self.app.interpreter.scopes[located.scope][located.name]): located  
+				for located in self.app.interpreter.locations
+				if located.scope in self.app.interpreter.scopes
+				and located.name in self.app.interpreter.scopes[located.scope]}
+		
+			for disp in self.app.active.sceneview.scene.selection:		
+				if not disp.key:
+					continue
+					
+				node = self.app.active.sceneview.scene.root
+				stack = []
+				for k in disp.key:
+					node = node[k]
+					stack.append(node)
+					
+				for node in reversed(stack):
+					located = index.get(id(getattr(node, 'source', None)))
+					if located is not None:
+						break
+				else:
+					continue
+				
+				highlights.append(extraselection(self._reindex_cursor(located.range), highlighted))
+					
 		self.editor.setExtraSelections(highlights)
+		
+	def _reindex_cursor(self, range:range):
+		cursor = self.editor.textCursor()
+		cursor.setPosition(self.app.reindex.upgrade(range.start), cursor.MoveMode.MoveAnchor)
+		cursor.setPosition(self.app.reindex.upgrade(range.stop-1)+1, cursor.MoveMode.KeepAnchor)
+		return cursor
 	
 	def _retreive_settings(self):
 		self.show_linenumbers.setChecked(settings.scriptview['linenumbers'])

@@ -13,6 +13,19 @@ class InterpreterError(Exception):	pass
 
 
 class Interpreter:
+	''' this class execute the uimadcad file code and exposes the resulting scope, errors and code analysis 
+	
+		Since the code might not have changed much between two executions, executing the code actually performs a lot of caching and reexecute only the changed portions of code and the code that depends on it
+	'''
+	filename: str
+	source: str
+	ast: AST
+	scopes: dict[str, dict[str, object]]
+	definitions: dict[str, dict[str, AST]]
+	locations: list[Located]
+	usages: dict[str, Usage]
+	exception: Exception
+	
 	def __init__(self, filename:str):
 		self.cache = {}
 		self.filename = filename
@@ -36,6 +49,7 @@ class Interpreter:
 		from pnprint import nprint
 		nprint('cache', self.cache)
 		
+		self.source = source
 		code = self.ast = ast.parse(source)
 		
 		self.definitions = ast.locate(ast.flatten(deepcopy(code.body)), self.filename)
@@ -52,6 +66,7 @@ class Interpreter:
 				locations.append(Located(
 					node,
 					# range(node.position, node.end_position), 
+					# TODO: optimize this position search
 					range(
 						ast.textpos(source, (located.lineno, located.col_offset)), 
 						ast.textpos(source, (located.end_lineno, located.end_col_offset)),
@@ -120,13 +135,14 @@ class Interpreter:
 	def interrupt(self):
 		# TODO
 		pass
-		
+
 @dataclass
 class Located:
 	node: AST
 	range: range
 	scope: str
 	name: str
+
 	
 def haslocation(node):
 	return ( 

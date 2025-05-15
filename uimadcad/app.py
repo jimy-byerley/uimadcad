@@ -17,6 +17,7 @@ from .scriptview import SubstitutionIndex
 
 @dataclass
 class Active:
+	''' non-unique instances currently in use by the user '''
 	sceneview = None
 	scriptview = None
 	errorview = None
@@ -28,6 +29,7 @@ class Active:
 	export: str = None
 
 class Madcad(QObject):
+	''' a uimadcad application instance '''
 	active_changed = signal()
 	file_changed = signal()
 	executed = signal()
