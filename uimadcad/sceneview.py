@@ -1,3 +1,4 @@
+from __future__ import annotations
 from functools import partial
 from operator import itemgetter
 
@@ -128,7 +129,26 @@ class Scene(madcad.rendering.Scene, QObject):
 				text.append(repr(k))
 				text.append(']')
 		return ''.join(text)
-		
+
+	def sources(self, display) -> Iterator[Located]:
+		''' yield the source code of successive containg displays '''
+		if not display.key:
+			return
+		node = self.root
+		stack = []
+		for k in display.key:
+			node = node[k]
+			stack.append(node)
+		for node in reversed(stack):
+			located = self.source(node)
+			if located is not None:
+				yield located
+	
+	def source(self, display) -> Located|None:
+		''' return the source code of the given display, or None if not available '''
+		return self.app.interpreter.identified.get(id(getattr(display, 'source', None)))
+
+	
 class Root(madcad.rendering.Group):
 	''' override for the scene root display, hiding annotations when the user sets '''
 	def stack(self, scene):
@@ -336,6 +356,8 @@ class SceneView(madcad.rendering.QView3D):
 			self.seek_selection.setEnabled(False)
 			self.seek_selection.setText('seek selection')
 			self.seek_selection.hide()
+		if self.app.active.scriptview:
+			self.app.active.scriptview.sync()
 	
 	def _show_details(self, key, position=None):
 		''' display a detail window for the ident given (grp,sub) '''
@@ -429,7 +451,14 @@ class SceneView(madcad.rendering.QView3D):
 		
 			(shortcut: Alt+Up)
 		'''
-		indev
+		if self.scene.active_selection and self.app.active.scriptview:
+			for located in self.scene.sources(self.scene.active_selection):
+				self.app.active.scriptview.seek_position(range(
+					self.app.reindex.upgrade(located.range.start),
+					self.app.reindex.upgrade(located.range.stop-1)+1,
+					))
+				self.app.active.scriptview.setFocus()
+				break
 	
 	@action(icon='view-fullscreen', shortcut='C')
 	def view_adjust(self):

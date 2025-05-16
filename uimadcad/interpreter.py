@@ -32,6 +32,7 @@ class Interpreter:
 		self.previous = {}
 		self.ast = {}
 		self.scopes = {}
+		self.identified = {}
 		self.definitions = {}
 		self.locations = []
 		self.usages = {}
@@ -49,6 +50,7 @@ class Interpreter:
 		from pnprint import nprint
 		nprint('cache', self.cache)
 		
+		self.exception = None
 		self.source = source
 		code = self.ast = ast.parse(source)
 		
@@ -59,9 +61,9 @@ class Interpreter:
 			for name, node in definitions.items():
 				if haslocation(node):
 					located = node
-				else:
+				elif haslocation(node.value):
 					located = node.value
-				if not haslocation(located):
+				else:
 					continue
 				locations.append(Located(
 					node,
@@ -111,7 +113,13 @@ class Interpreter:
 				stops[name] = line
 				# TODO: use a try finally for the scope capture
 			self.usages = ast.usage(code.body, self.filename, stops=stops)
-			raise
+			self.exception = err
+			
+		self.identified = {
+			id(self.scopes[located.scope][located.name]): located  
+			for located in self.locations
+			if located.scope in self.scopes
+			and located.name in self.scopes[located.scope]}
 			
 	def names_crossing(self, area:range) -> Iterator[Located]:
 		''' yield variables with text range crossing the given position range '''

@@ -200,7 +200,7 @@ class ScriptView(QWidget):
 		palette = self.editor.palette()
 		# background colors
 		palette.setColor(QPalette.Base, vec_to_qcolor(settings.scriptview['background']))
-		palette.setColor(QPalette.ColorRole.Highlight, vec_to_qcolor(settings.scriptview['highlight_background']))
+		palette.setColor(QPalette.ColorRole.Highlight, vec_to_qcolor(settings.scriptview['selection_background']))
 		# no color change for highligted text, so the syntax and extra selections will stay visible
 		palette.setBrush(QPalette.ColorRole.HighlightedText, QBrush(Qt.NoBrush))
 		
@@ -254,9 +254,7 @@ class ScriptView(QWidget):
 				self.selection = [item]
 				self._update_active_selection()
 
-		self._update_highlights()
-		if self.app.active.sceneview:
-			self.app.active.sceneview.scene.sync()
+		self.sync()
 	
 	def _update_active_selection(self):
 		if self.selection:
@@ -274,45 +272,26 @@ class ScriptView(QWidget):
 			self.view_selection.setEnabled(False)
 			self.view_selection.setText('seek selection')
 			self.view_selection.hide()
+		if self.app.active.sceneview:
+			self.app.active.sceneview.scene.sync()
 	
-	def _update_highlights(self):
+	def sync(self):
+		''' synchronize the text rendering with what is available in the result of the app '''
 		s = settings.scriptview
-		selected = charformat(background=vec_to_qcolor(s['selected_background']))
-		highlighted = charformat(background=vec_to_qcolor(s['highlight_background']))
+		selected = charformat(background=vec_to_qcolor(s['selection_background']))
+		highlighted = charformat(background=vec_to_qcolor(s['hover_background']))
 		
 		highlights = []
 		# selections from the script view
 		for item in self.selection:
-			highlights.append(extraselection(self._reindex_cursor(item.range), selected))
+			highlights.append(extraselection(self._reindex_cursor(item.range), highlighted))
 		# selection from the scene view
 		if self.app.active.sceneview:
-			# TODO clean this mess
-			nprint('locations', self.app.interpreter.locations)
-			nprint('scopes', self.app.interpreter.scopes.keys())
-			index = {id(self.app.interpreter.scopes[located.scope][located.name]): located  
-				for located in self.app.interpreter.locations
-				if located.scope in self.app.interpreter.scopes
-				and located.name in self.app.interpreter.scopes[located.scope]}
-		
-			for disp in self.app.active.sceneview.scene.selection:		
-				if not disp.key:
-					continue
-					
-				node = self.app.active.sceneview.scene.root
-				stack = []
-				for k in disp.key:
-					node = node[k]
-					stack.append(node)
-					
-				for node in reversed(stack):
-					located = index.get(id(getattr(node, 'source', None)))
-					if located is not None:
-						break
-				else:
-					continue
+			scene = self.app.active.sceneview.scene
+			for display in scene.selection:
+				for source in scene.sources(display):
+					highlights.append(extraselection(self._reindex_cursor(source.range), selected))
 				
-				highlights.append(extraselection(self._reindex_cursor(located.range), highlighted))
-					
 		self.editor.setExtraSelections(highlights)
 		
 	def _reindex_cursor(self, range:range):
@@ -481,20 +460,24 @@ class ScriptView(QWidget):
 		self.open_find.setChecked(True)
 		self.findreplace.open(replace=True)
 	
-# 	def seek_line(self, lineno):
-# 		''' set cursor and scroll to lineno '''
-# 		block = self.editor.document().findBlockByLineNumber(lineno-1)
-# 		cursor = QTextCursor(block)
-# 		cursor.movePosition(QTextCursor.EndOfLine)
-# 		self.editor.setTextCursor(cursor)
-# 		self.editor.ensureCursorVisible()
-# 	
-# 	def seek_position(self, position):
-# 		''' set cursor and scroll to position '''
-# 		cursor = QTextCursor(self.editor.document())
-# 		cursor.setPosition(position)
-# 		self.editor.setTextCursor(cursor)
-# 		self.editor.ensureCursorVisible()
+	def seek_line(self, lineno:int):
+		''' set cursor and scroll to lineno '''
+		block = self.editor.document().findBlockByLineNumber(lineno-1)
+		cursor = QTextCursor(block)
+		cursor.movePosition(QTextCursor.EndOfLine)
+		self.editor.setTextCursor(cursor)
+		self.editor.ensureCursorVisible()
+	
+	def seek_position(self, position:int|range):
+		''' set cursor and scroll to position '''
+		cursor = QTextCursor(self.editor.document())
+		if isinstance(position, int):
+			cursor.setPosition(position)
+		elif isinstance(position, range):
+			cursor.setPosition(position.start, QTextCursor.MoveMode.MoveAnchor)
+			cursor.setPosition(position.stop, QTextCursor.MoveMode.KeepAnchor)
+		self.editor.setTextCursor(cursor)
+		self.editor.ensureCursorVisible()
 
 
 class ScriptEdit(QPlainTextEdit):
