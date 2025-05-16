@@ -557,7 +557,7 @@ def test_usage():
 	assert wo == {'a'}
 	assert rw == {'b', 'd', '_temp3', 'c', '_temp2', 'i', '_temp1'}
 	
-def steppize(code:list[AST], scope:str):
+def steppize(code:list[AST], scope:str) -> Iterator[AST]:
 	def filter(node):
 		if isinstance(node, (Module, FunctionDef)):
 			node.body = list(steppize(node.body, scope+'.'+node.name))
@@ -594,7 +594,7 @@ def report(code:list[AST], scope:str) -> list[AST]:
 			),
 		])]
 
-def locate(code:Iterable[AST], scope:str, locations=None) -> dict:
+def locate(code:Iterable[AST], scope:str, locations=None) -> dict[str, dict[str, AST]]:
 	''' change the given code to report its variables to madcad '''
 	if locations is None:
 		locations = {}
@@ -614,7 +614,7 @@ def locate(code:Iterable[AST], scope:str, locations=None) -> dict:
 	
 	return locations
 	
-def usage(code:list, scope:str, usages:dict=None, stops:dict=None) -> dict:
+def usage(code:list, scope:str, usages:dict=None, stops:dict=None) -> dict[str, Usage]:
 	''' analyse the variables usage in all function scopes defined in this AST 
 		
 		Args:

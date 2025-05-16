@@ -12,10 +12,12 @@ from .utils import signal, window, action, button, Initializer, qtschedule
 from .interpreter import Interpreter
 from .mainwindow import MainWindow
 from .sceneview import Scene
+from .scriptview import SubstitutionIndex
 
 
 @dataclass
 class Active:
+	''' non-unique instances currently in use by the user '''
 	sceneview = None
 	scriptview = None
 	errorview = None
@@ -27,6 +29,7 @@ class Active:
 	export: str = None
 
 class Madcad(QObject):
+	''' a uimadcad application instance '''
 	active_changed = signal()
 	file_changed = signal()
 	executed = signal()
@@ -41,12 +44,15 @@ class Madcad(QObject):
 		self.interpreter = Interpreter('<uimadcad>')
 		self.document = QTextDocument(self)
 		self.document.setDocumentLayout(QPlainTextDocumentLayout(self.document))
+		self.reindex = SubstitutionIndex()
 		self.window = window(MainWindow(self))
 		self.thread = SlaveThread()
 		
 		self._check_change_timer = QTimer(self)
 		self._check_change_timer.setInterval(5000)
 		self._check_change_timer.timeout.connect(self.check_change)
+		
+		self.document.contentsChange.connect(self.reindex.substitute)
 		
 		self.load_file(file)
 		
@@ -114,6 +120,7 @@ class Madcad(QObject):
 		self.stop.trigger()
 		self.window.open_panel.setChecked(True)
 		code = self.document.toPlainText()
+		self.reindex.clear()
 		
 		progress = {}
 		def step(scope, step, steps):
@@ -148,6 +155,7 @@ class Madcad(QObject):
 		'''
 		self.stop.trigger()
 		self.interpreter = Interpreter(self.interpreter.filename)
+		self.reindex = SubstitutionIndex()
 		
 	@action(icon='media-playback-stop', shortcut='Ctrl+Backspace')
 	def stop(self):

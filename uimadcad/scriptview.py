@@ -1,6 +1,8 @@
 import re
 from collections import deque
+from bisect import bisect_right
 
+from arrex import typedlist
 from pnprint import nformat, deformat, nprint
 from madcad.mathutils import mix, vec4
 from madcad.qt import (
@@ -10,7 +12,7 @@ from madcad.qt import (
 	Qt, QEvent, QMargins, QSize, QRect, QSizePolicy, QKeySequence, 
 	)
 
-from . import settings
+from . import settings, ast
 from .utils import (
 	Initializer, button, action, shortcut,
 	ToolBar, Action, vec_to_qcolor, charformat, extraselection, spacer, 
@@ -237,11 +239,14 @@ class ScriptView(QWidget):
 		self.open_navigation.setText('position: {}:{}'.format(line+1, column+1))
 		
 		if cursor.hasSelection():
-			start, stop = sorted([cursor.position(), cursor.anchor()])
+			start, stop = sorted([
+				self.app.reindex.downgrade(cursor.position()), 
+				self.app.reindex.downgrade(cursor.anchor()),
+				])
 			self.selection = list(self.app.interpreter.names_crossing(range(start, stop)))
 		else:
 			try:
-				item = self.app.interpreter.name_at(cursor.position())
+				item = self.app.interpreter.name_at(self.app.reindex.downgrade(cursor.position()))
 			except IndexError:
 				self.selection = []
 			else:
@@ -274,19 +279,47 @@ class ScriptView(QWidget):
 		s = settings.scriptview
 		selected = charformat(background=vec_to_qcolor(s['selected_background']))
 		highlighted = charformat(background=vec_to_qcolor(s['highlight_background']))
+		
 		highlights = []
+		# selections from the script view
 		for item in self.selection:
-			cursor = self.editor.textCursor()
-			cursor.setPosition(item.range.start, cursor.MoveMode.MoveAnchor)
-			cursor.setPosition(item.range.stop, cursor.MoveMode.KeepAnchor)
-			highlights.append(extraselection(cursor, selected))
-			# TODO remove this
-			# nprint('highlight', item.range, cursor.position(), cursor.anchor(), ast.dump(item.node), repr(cursor.selectedText()))
+			highlights.append(extraselection(self._reindex_cursor(item.range), selected))
+		# selection from the scene view
 		if self.app.active.sceneview:
-			for disp in self.app.active.sceneview.scene.selection:
-				pass
-				#TODO
+			# TODO clean this mess
+			nprint('locations', self.app.interpreter.locations)
+			nprint('scopes', self.app.interpreter.scopes.keys())
+			index = {id(self.app.interpreter.scopes[located.scope][located.name]): located  
+				for located in self.app.interpreter.locations
+				if located.scope in self.app.interpreter.scopes
+				and located.name in self.app.interpreter.scopes[located.scope]}
+		
+			for disp in self.app.active.sceneview.scene.selection:		
+				if not disp.key:
+					continue
+					
+				node = self.app.active.sceneview.scene.root
+				stack = []
+				for k in disp.key:
+					node = node[k]
+					stack.append(node)
+					
+				for node in reversed(stack):
+					located = index.get(id(getattr(node, 'source', None)))
+					if located is not None:
+						break
+				else:
+					continue
+				
+				highlights.append(extraselection(self._reindex_cursor(located.range), highlighted))
+					
 		self.editor.setExtraSelections(highlights)
+		
+	def _reindex_cursor(self, range:range):
+		cursor = self.editor.textCursor()
+		cursor.setPosition(self.app.reindex.upgrade(range.start), cursor.MoveMode.MoveAnchor)
+		cursor.setPosition(self.app.reindex.upgrade(range.stop-1)+1, cursor.MoveMode.KeepAnchor)
+		return cursor
 	
 	def _retreive_settings(self):
 		self.show_linenumbers.setChecked(settings.scriptview['linenumbers'])
@@ -903,3 +936,115 @@ def move_text_cursor(cursor, location, movemode=QTextCursor.MoveAnchor):
 	if cursor.blockNumber() < line:		cursor.movePosition(cursor.PreviousBlock, movemode, cursor.blockNumber()-line)
 	if cursor.columnNumber() < column:	cursor.movePosition(cursor.NextCharacter, movemode, column-cursor.columnNumber())
 	if cursor.columnNumber() > column:	cursor.movePosition(cursor.PreviousCharacter, movemode, cursor.columnNumber()-column)
+
+
+class SubstitutionIndex:
+	''' reindexation between a fixed sequence and a changed sequence '''
+	def __init__(self):
+		self._src = typedlist((0,), int)  # represent the index in the original sequence
+		self._dst = typedlist((0,), int)  # represent the index in the modified sequence
+	
+	def clear(self):
+		''' clear all discontiguities '''
+		del self._src[1:]
+		del self._dst[1:]
+		self._src[0] = 0
+		self._dst[0] = 0
+	
+	def substitute(self, position:int, remove:int=0, add:int=0):
+		''' change the index to remove and add a number of elements
+			
+			complexity is O(n)
+		'''
+		i = bisect_right(self._dst, position)-1
+		change = add - remove
+		new_src = position - self._dst[i] + self._src[i]
+		new_dst = position + change
+		if self._src[i] == new_src or self._dst[i] >= new_dst:
+			self._src[i] = new_src
+			self._dst[i] = new_dst
+		else:
+			self._src.insert(i+1, position - self._dst[i] + self._src[i])
+			self._dst.insert(i+1, position + change)
+			i += 1
+		for j in range(i+1, len(self._dst)):
+			self._dst[j] += change
+	
+	def upgrade(self, position:int) -> int:
+		''' convert the given position before substitution to position after substitution 
+		
+			complexity is O(log(n))
+		'''
+		i = bisect_right(self._src, position)-1
+		up = position - self._src[i] + self._dst[i]
+		if up < self._dst[i]:
+			up = self._dst[i]
+		elif i+1 < len(self._src) and up > self._dst[i+1]:
+			up = self._dst[i+1]
+		return up
+		
+	def downgrade(self, position:int) -> int:
+		''' convert the given position after substitution to position before substitution 
+		
+			complexity is O(log(n))
+		'''
+		i = bisect_right(self._dst, position)-1
+		down = position - self._dst[i] + self._src[i]
+		if down < self._src[i]:
+			down = self._src[i]
+		elif i+1 < len(self._src) and down > self._src[i+1]:
+			down = self._src[i+1]
+		return down
+	
+	def steps(self) -> int:
+		''' return the number of index discontiguities '''
+		return len(self._src) -1
+
+
+def test_substitution_index():
+	def assert_eq(name, a, b):
+		assert a == b, (name,':', a, 'should be', b)
+	
+	def check():
+		for dst, src in enumerate(reference):
+			if src is None:
+				continue
+			assert_eq(src, index.upgrade(src), dst)
+			assert_eq(dst, index.downgrade(dst), src)
+	
+	def test(position, remove=0, add=0):
+		print()
+		index.substitute(position, remove, add)
+		reference[position-remove:position] = [None]*add
+		nprint('src', index._src)
+		nprint('dst', index._dst)
+		check()
+		
+	index = SubstitutionIndex()
+	reference = list(range(30))
+	
+	# test our check
+	check()
+	
+	# test reliability of the resulting index
+	test(10, remove=2)
+	test(16, remove=2)
+	test(10, remove=2)
+	test(9, remove=2)
+	
+	test(10, add=2)
+	test(9, add=2)
+	test(8, add=2)
+	test(20, remove=2, add=2)
+
+	index = SubstitutionIndex()
+	reference = list(range(30))
+	
+	# test fusion of edited zones
+	test(10, add=1)
+	test(11, add=1)
+	test(12, add=2)
+	test(14, add=2)
+	assert index.steps() == 1
+	test(17, add=1)
+	assert index.steps() == 2
