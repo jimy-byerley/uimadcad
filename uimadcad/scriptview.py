@@ -15,7 +15,7 @@ from .utils import (
 	Initializer, button, action, shortcut,
 	ToolBar, Action, vec_to_qcolor, charformat, extraselection, spacer, 
 	vlayout, hlayout,
-	color_to_vec, vec_to_qcolor,
+	qcolor_to_vec, vec_to_qcolor,
 	)
 
 
@@ -754,7 +754,7 @@ class ScriptFindReplace(QWidget):
 		color = vec4(0,1,0,0) if positive else vec4(1,0,0,0)
 		palette = self.palette()
 		background = mix(
-			color_to_vec(palette.color(QPalette.Base)), 
+			qcolor_to_vec(palette.color(QPalette.Base)), 
 			color, 
 			0.1)
 		palette.setColor(QPalette.Base, vec_to_qcolor(background))

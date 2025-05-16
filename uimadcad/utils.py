@@ -412,17 +412,18 @@ def extraselection(cursor: QTextCursor, format: QTextCharFormat) -> QTextEdit.Ex
 	o.format = format
 	return o
 
-def mix_colors(a: QColor, b: QColor, x: float) -> QColor:
+def mix_qcolor(a: QColor, b: QColor, x: float) -> QColor:
 	a = a.toRgb()
 	b = b.toRgb()
 	y = 1-x
 	return QColor(
-		int(a.red()*x + b.red()*y),
-		int(a.green()*x + b.green()*y),
-		int(a.blue()*x + b.blue()*y),
+		int(a.red()*y + b.red()*x),
+		int(a.green()*y + b.green()*x),
+		int(a.blue()*y + b.blue()*x),
+		int(a.alpha()*y + b.alpha()*x),
 		)
 
-def color_to_vec(color: QColor) -> vec4:
+def qcolor_to_vec(color: QColor) -> vec4:
 	color = color.toRgb()
 	return vec4(color.red(), color.green(), color.blue(), color.alpha()) / 255
 	
