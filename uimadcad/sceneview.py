@@ -28,12 +28,9 @@ class Scene(madcad.rendering.Scene, QObject):
 		# active selection path
 		self.active_selection = None
 		self.active_path = None
-		# prevent reference-loop in groups (groups are taken from the execution env, so the user may not want to display it however we are trying to)
-		self.memo = set()
-		# scene data
-		self.additions = {		# systematic scene additions
+		# systematic scene additions
+		self.additions = {		
 			'__grid__': madcad.rendering.Displayable(Grid),
-			# '__highlight__': madcad.rendering.Displayable(Highlight),
 			'__base__': madcad.rendering.Displayable(Base),
 			}
 		# application behavior
@@ -58,8 +55,8 @@ class Scene(madcad.rendering.Scene, QObject):
 	
 	def sync(self):
 		''' synchronize the scene content with the rest of the application '''
-		# name = self.app.active.scope
-		name = self.app.interpreter.filename # TODO: remove this debug value
+		name = self.app.active.scope
+		# name = self.app.interpreter.filename # TODO: remove this debug value
 		scope = self.app.interpreter.scopes.get(name)
 		usage = self.app.interpreter.usages.get(name)
 		
@@ -160,9 +157,13 @@ class Scene(madcad.rendering.Scene, QObject):
 			return
 		node = self.root
 		stack = []
-		for k in display.key:
-			node = node[k]
-			stack.append(node)
+		try:
+			for k in display.key:
+				node = node[k]
+				stack.append(node)
+		# display.key is outdated
+		except KeyError:
+			return
 		for node in reversed(stack):
 			located = self.source(node)
 			if located is not None:

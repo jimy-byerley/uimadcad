@@ -107,6 +107,7 @@ class ScriptView(QWidget):
 		
 		self._update_colors()
 		self._update_active_selection()
+		self._update_current_location()
 		self._retreive_settings()
 		self._toolbars_visible(False)
 		self.open_navigation.toggled.emit(False)
@@ -556,6 +557,8 @@ class ScriptLines(QWidget):
 		# paint numbers from the first visible block to the last visible
 		zone = event.rect()
 		painter = QPainter(self)
+		painter.setFont(self.font)
+		painter.setPen(vec_to_qcolor(settings.scriptview['normal_color'] * 0.4))
 		view = self.parent()
 		block = view.firstVisibleBlock()
 		top = int(view.blockBoundingGeometry(block).translated(view.contentOffset()).top())
@@ -563,7 +566,6 @@ class ScriptLines(QWidget):
 		while block.isValid() and top <= zone.bottom():
 			if block.isVisible() and top >= zone.top():
 				height = int(view.blockBoundingRect(block).height())
-				painter.setFont(self.font)
 				painter.drawText(0, top, self.width-2*charwidth, height, Qt.AlignRight, str(block.blockNumber()+1))
 				top += height
 			block = block.next()

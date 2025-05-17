@@ -122,19 +122,14 @@ def use_qt_colors():
 	
 	rare = mix(accent, second, 0.3)
 	
-	selection = mix(fvec3(0.4, 1, 0), second, 0.6)
+	selection = mix(fvec3(0.4, 1, 0), qtc(QPalette.Highlight), 0.6)
 	selection *= mix(1/max(selection), max(normal), 0.3)
-	hover = mix(fvec3(0., 0.4, 1), second, 0.6)
+	hover = mix(fvec3(0., 0.4, 1), qtc(QPalette.Highlight), 0.6)
 	hover *= mix(1/max(selection), max(normal), 0.3)
-	
-	# selection = mix(fvec3(0.4, 1, 0), qtc(QPalette.Highlight), 0.6)
-	# selection *= mix(1/max(selection), max(qtc(QPalette.Text)), 0.3)
-	# hover = mix(fvec3(0., 0.4, 1), qtc(QPalette.Highlight), 0.6)
-	# hover *= mix(1/max(selection), max(qtc(QPalette.Text)), 0.3)
 	
 	scriptview.update({
 		'background': background,
-		'hover_background': fvec4(hover, 0.2),
+		'hover_background': fvec4(hover, 0.3),
 		'selection_background': fvec4(selection, 0.2),
 		'edition_background': fvec4(rare, 0.2),
 		'normal_color': normal,

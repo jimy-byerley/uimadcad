@@ -36,7 +36,8 @@ class Interpreter:
 		self.definitions = {}
 		self.locations = []
 		self.usages = {}
-		self.stops = []
+		# TODO reimplement interpreter early stop
+		# self.stops = []
 		self.exception = None
 	
 	def execute(self, source:str, step:callable):

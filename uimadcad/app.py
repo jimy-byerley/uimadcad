@@ -136,8 +136,8 @@ class Madcad(QObject):
 			self.interpreter.execute(code, step)
 			if self.interpreter.exception:
 				@qtschedule
-				def update(err = err):
-					self.window.panel.set_exception(err)
+				def update():
+					self.window.panel.set_exception(self.interpreter.exception)
 			else:
 				@qtschedule
 				def update():
