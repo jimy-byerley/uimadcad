@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="48"
+   height="48"
+   viewBox="0 0 12.7 12.7"
+   version="1.1"
+   id="svg8"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   sodipodi:docname="madcad-base.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs17" />
+  <style
+     id="current-color-scheme"
+     type="text/css">.ColorScheme-Text { color:#232629; }
+.ColorScheme-Highlight { color:#93cee9; }
+</style>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#2d2d2d"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="6.552262"
+     inkscape:cx="14.4225"
+     inkscape:cy="19.153691"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     units="px"
+     inkscape:window-width="891"
+     inkscape:window-height="570"
+     inkscape:window-x="748"
+     inkscape:window-y="425"
+     inkscape:window-maximized="0"
+     borderlayer="false"
+     inkscape:showpageshadow="false"
+     inkscape:snap-global="false"
+     inkscape:document-rotation="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#2d2d2d">
+    <inkscape:grid
+       type="xygrid"
+       id="grid939" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Calque 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-284.29998)">
+    <path
+       style="stroke-opacity:1;stroke-dasharray:none;stroke-miterlimit:4;stroke-width:0.529167;stroke:#888;fill-opacity:1;fill:none;"
+       d="m 6.4922123,291.09853 4.9617637,2.54605"
+       id="path865"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="cc" />
+    <path
+       style="stroke-opacity:1;stroke-dasharray:none;stroke-miterlimit:4;stroke-width:0.529167;stroke:#888;fill-opacity:1;fill:none;"
+       d="m 6.29031,291.01776 -5.0444912,2.58442"
+       id="path865-7"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="cc" />
+    <path
+       style="stroke-opacity:1;stroke-dasharray:none;stroke-miterlimit:4;stroke-width:0.529167;stroke:#888;fill-opacity:1;fill:none;"
+       d="m 6.4922123,290.57358 -0.015013,-4.70341"
+       id="path865-5"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="cc" />
+    <rect
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.396875;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       id="rect1557-4-8"
+       width="1.8772286"
+       height="1.775756"
+       x="10.500723"
+       y="292.67386"
+       class="ColorScheme-Highlight" />
+    <rect
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.396875;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       id="rect1557-4-8-7"
+       width="1.8772286"
+       height="1.775756"
+       x="0.39394093"
+       y="292.69958"
+       class="ColorScheme-Highlight " />
+    <rect
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.396875;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       id="rect1557-4-8-3"
+       width="1.8772286"
+       height="1.775756"
+       x="5.5222588"
+       y="284.46201"
+       class="ColorScheme-Highlight " />
+    <rect
+       style="fill:currentColor;fill-opacity:1;stroke:none;stroke-width:0.396875;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+       id="rect1557-4"
+       width="1.8772286"
+       height="1.775756"
+       x="5.4934897"
+       y="290.15268"
+       class="ColorScheme-Text" />
+  </g>
+</svg>

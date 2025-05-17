@@ -54,6 +54,7 @@ class Interpreter:
 		self.source = source
 		code = self.ast = ast.parse(source)
 		
+		# BUG getting definitions from a copy doesn't process temporary values in the same order, so doesn't provide definitions matching the execution result
 		self.definitions = ast.locate(ast.flatten(deepcopy(code.body)), self.filename)
 		nprint('definitions', self.definitions)
 		locations = []

@@ -243,24 +243,27 @@ class ScriptView(QWidget):
 				self.app.reindex.downgrade(cursor.position()), 
 				self.app.reindex.downgrade(cursor.anchor()),
 				])
-			self.selection = list(self.app.interpreter.names_crossing(range(start, stop)))
+			selection = list(self.app.interpreter.names_crossing(range(start, stop)))
 		else:
 			try:
 				item = self.app.interpreter.name_at(self.app.reindex.downgrade(cursor.position()))
 			except IndexError:
-				self.selection = []
+				selection = []
 			else:
 				self.app.active.scope = item.scope
-				self.selection = [item]
-				self._update_active_selection()
-
-		self.sync()
+				selection = [item]
+		
+		if selection != self.selection:
+			self.selection = selection
+			self._update_active_selection()
+			self.sync()
 	
 	def _update_active_selection(self):
 		if self.selection:
 			active = self.selection[0]
 			text = active.scope+'.'+active.name
-			# text = "machin['truc'].bidule"
+			if text.startswith(self.app.interpreter.filename):
+				text = text[len(self.app.interpreter.filename)+1:]
 		
 			font = QFont(*settings.scriptview['font'])
 			pointsize = font.pointSize()
@@ -270,13 +273,15 @@ class ScriptView(QWidget):
 			self.view_selection.show()
 		else:
 			self.view_selection.setEnabled(False)
+			self.view_selection.setFont(QFont())
 			self.view_selection.setText('seek selection')
 			self.view_selection.hide()
 		if self.app.active.sceneview:
 			self.app.active.sceneview.scene.sync()
+			self.app.active.sceneview.update()
 	
 	def sync(self):
-		''' synchronize the text rendering with what is available in the result of the app '''
+		''' synchronize the text rendering with what is available in the app (selections, hovers, editors, ...) '''
 		s = settings.scriptview
 		selected = charformat(background=vec_to_qcolor(s['selection_background']))
 		highlighted = charformat(background=vec_to_qcolor(s['hover_background']))
@@ -330,8 +335,26 @@ class ScriptView(QWidget):
 		
 			(shortcut: Alt+Down)
 		'''
-		inbev
-		
+		if not self.app.active.sceneview:
+			return
+		view = self.app.active.sceneview
+		selected = False
+		for source in self.selection:
+			try:
+				if source.scope == self.app.interpreter.filename:
+					scope = view.scene.root
+				else:
+					scope = view.scene.root[source.scope]
+				found = scope[source.name]
+			except KeyError:
+				continue
+			if hasattr(found, 'selected'):
+				view.scene.selection_add(found)
+				selected = True
+		if selected:
+			view.view_adjust.trigger()
+			view.setFocus()
+	
 	@action(icon='go-up', shortcut='Alt+Up')
 	def seek_definition(self):
 		''' move cursor to the definition of variable under cursor

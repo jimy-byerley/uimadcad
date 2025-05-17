@@ -4,6 +4,7 @@ from operator import itemgetter
 
 import numpy as np
 import moderngl as mgl
+from pnprint import nprint
 
 from madcad.qt import (
 	Qt, QObject, QEvent, 
@@ -14,6 +15,7 @@ from madcad.qt import (
 	)
 
 import madcad
+import madcad.scheme
 from madcad.rendering.d3 import Perspective, Orthographic, Turntable, Orbit
 from madcad.mesh import Mesh, Web, Wire
 from madcad.mathutils import *
@@ -32,6 +34,7 @@ class Scene(madcad.rendering.Scene, QObject):
 		self.additions = {		# systematic scene additions
 			'__grid__': madcad.rendering.Displayable(Grid),
 			# '__highlight__': madcad.rendering.Displayable(Highlight),
+			'__base__': madcad.rendering.Displayable(Base),
 			}
 		# application behavior
 		self.composer = SceneComposer(self)
@@ -39,7 +42,11 @@ class Scene(madcad.rendering.Scene, QObject):
 		# for optimization purpose
 		if options is None:
 			options = {}
-		options['track_source'] = True
+		options.update(
+			track_source = True,
+			display_grid = True,
+			display_base = False,
+			)
 		# data graph setup
 		QObject.__init__(self)
 		madcad.rendering.Scene.__init__(self, context=context, options=options)
@@ -81,12 +88,29 @@ class Scene(madcad.rendering.Scene, QObject):
 		
 		# recreate the scene dictionnary
 		new = {}
+		# with scene composition
 		for key in keys:
 			if key.startswith('_madcad_'):
 				continue
 			obj = scope.get(key, None)
 			if self.displayable(obj):
 				new[key] = obj
+		# with script selection
+		if self.app.active.scriptview:
+			for selected in self.app.active.scriptview.selection:
+				scope = self.app.interpreter.scopes.get(selected.scope)
+				if not scope:
+					continue
+				obj = scope.get(selected.name)
+				if not obj:
+					continue
+				if selected.scope == self.app.interpreter.filename:
+					new[selected.name] = obj
+				else:
+					if selected.scope not in new:
+						new[selected.scope] = {}
+					new[selected.scope][selected.name] = obj
+		# with decoration elements
 		new.update(self.additions)
 		
 		super().update(new)
@@ -207,6 +231,7 @@ class SceneView(madcad.rendering.QView3D):
 			self.display_groups,
 			self.display_annotations,
 			self.display_grid,
+			self.display_base,
 			None,
 			self.solid_freemove,
 			None,
@@ -344,7 +369,11 @@ class SceneView(madcad.rendering.QView3D):
 	
 	def _update_active_selection(self):
 		if self.scene.active_selection:
-			text = self.scene.format_key(self.scene.active_selection.key)
+			selection = self.scene.active_selection
+			text = self.scene.format_key(selection.key)
+			# special case for subitem
+			if isinstance(selection.selected, set) and None not in selection.selected:
+				text += '.group({})'.format(next(iter(selection.selected)))
 		
 			font = QFont(*settings.scriptview['font'])
 			pointsize = font.pointSize()
@@ -354,6 +383,7 @@ class SceneView(madcad.rendering.QView3D):
 			self.seek_selection.show()
 		else:
 			self.seek_selection.setEnabled(False)
+			self.seek_selection.setFont(QFont())
 			self.seek_selection.setText('seek selection')
 			self.seek_selection.hide()
 		if self.app.active.scriptview:
@@ -607,6 +637,11 @@ class SceneView(madcad.rendering.QView3D):
 			icon='view-grid',
 			description='display metric a grid in the background',
 			shortcut='Shift+B'),
+			
+		display_base = dict( 
+			icon='madcad-base',
+			description='display base vectors and origin',
+			shortcut='Shift+V'),
 		
 		solid_freemove = dict(
 			icon='madcad-solid-freemove',
@@ -822,8 +857,8 @@ class SceneComposer(QWidget):
 
 class Grid(madcad.rendering.d3.marker.GridDisplay):
 	''' display for the scene metric grid '''
-	def __init__(self, scene, **kwargs):
-		super().__init__(scene, fvec3(0), **kwargs)
+	def __init__(self, scene):
+		super().__init__(scene, fvec3(0))
 	
 	def stack(self, scene):
 		if scene.options['display_grid']:	return super().stack(scene)
@@ -833,6 +868,20 @@ class Grid(madcad.rendering.d3.marker.GridDisplay):
 		self.center = view.navigation.center
 		super().render(view)
 
+class Base(madcad.scheme.Scheme.display):
+	''' display for the scene base of vectors '''
+	def __init__(self, scene):
+		super().__init__(scene, madcad.scheme.note_base(mat4()))
+	
+	def stack(self, scene):
+		if scene.options['display_base']:
+			for step in super().stack(scene):
+				if isinstance(step, tuple):
+					step = madcad.rendering.Step(*step)
+				if step.target != 'ident':
+					yield step
+		else:
+			return ()
 
 class DownsampleIdent(madcad.rendering.Display):
 	''' simple display used to downsample the ident map to the screen size '''
