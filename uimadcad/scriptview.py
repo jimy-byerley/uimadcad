@@ -239,6 +239,7 @@ class ScriptView(QWidget):
 		line, column = cursor_location(cursor)
 		self.open_navigation.setText('position: {}:{}'.format(line+1, column+1))
 		
+		self.app.active.scope = self.app.interpreter.scope_at(self.app.reindex.downgrade(cursor.position()))
 		if cursor.hasSelection():
 			start, stop = sorted([
 				self.app.reindex.downgrade(cursor.position()), 
@@ -251,7 +252,6 @@ class ScriptView(QWidget):
 			except IndexError:
 				selection = []
 			else:
-				self.app.active.scope = item.scope
 				selection = [item]
 		
 		if selection != self.selection:
@@ -498,8 +498,8 @@ class ScriptView(QWidget):
 		if isinstance(position, int):
 			cursor.setPosition(position)
 		elif isinstance(position, range):
-			cursor.setPosition(position.start, QTextCursor.MoveMode.MoveAnchor)
-			cursor.setPosition(position.stop, QTextCursor.MoveMode.KeepAnchor)
+			cursor.setPosition(position.stop, QTextCursor.MoveMode.MoveAnchor)
+			cursor.setPosition(position.start, QTextCursor.MoveMode.KeepAnchor)
 		self.editor.setTextCursor(cursor)
 		self.editor.ensureCursorVisible()
 

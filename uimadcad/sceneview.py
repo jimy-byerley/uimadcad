@@ -56,7 +56,6 @@ class Scene(madcad.rendering.Scene, QObject):
 	def sync(self):
 		''' synchronize the scene content with the rest of the application '''
 		name = self.app.active.scope
-		# name = self.app.interpreter.filename # TODO: remove this debug value
 		scope = self.app.interpreter.scopes.get(name)
 		usage = self.app.interpreter.usages.get(name)
 		
@@ -304,7 +303,7 @@ class SceneView(madcad.rendering.QView3D):
 	
 	def changeEvent(self, evt):
 		# update scene when color changes
-		if evt.type() == QEvent.PaletteChange and madcad.settings.display['system_theme'] and self.scene.ctx:
+		if evt.type() == QEvent.PaletteChange and madcad.settings.display['system_theme']:
 			self.scene.sync()
 		return super().changeEvent(evt)
 		

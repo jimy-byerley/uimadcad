@@ -123,7 +123,7 @@ def _parcimonize_return(key, node) -> list:
 	r = _parcimonize_assign(key, Assign([Name('_return', Store())], node.value))
 	r.append(Return(Name('_return', Load())))
 	return r
-		
+
 def _parcimonize_assign(key, node) -> list:
 	# an expression assigned is assumed to not modify its arguments
 	return _cache_use(key, node.targets, [
@@ -156,6 +156,7 @@ def _cache_use(key: hash, targets: list, generate: list) -> list:
 				),
 			# run the generating code
 			body = [
+				# TODO remove this debug print
 					Expr(Call(Name('print', Load()), args=[Constant('generate'), Constant(key)], keywords=[])),
 				] + generate,
 			# retreive from cache
@@ -212,7 +213,7 @@ class ScopeCache:
 		self.scope = {}
 	
 	# list of types that do not need to be deepcopied (immutable or uncopiable)
-	whitelist = {types.ModuleType, types.FunctionType, str, int, float}
+	whitelist = {types.ModuleType, types.FunctionType, type, str, int, float}
 	
 	def get(self, key):
 		''' retreive a cached value '''
@@ -239,6 +240,9 @@ class ScopeCache:
 		
 	def __bool__(self):
 		return bool(self.scopes)
+		
+	def __contains__(self, key):
+		return key in self.scope
 	
 class ArgumentsKey:
 	__slots__ = 'key', 'args'
@@ -264,7 +268,7 @@ def test_parcimonize():
 	from copy import deepcopy
 	
 	filename = '<input>'
-	code = normalize_indent('''
+	code = normalize_indent('''\
 		from math import sin, cos
 
 		def foo():
@@ -317,7 +321,7 @@ def test_parcimonize():
 
 	second_ast = parse(code.format('b = bar(a, e)'))
 	result = Module(
-		list(parcimonize(cache=cache, scope=filename, args=(), code=second_ast, previous=previous)),
+		list(parcimonize(cache=cache, scope=filename, args=(), code=second_ast.body, previous=previous)),
 		type_ignores=[])
 	fix_missing_locations(result)
 	bytecode = compile(result, filename, 'exec')
@@ -537,26 +541,6 @@ def test_flatten():
 	assert isinstance(code.body[-1].value.left, Name)
 	assert isinstance(code.body[-1].value.right, Name)
 	
-def test_usage():
-	from pnprint import nprint
-	code = parse(normalize_indent('''\
-		a = (b+c)+d
-		b = [5] + [i+1 for i in range(5)]
-		if 1 != 0:
-			c = 1 + 2
-		else:
-			d = 1 + 3 + 4
-		'''))
-	code.body = list(flatten(code.body))
-	fix_missing_locations(code)
-	nprint(dump(code))
-	compile(code, '<flatten>', 'exec')
-	ro, wo, rw = usage(code)
-	nprint(ro, wo, rw)
-	assert ro == {'range'}
-	assert wo == {'a'}
-	assert rw == {'b', 'd', '_temp3', 'c', '_temp2', 'i', '_temp1'}
-	
 def steppize(code:list[AST], scope:str) -> Iterator[AST]:
 	def filter(node):
 		if isinstance(node, (Module, FunctionDef)):
@@ -580,7 +564,7 @@ def report(code:list[AST], scope:str) -> list[AST]:
 	''' change the given code to report its variables to madcad '''
 	def filter(node):
 		if isinstance(node, (Module, FunctionDef)):
-			report(node.body, scope+'.'+node.name)
+			node.body = report(node.body, scope+'.'+node.name)
 		else:
 			propagate(node, filter)
 	
@@ -592,6 +576,10 @@ def report(code:list[AST], scope:str) -> list[AST]:
 			targets = [Subscript(Name('_madcad_scopes', Load()), Constant(scope), Store())],
 			value = Call(Name('_madcad_vars', Load()), args=[], keywords=[]),
 			),
+		# Expr(Call(Name('print', Load()), args=[
+		# 	Constant('report'), Constant(scope), 
+		# 	# Call(Name('_madcad_vars', Load()), args=[], keywords=[]),
+		# 	], keywords=[])),
 		])]
 
 def locate(code:Iterable[AST], scope:str, locations=None) -> dict[str, dict[str, AST]]:
@@ -601,6 +589,7 @@ def locate(code:Iterable[AST], scope:str, locations=None) -> dict[str, dict[str,
 	locations[scope] = {}
 	def filter(node):
 		if isinstance(node, (Module, FunctionDef)):
+			locations[scope][node.name] = node
 			locate(node.body, scope+'.'+node.name, locations)
 		elif isinstance(node, Assign):
 			for target in node.targets:
@@ -613,6 +602,73 @@ def locate(code:Iterable[AST], scope:str, locations=None) -> dict[str, dict[str,
 		filter(node)
 	
 	return locations
+	
+def test_locate():
+	def check(located, reference):
+		for scope, vars in reference.items():
+			assert scope in located
+			for name, ty in vars.items():
+				assert name in located[scope]
+				assert isinstance(located[scope][name], ty)
+	
+	code = parse(normalize_indent('''\
+		def truc(a, b):
+			c = a+b+1
+			return c+1		
+		def machin(a):
+			b = a+1
+			return a+2
+		def chose(a, b):
+			def muche(c):
+				d = a+b
+				e = d+c
+				return e
+			return muche(1)
+		
+		t = truc(2,3)
+		m = machin(1)
+		c = chose(2,3)
+		''')).body
+	located = locate(code, 'root')
+	check(located, {
+        'root': {
+                'truc': FunctionDef,
+                'machin': FunctionDef,
+                'chose': FunctionDef,
+                't': Assign,
+                'm': Assign,
+                'c': Assign,
+                },
+        'root.truc': {'c': Assign},
+        'root.machin': {'b': Assign},
+        'root.chose': {'muche': FunctionDef},
+        'root.chose.muche': {'d': Assign, 'e': Assign},
+        })
+	
+	code = flatten(code)
+	located = locate(code, 'root')
+	check(located, {
+        'root': {
+                'truc': FunctionDef,
+                'machin': FunctionDef,
+                'chose': FunctionDef,
+                't': Assign,
+                'm': Assign,
+                'c': Assign,
+                },
+        'root.truc': {
+			'c': Assign,
+			'_temp1': Assign,
+			'_return': Assign,
+			},
+        'root.machin': {'b': Assign},
+        'root.chose': {
+			'muche': FunctionDef,
+			'_return': Assign,
+			},
+        'root.chose.muche': {'d': Assign, 'e': Assign},
+        })
+
 	
 def usage(code:list, scope:str, usages:dict=None, stops:dict=None) -> dict[str, Usage]:
 	''' analyse the variables usage in all function scopes defined in this AST 
@@ -630,7 +686,7 @@ def usage(code:list, scope:str, usages:dict=None, stops:dict=None) -> dict[str, 
 
 	def filter(node):
 		if isinstance(node, (Module, FunctionDef)):
-			usage(node.body, scope+'.'+node.name)
+			usage(node.body, scope+'.'+node.name, usages, stops)
 		# if the current node is after the current scope's end, do not count its usages
 		elif getattr(node, 'lineno', 0) > stops.get(scope, inf):
 			pass
@@ -663,6 +719,65 @@ class Usage:
 	''' variables that were lastly wrote but never read in the current scope '''
 	rw: set
 	''' variables that were wrote then read in the current scope '''
+
+def test_usage():
+	from pnprint import nprint
+	code = parse(normalize_indent('''\
+		a = (b+c)+d
+		b = [5] + [i+1 for i in range(5)]
+		if 1 != 0:
+			c = 1 + 2
+		else:
+			d = 1 + 3 + 4
+		'''))
+	code.body = list(flatten(code.body))
+	fix_missing_locations(code)
+	nprint(dump(code))
+	compile(code, '<flatten>', 'exec')
+	ro, wo, rw = usage(code)
+	nprint(ro, wo, rw)
+	assert ro == {'range'}
+	assert wo == {'a'}
+	assert rw == {'b', 'd', '_temp3', 'c', '_temp2', 'i', '_temp1'}
+	
+def test_usage_scopes():
+	code = parse(normalize_indent('''\
+		def truc(a, b):
+			c = a+b+1
+			return c+1		
+		def machin(a):
+			b = a+1
+			return a+2
+		def chose(a, b):
+			def muche(c):
+				d = a+b
+				e = d+c
+				return e
+			return muche(1)
+		
+		t = truc(2,3)
+		m = machin(1)
+		c = chose(2,3)
+		'''))
+
+	usages = usage(code.body, 'root')
+	assert usages == {
+        'root.truc': Usage(ro={'a', 'b'}, wo={'c'}, rw=set()),
+        'root.machin': Usage(ro={'a'}, wo={'b'}, rw=set()),
+        'root.chose.muche': Usage(ro={'a', 'c', 'b'}, wo={'e'}, rw={'d'}),
+        'root.chose': Usage(ro=set(), wo=set(), rw=set()),
+        'root': Usage(ro={'chose', 'truc', 'machin'}, wo={'t', 'c', 'm'}, rw=set()),
+        }
+        
+	usages = usage(flatten(code.body), 'root')
+	assert usages == {
+        'root.truc': Usage(ro={'a', 'b'}, wo={'_return'}, rw={'c'}),
+        'root.machin': Usage(ro={'a'}, wo={'_return', 'b'}, rw=set()),
+        'root.chose.muche': Usage(ro={'a', 'c', 'b'}, wo={'e'}, rw={'d'}),
+        'root.chose': Usage(ro={'muche'}, wo={'_return'}, rw=set()),
+        'root': Usage(ro={'truc', 'machin', 'chose'}, wo={'m', 'c', 't'}, rw=set()),
+        }
+
 	
 def fix_locations(node: AST):
 	''' set approximative line and column locations to AST nodes that are missing these 
@@ -733,20 +848,6 @@ def normalize_indent(text):
 		return text
 	else:
 		return ''
-				
-# def shift(tree, loc, pos):
-# 	''' shift the position attributes of the tree nodes, as if the parsed text was appent to an other string '''
-# 	def recursive(node):
-# 		if hasattr(node, 'lineno'):			
-# 			node.lineno += loc[0]
-# 			if hasattr(node, 'end_lineno'):		node.end_lineno += loc[0]
-# 			if hasattr(node, 'position'):		node.position += pos
-# 			if hasattr(node, 'end_position'):	node.end_position += pos
-# 			if node.lineno == 0:
-# 				node.col_offset += loc[1]
-# 				if hasattr(node, 'end_col_offset'):		node.end_col_offset += loc[1]
-# 		propagate(node, recursive)
-# 	recursive(tree)
 
 def _advancepos(text, loc, startpos=0, startloc=(1,0), tab=1):
 	''' much like textpos but starts from a point (with startpos and startloc) and can advance forward or backward '''
@@ -761,18 +862,7 @@ def _advancepos(text, loc, startpos=0, startloc=(1,0), tab=1):
 	i = text.rfind('\n', 0, i)+1
 	i += loc[1]
 	return i
-		
-	
-		
-# def _atpos(tree, pos):
-# 	''' get the AST node from a list of nodes, that contains the given text location '''
-# 	for i,statement in enumerate(tree.body):
-# 		if statement.position >= pos:		
-# 			return i
-# 		if getattr(statement, 'end_position', 0) > pos:
-# 			return i
-# 	return len(tree.body)
-		
+
 def _loc(node):
 	''' text location of an AST node '''
 	return (node.lineno, node.col_offset)
@@ -789,38 +879,3 @@ def textpos(text, loc, tab=1):
 		else:				c += 1
 		i += 1
 	return i
-
-# def textloc(text, pos, tab=1, start=(1,0)):
-# 	''' text location for the given string index '''
-# 	if pos < 0:	pos += len(text)
-# 	l, c = start
-# 	if pos > len(text):	
-# 		raise IndexError('the given position is not in the string')
-# 	for i,char in enumerate(text):
-# 		if i >= pos:	break
-# 		if char == '\n':
-# 			l += 1
-# 			c = 1
-# 		elif char == '\t':
-# 			c += tab
-# 			c -= c%tab
-# 		else:
-# 			c += 1
-# 	return (l,c)
-	
-# def _expruntil(tree, pos):
-# 	remains = []
-# 	def recur(node):
-# 		if isinstance(node, expr) and node.end_position <= pos:
-# 			if isinstance(node, Name) and not isinstance(node.ctx, Load):	return
-# 			remains.append(node)
-# 		else:
-# 			for child in iter_child_nodes(node):
-# 				recur(child)
-# 	recur(tree)
-# 	return [Expr(r, 
-# 				lineno=r.lineno, 
-# 				col_offset=r.col_offset,
-# 				position=r.position, 
-# 				end_position=r.end_position) 	
-# 			for r in remains]

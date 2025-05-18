@@ -49,7 +49,7 @@ class Interpreter:
 				step(scope: str, current_line: int, total_lines: int)
 		'''
 		from pnprint import nprint
-		nprint('cache', self.cache)
+		# nprint('cache', self.cache)
 		
 		self.exception = None
 		self.source = source
@@ -57,7 +57,7 @@ class Interpreter:
 		
 		# BUG getting definitions from a copy doesn't process temporary values in the same order, so doesn't provide definitions matching the execution result
 		self.definitions = ast.locate(ast.flatten(deepcopy(code.body)), self.filename)
-		nprint('definitions', self.definitions)
+		# nprint('definitions', self.definitions)
 		locations = []
 		for scope, definitions in self.definitions.items():
 			for name, node in definitions.items():
@@ -90,8 +90,10 @@ class Interpreter:
 		self.usages = ast.usage(code, self.filename)
 		code = ast.Module(code, type_ignores=[])
 		ast.fix_locations(code)
+		# print(ast.dump(code, indent=4))
 		
-		nprint('cache', self.cache)
+		# nprint('cache', self.cache)
+		nprint('usages', self.usages.keys())
 		
 		# TODO: add stop points
 		
@@ -117,6 +119,8 @@ class Interpreter:
 			self.usages = ast.usage(code.body, self.filename, stops=stops)
 			self.exception = err
 			
+		print('caches', self.cache.keys())
+		print('scopes', self.scopes.keys())
 		self.identified = {
 			id(self.scopes[located.scope][located.name]): located  
 			for located in self.locations
@@ -141,6 +145,19 @@ class Interpreter:
 			if position in item.range:
 				return item
 		raise IndexError('no node at the given position')
+	
+	def scope_at(self, position:int) -> Located:
+		''' find the scope with the smallest text range enclosing the given position '''
+		stop = bisect_right(self.locations, position, key=lambda item: item.range.start)
+		for i in reversed(range(0, stop)):
+			item = self.locations[i]
+			if isinstance(item.node, ast.FunctionDef):
+				print('  function', item.scope, item.name)
+			if position in item.range and isinstance(item.node, ast.FunctionDef):
+				print('found scope', position, item.range, item.scope, item.name)
+				return item.scope+'.'+item.name
+		print('gobal scope')
+		return self.filename
 	
 	def interrupt(self):
 		# TODO
