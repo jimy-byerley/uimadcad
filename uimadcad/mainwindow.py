@@ -313,6 +313,7 @@ class DockedView(QDockWidget):
 						|	(QDockWidget.DockWidgetClosable if closable else 0)
 						)
 		self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
+		self.setContentsMargins(1,1,1,1)
 		
 		if isinstance(getattr(content, 'top', None), QWidget):
 			self.restore_button = Button(self.setFloating, flat=True, minimal=True,
@@ -330,12 +331,22 @@ class DockedView(QDockWidget):
 				self.close_button,
 				], spacing=0, margins=(0,0,0,0)))
 			self.setTitleBarWidget(title)
+	
+	def paintEvent(self, event):
+		painter = QPainter(self)
+		painter.setRenderHint(QPainter.Antialiasing, True)
+		pen = painter.pen()
+		pen.setColor(self.palette().midlight().color())
+		pen.setWidth(1)
+		painter.setPen(pen)
+		radius = 2
+		painter.drawRoundedRect(QRectF(0.5, 0.5, self.width()-1, self.height()-1), radius, radius)
 			
 	def close(self):
 		''' the view is not only hidden but also destroyed '''
 		self.parent().removeDockWidget(self)
 
-
+	
 class ExecutionPanel(QGroupBox):
 	def __init__(self, app, parent=None):
 		self.app = app

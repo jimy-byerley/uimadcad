@@ -9,6 +9,7 @@ from madcad.qt import (
 	)
 
 from . import resourcedir
+from .utils import palette_simple
 
 
 window = {
@@ -154,54 +155,22 @@ def use_color_preset(name=None):
 		name = window['color_preset']
 	
 	palette = QPalette()
-	if name != 'system':
-		
+	
+	if name == 'system':
+		palette = palette_simple(
+			base = qtc(palette.color(QPalette.Window)),
+			text = qtc(palette.color(QPalette.WindowText)),
+			highlight = qtc(palette.color(QPalette.Highlight)),
+			link = qtc(palette.color(QPalette.Link)),
+			input = qtc(palette.color(QPalette.Text)),
+			)
+	else:
 		file = resourcedir +'/themes/'+ name + '.yaml'
 		try:
-			colors = yaml.safe_load(open(file, 'r'))
-		except FileNotFoundError as err:
+			palette = palette_simple(**{ k:vec3(v)  for k,v in yaml.safe_load(open(file, 'r')).items() })
+		except (FileNotFoundError, TypeError) as err:
 			print(err)
 			return
-		for key, value in colors.items():
-			colors[key] = fvec3(value)
-		
-		# complete the minimal color set
-		if 'background' not in colors:		colors['background'] = colors['Window']
-		if 'base' not in colors:			colors['base'] = colors['Base']
-		if 'text' not in colors:			colors['text'] = colors['Text']
-		if 'decoration' not in colors:		colors['decoration'] = colors['Dark']
-		if 'colored' not in colors:			colors['colored'] = colors['highlight']
-		
-		# complete the palette colors with the colors of the minimal set
-		if 'Window' not in colors:			colors['Window'] = colors['background']
-		if 'WindowText' not in colors:		colors['WindowText'] = mix(colors['background'], colors['decoration'], 0.8)
-		if 'Base' not in colors:			colors['Base'] = colors['base']
-		if 'AlternateBase' not in colors:	colors['AlternateBase'] = mix(colors['base'], colors['decoration'], 0.05)
-		if 'Highlight' not in colors:		colors['Highlight'] = colors['colored']
-		if 'Light' not in colors:			colors['Light'] = mix(colors['background'], colors['decoration'], 0.08)
-		if 'Midlight' not in colors:		colors['Midlight'] = mix(colors['background'], colors['decoration'], 0.2)
-		if 'Dark' not in colors:			colors['Dark'] = mix(colors['background'], colors['decoration'], 0.3)
-		if 'Mid' not in colors:				colors['Mid'] = mix(colors['background'], colors['decoration'], 0.5)
-		if 'Shadow' not in colors:			colors['Shadow'] = mix(colors['background'], colors['decoration'], 0.8)
-		
-		if 'Text' not in colors:			colors['Text'] = colors['text']
-		if 'BrightText' not in colors:		colors['BrightText'] = mix(colors['colored'], colors['text'], 0.5)
-		if 'HighlightedText' not in colors:	colors['HighlightedText'] = mix(colors['background'], colors['colored'], 0.05)
-		
-		if 'Button' not in colors:			colors['Button'] = mix(colors['background'], colors['decoration'], 0.7)
-		if 'ButtonText' not in colors:		colors['ButtonText'] = mix(colors['background'], colors['decoration'], 0.8)
-		
-		if 'Link' not in colors:			colors['Link'] = colors['colored']
-		if 'LinkVisited' not in colors:		colors['LinkVisited'] = mix(colors['background'], colors['colored'], 0.7)
-		
-		if 'PlaceholderText' not in colors:	colors['PlaceholderText'] = mix(colors['background'], colors['text'], 0.4)
-		if 'ToolTipBase' not in colors:		colors['ToolTipBase'] = colors['background']
-		if 'ToolTipText' not in colors:		colors['ToolTipText'] = colors['decoration']
-		
-		# update the system palette with the theme colors
-		for name, value in colors.items():
-			if hasattr(QPalette, name) and isinstance(getattr(QPalette, name), int):
-				palette.setColor(getattr(QPalette, name), ctq(value))
 	
 	app = QApplication.instance()
 	app.setPalette(palette)

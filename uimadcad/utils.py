@@ -5,7 +5,7 @@ from madcad.qt import (
 	QPushButton, QDockWidget, QToolBar, QActionGroup, QButtonGroup,
 	QMenuBar, QMenu, 
 	QPlainTextEdit, QTextEdit,
-	QApplication, QAction, QShortcut,
+	QApplication, QAction, QShortcut, QPalette,
 	)
 
 import sys
@@ -17,7 +17,7 @@ from functools import partial
 from collections import deque
 from types import MethodType
 
-from madcad.mathutils import vec4, ivec4, vec3, fvec3
+from madcad.mathutils import vec4, ivec4, vec3, fvec3, mix, clamp
 
 __all__ = [
 	'singleton', 'spawn', 'qtmain', 'qtschedule', 'qtinvoke', 'qtquit',
@@ -411,6 +411,48 @@ def extraselection(cursor: QTextCursor, format: QTextCharFormat) -> QTextEdit.Ex
 	o.cursor = cursor
 	o.format = format
 	return o
+	
+
+def palette_simple(
+	base:vec3=vec3(0), text:vec3=vec3(1), highlight:vec3=vec3(0.1, 0.2, 1), 
+	link:vec3=None, view:vec3=None, input:vec3=None, button:vec3=None,
+	):
+	if not link: link = mix(base, highlight, 0.7)
+	if not view: view = clamp(mix(base, text, -0.05), 0, 1)
+	if not input: input = mix(base, text, 1.1)
+	if not button: button = mix(base, text, 0.02)
+	
+	print(base, view)
+	
+	palette = QPalette()
+	
+	palette.setColor(QPalette.Window, vec_to_qcolor(base))
+	palette.setColor(QPalette.Base, vec_to_qcolor(view))
+	palette.setColor(QPalette.AlternateBase, vec_to_qcolor(mix(base, text, 0.3)))
+	palette.setColor(QPalette.WindowText, vec_to_qcolor(mix(base, text, 0.9)))
+	
+	palette.setColor(QPalette.Light, vec_to_qcolor(mix(base, text, 0.1)))
+	palette.setColor(QPalette.Midlight, vec_to_qcolor(mix(base, text, 0.25)))
+	palette.setColor(QPalette.Mid, vec_to_qcolor(mix(base, text, 0.5)))
+	palette.setColor(QPalette.Dark, vec_to_qcolor(mix(base, text, 0.7)))
+	palette.setColor(QPalette.Shadow, vec_to_qcolor(mix(base, text, 0.8)))
+	
+	palette.setColor(QPalette.Text, vec_to_qcolor(input))
+	palette.setColor(QPalette.BrightText, vec_to_qcolor(mix(text, link, 0.5)))
+	
+	palette.setColor(QPalette.Highlight, vec_to_qcolor(highlight))
+	palette.setColor(QPalette.Link, vec_to_qcolor(link))
+	palette.setColor(QPalette.LinkVisited, vec_to_qcolor(link*0.6))
+	
+	palette.setColor(QPalette.Button, vec_to_qcolor(button))
+	palette.setColor(QPalette.ButtonText, vec_to_qcolor(text))
+	
+	palette.setColor(QPalette.PlaceholderText, vec_to_qcolor(mix(base, text, 0.5)))
+	
+	palette.setColor(QPalette.ToolTipBase, vec_to_qcolor(base))
+	palette.setColor(QPalette.ToolTipText, vec_to_qcolor(text))
+	
+	return palette
 
 def mix_qcolor(a: QColor, b: QColor, x: float) -> QColor:
 	a = a.toRgb()
