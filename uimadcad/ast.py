@@ -454,8 +454,11 @@ def annotate(tree: AST, text: str):
 	
 def test_annotate():
 	indev
-	
-def flatten(code: Iterable[AST], nodes={Call, BoolOp, BinOp, Tuple, List, Return, ListComp, DictComp}, vars:set=None) -> list:
+
+# default interesting expressions to flatten
+flatten_selection = {Call, BoolOp, BinOp, Tuple, List, Return, ListComp, DictComp}
+
+def flatten(code: Iterable[AST], filter=None, vars:set=None) -> list:
 	''' unroll all expressions and assign temporary values to hidden variables
 	
 		inplace node modifications
@@ -464,6 +467,8 @@ def flatten(code: Iterable[AST], nodes={Call, BoolOp, BinOp, Tuple, List, Return
 	'''
 	if vars is None:
 		vars = set()
+	if filter is None:
+		filter = lambda node: type(node) in flatten_selection
 	
 	# choose temporary names
 	def tempname():
@@ -482,7 +487,7 @@ def flatten(code: Iterable[AST], nodes={Call, BoolOp, BinOp, Tuple, List, Return
 		if isinstance(node, expr):
 			if type(node) in allowed:
 				propagate(node, capture)
-			if type(node) in nodes:
+			if filter(node):
 				name = tempname()
 				captured.append(Assign([Name(name, Store())], node))
 				return Name(name, Load())
@@ -490,7 +495,7 @@ def flatten(code: Iterable[AST], nodes={Call, BoolOp, BinOp, Tuple, List, Return
 		elif isinstance(node, Return):
 			if type(node.value) in allowed:
 				propagate(node.value, capture)
-			if type(node.value) in nodes:
+			if filter(node.value):
 				captured.append(Assign([Name('_return', Store())], node.value))
 				return Return(Name('_return', Load()))
 		# assignemnts are already named so no need for capture again
@@ -502,13 +507,13 @@ def flatten(code: Iterable[AST], nodes={Call, BoolOp, BinOp, Tuple, List, Return
 		
 		# in a block, captures should create variables inside the block
 		elif isinstance(node, (Module, FunctionDef, For, While, With)):
-			node.body = list(flatten(node.body, nodes))
+			node.body = list(flatten(node.body, filter))
 		elif isinstance(node, If):
-			node.body = list(flatten(node.body, vars=vars))
-			node.orelse = list(flatten(node.orelse, vars=vars))
+			node.body = list(flatten(node.body, filter, vars=vars))
+			node.orelse = list(flatten(node.orelse, filter, vars=vars))
 		elif isinstance(node, Match):
 			node.subject = capture(node.subject)
-			node.cases = [list(flatten(child, vars=vars))  for child in node.cases]
+			node.cases = [list(flatten(child, filter, vars=vars))  for child in node.cases]
 	
 	captured = []
 	for node in code:

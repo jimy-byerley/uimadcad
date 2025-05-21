@@ -55,9 +55,19 @@ class Interpreter:
 		self.source = source
 		code = self.ast = ast.parse(source)
 		
-		# BUG getting definitions from a copy doesn't process temporary values in the same order, so doesn't provide definitions matching the execution result
-		self.definitions = ast.locate(ast.flatten(deepcopy(code.body)), self.filename)
-		# nprint('definitions', self.definitions)
+		code = ast.parcimonize(self.cache, self.filename, (), code.body, self.previous)
+		
+		code = list(ast.flatten(code, filter=lambda node: 
+			type(node) in ast.flatten_selection and haslocation(node)))
+		
+		self.definitions = deepcopy(ast.locate(code, self.filename))
+		code = list(ast.steppize(code, self.filename))
+		code = ast.report(code, self.filename)
+		self.usages = ast.usage(code, self.filename)
+		code = ast.Module(code, type_ignores=[])
+		ast.fix_locations(code)
+		# print(ast.dump(code, indent=4))
+		
 		locations = []
 		for scope, definitions in self.definitions.items():
 			for name, node in definitions.items():
@@ -79,21 +89,6 @@ class Interpreter:
 					name,
 					))
 		self.locations = sorted(locations, key=lambda item: item.range.start)
-		nprint('locations', self.locations)
-		
-		# ast.annotate(code, source)
-		code = ast.parcimonize(self.cache, self.filename, (), code.body, self.previous)
-		code = list(ast.flatten(code))
-		
-		code = list(ast.steppize(code, self.filename))
-		code = ast.report(code, self.filename)
-		self.usages = ast.usage(code, self.filename)
-		code = ast.Module(code, type_ignores=[])
-		ast.fix_locations(code)
-		# print(ast.dump(code, indent=4))
-		
-		# nprint('cache', self.cache)
-		nprint('usages', self.usages.keys())
 		
 		# TODO: add stop points
 		
@@ -151,12 +146,8 @@ class Interpreter:
 		stop = bisect_right(self.locations, position, key=lambda item: item.range.start)
 		for i in reversed(range(0, stop)):
 			item = self.locations[i]
-			if isinstance(item.node, ast.FunctionDef):
-				print('  function', item.scope, item.name)
 			if position in item.range and isinstance(item.node, ast.FunctionDef):
-				print('found scope', position, item.range, item.scope, item.name)
 				return item.scope+'.'+item.name
-		print('gobal scope')
 		return self.filename
 	
 	def interrupt(self):

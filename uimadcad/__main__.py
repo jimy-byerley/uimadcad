@@ -15,10 +15,7 @@ if __name__ == '__main__':
 	from uimadcad.utils import *
 	from uimadcad.app import Madcad
 	
-	# import setproctitle
-	# setproctitle.setproctitle(' '.join(['madcad']+sys.argv[1:]))
-	# setproctitle.setproctitle('madcad')
-	
+	# set process name
 	if sys.platform == 'linux':
 		from ctypes import cdll, byref, create_string_buffer
 		newname = b'madcad'
