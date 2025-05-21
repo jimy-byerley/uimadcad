@@ -16,11 +16,12 @@ from threading import Thread, Lock
 from functools import partial
 from collections import deque
 from types import MethodType
+from time import perf_counter
 
 from madcad.mathutils import vec4, ivec4, vec3, fvec3, mix, clamp
 
 __all__ = [
-	'singleton', 'spawn', 'qtmain', 'qtschedule', 'qtinvoke', 'qtquit',
+	'singleton', 'catchtime', 'qtmain', 'qtschedule', 'qtinvoke', 'qtquit',
 	'Initializer',
 	'ToolBar', 'MenuBar', 'Menu', 'Action', 'Shortcut',
 	'Button', 'action', 'button', 'group', 'shortcut',
@@ -61,13 +62,40 @@ class singleton(object):
 			self.value = self.func()
 			self.executed = True
 		return self.value
-		
 
-def spawn(func):
-	''' spawn a thread running the given function '''
-	thread = Thread(target=func)
-	thread.start()
-	return thread
+class catchtime(object):
+	''' simple object that counts elapsed time using a specific chrono '''
+	__slots__ = 'time', 'total', 'start'
+	
+	def __init__(self, time=perf_counter):
+		self.time = time
+		self.total = 0
+		self.start = None
+		
+	def reset(self):
+		self.total = 0
+		if self.start is not None:
+			self.start = self.time()
+	
+	def __enter__(self):
+		''' start chronometer, it does not reset the already recorded time '''
+		self.start = self.time()
+		return self
+
+	def __exit__(self, type, value, traceback):
+		''' stop chronometer '''
+		self.total += self.time()-self.start
+		self.start = None
+
+	def __call__(self):
+		''' return the recorded time '''
+		if self.start is None:	elapsed = 0
+		else:					elapsed = self.time()-self.start
+		return elapsed + self.total
+
+	def __repr__(self):
+		''' returned time '''
+		return '<chrono {}>'.format(self())
 
 
 qttasks = deque()

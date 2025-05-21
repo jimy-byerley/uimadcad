@@ -49,25 +49,25 @@ class Interpreter:
 				step(scope: str, current_line: int, total_lines: int)
 		'''
 		from pnprint import nprint
+		from .utils import catchtime
 		# nprint('cache', self.cache)
 		
 		self.exception = None
 		self.source = source
+		
 		code = self.ast = ast.parse(source)
-		
 		code = ast.parcimonize(self.cache, self.filename, (), code.body, self.previous)
-		
 		code = list(ast.flatten(code, filter=lambda node: 
 			type(node) in ast.flatten_selection and haslocation(node)))
-		
-		self.definitions = deepcopy(ast.locate(code, self.filename))
+	
 		code = list(ast.steppize(code, self.filename))
 		code = ast.report(code, self.filename)
 		self.usages = ast.usage(code, self.filename)
-		code = ast.Module(code, type_ignores=[])
-		ast.fix_locations(code)
-		# print(ast.dump(code, indent=4))
+		self.definitions = ast.locate(code, self.filename)
 		
+		# TODO: add stop points
+		
+		# build a sorted location index
 		locations = []
 		for scope, definitions in self.definitions.items():
 			for name, node in definitions.items():
@@ -90,8 +90,9 @@ class Interpreter:
 					))
 		self.locations = sorted(locations, key=lambda item: item.range.start)
 		
-		# TODO: add stop points
-		
+		code = ast.Module(code, type_ignores=[])
+		ast.fix_locations(code)
+		# print(ast.dump(code, indent=4))
 		bytecode = compile(code, self.filename, 'exec')
 		module = dict(
 			_madcad_global_cache = partial(ast.global_cache, self.cache),
@@ -164,8 +165,8 @@ class Located:
 	
 def haslocation(node):
 	return ( 
-		hasattr(node, 'lineno') and hasattr(node, 'end_lineno') 
-		and hasattr(node, 'col_offset') and hasattr(node, 'end_col_offset') 
+		getattr(node, 'lineno', 0) and getattr(node, 'end_lineno', 0) 
+		and getattr(node, 'col_offset', 0) and getattr(node, 'end_col_offset', 0) 
 		)
 		
 def test_interpreter():

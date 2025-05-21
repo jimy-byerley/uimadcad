@@ -509,11 +509,11 @@ def flatten(code: Iterable[AST], filter=None, vars:set=None) -> list:
 		elif isinstance(node, (Module, FunctionDef, For, While, With)):
 			node.body = list(flatten(node.body, filter))
 		elif isinstance(node, If):
-			node.body = list(flatten(node.body, filter, vars=vars))
-			node.orelse = list(flatten(node.orelse, filter, vars=vars))
+			node.body = list(flatten(node.body, filter, vars))
+			node.orelse = list(flatten(node.orelse, filter, vars))
 		elif isinstance(node, Match):
 			node.subject = capture(node.subject)
-			node.cases = [list(flatten(child, filter, vars=vars))  for child in node.cases]
+			node.cases = [list(flatten(child, filter, vars))  for child in node.cases]
 	
 	captured = []
 	for node in code:
