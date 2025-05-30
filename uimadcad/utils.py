@@ -480,6 +480,15 @@ def palette_simple(
 	palette.setColor(QPalette.ToolTipBase, vec_to_qcolor(base))
 	palette.setColor(QPalette.ToolTipText, vec_to_qcolor(text))
 	
+	disabled = 0.5
+	palette.setColor(QPalette.Disabled, QPalette.Text, vec_to_qcolor(mix(base, input, disabled)))
+	palette.setColor(QPalette.Disabled, QPalette.BrightText, vec_to_qcolor(mix(base, mix(text, link, 0.5), disabled)))
+	palette.setColor(QPalette.Disabled, QPalette.Highlight, vec_to_qcolor(mix(base, highlight, disabled)))
+	palette.setColor(QPalette.Disabled, QPalette.Link, vec_to_qcolor(mix(base, link, disabled)))
+	palette.setColor(QPalette.Disabled, QPalette.LinkVisited, vec_to_qcolor(mix(base, link*0.6, disabled)))
+	palette.setColor(QPalette.Disabled, QPalette.ButtonText, vec_to_qcolor(mix(base, text, disabled)))
+	palette.setColor(QPalette.Disabled, QPalette.PlaceholderText, vec_to_qcolor(mix(base, text, 0.5*disabled)))
+	
 	return palette
 
 def mix_qcolor(a: QColor, b: QColor, x: float) -> QColor:

@@ -22,6 +22,8 @@ from madcad.mathutils import *
 from . import settings
 from .utils import *
 
+empty = ()
+
 
 class Scene(madcad.rendering.Scene, QObject):
 	def __init__(self, app, context=None, options=None):
@@ -172,6 +174,34 @@ class Scene(madcad.rendering.Scene, QObject):
 		''' return the source code of the given display, or None if not available '''
 		return self.app.interpreter.identified.get(id(getattr(display, 'source', None)))
 
+# 	def display(self, obj, former:Display=None) -> Display:
+# 		# no refresh if object has not changed
+# 		if former and hasattr(former, 'source') and (former.source is obj or former.source == obj):
+# 			print('same content')
+# 			self._update_source(former, obj)
+# 			return former
+# 		# if hasattr(former, 'source'):
+# 			# print(former.source is obj, former.source == obj, repr(former.source), repr(obj))
+# 		# print('hard refresh', getattr(former, 'key', None))
+# 		return super().display(obj, former)
+# 		
+# 	def _update_source(self, disp, source):
+# 		# print('update source', getattr(disp, 'key', None), disp, repr(source))
+# 		disp.source = source
+# 		for sub_disp in disp:
+# 			key = getattr(sub_disp, 'key', empty)
+# 			if len(key) <= len(disp.key):
+# 				print('not key')
+# 				continue
+# 			try:
+# 				sub_source = source[key[-1]]
+# 			except AttributeError:
+# 				try:
+# 					sub_source = getattr(source, key[-1])
+# 				except (KeyError, IndexError):
+# 					print('no item', key[-1])
+# 					continue
+# 			self._update_source(sub_disp, sub_source)
 	
 class Root(madcad.rendering.Group):
 	''' override for the scene root display, hiding annotations when the user sets '''

@@ -1,12 +1,20 @@
+
+QWidget {
+	color: palette(window-text);
+}
+QWidget:disabled {
+	color: palette(placeholder-text);
+	border-color: palette(light);
+}
+
 /*
  * QGroupBox
  */
 
 QGroupBox {
-  background-color: palette(window);
-  border: 1px solid palette(midlight);
-  border-radius: 3px;
-/*   margin-top: 25px; */
+	background-color: palette(window);
+	border: 1px solid palette(midlight);
+	border-radius: 3px;
 	padding-top: 22px;
 }
 QGroupBox::title {
@@ -32,18 +40,15 @@ QToolBar::handle {
 	background: palette(midlight);
 }
 QToolButton { 
-	border: none;
+	border: 1px solid palette(window);
 	border-radius: 2px;
 	background: none;
-/* 	padding: 2px; */
+	padding: 2px;
 	margin: 1px;
-	min-height: 20px;
-	min-width: 20px;
 	color: palette(window-text);
 }
 QMainWindow > QToolBar > QToolButton {
 	padding: 3px;
-	margin: 1px;
 }
 
 /*
@@ -219,12 +224,14 @@ QPushButton:pressed, QToolButton:pressed, QComboBox:presses {
 
 
 QPlainTextEdit { 
+	color: palette(text);
 	border: 1px solid palette(midlight);
 	border-radius: 2px;
 	background: palette(base);
 	margin: 2px;
 }
 QLineEdit, QSpinBox {
+	color: palette(text);
 	border: 1px solid palette(midlight);
 	border-radius: 2px;
 	background: palette(base);

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from bisect import bisect_right
 import traceback
 
+from pnprint import nprint
+
 from . import ast
 
 
@@ -48,22 +50,27 @@ class Interpreter:
 				
 				step(scope: str, current_line: int, total_lines: int)
 		'''
-		from pnprint import nprint
-		from .utils import catchtime
 		# nprint('cache', self.cache)
 		
 		self.exception = None
 		self.source = source
 		
-		code = self.ast = ast.parse(source)
-		code = ast.parcimonize(self.cache, self.filename, (), code.body, self.previous)
-		code = list(ast.flatten(code, filter=lambda node: 
-			type(node) in ast.flatten_selection and haslocation(node)))
-	
+		code = self.ast = ast.parse(source).body
+		# # TODO: parcimonize flattened blocks instead of statements
+		# code = list(ast.flatten(code))
+		original_definitions = ast.locate(code, self.filename)
+		code = ast.parcimonize(self.cache, self.filename, (), code, self.previous)
+		# code = list(ast.flatten(code, filter=lambda node: 
+			# type(node) in ast.flatten_selection and haslocation(node)))
+		code = list(code)
 		code = list(ast.steppize(code, self.filename))
 		code = ast.report(code, self.filename)
 		self.usages = ast.usage(code, self.filename)
-		self.definitions = ast.locate(code, self.filename)
+		
+		altered_definitions = ast.locate(code, self.filename)
+		for name, scope in original_definitions.items():
+			altered_definitions.get(name, scope).update(scope)
+		self.definitions = altered_definitions
 		
 		# TODO: add stop points
 		
@@ -73,7 +80,7 @@ class Interpreter:
 			for name, node in definitions.items():
 				if haslocation(node):
 					located = node
-				elif haslocation(node.value):
+				elif isinstance(node, ast.Assign) and haslocation(node.value):
 					located = node.value
 				else:
 					continue
@@ -116,12 +123,14 @@ class Interpreter:
 			self.exception = err
 			
 		print('caches', self.cache.keys())
-		print('scopes', self.scopes.keys())
+		nprint('scopes', repr(self.scopes))
+		nprint('definitions', self.definitions)
 		self.identified = {
 			id(self.scopes[located.scope][located.name]): located  
 			for located in self.locations
 			if located.scope in self.scopes
 			and located.name in self.scopes[located.scope]}
+		nprint('identified', self.identified)
 			
 	def names_crossing(self, area:range) -> Iterator[Located]:
 		''' yield variables with text range crossing the given position range '''

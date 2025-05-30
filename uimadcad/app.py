@@ -63,6 +63,8 @@ class Madcad(QObject):
 		self.window.setWindowFilePath(self.active.file or 'untitled')
 		self.document.setPlainText(open(self.active.file or settings.locations['startup'], 'r').read())
 		self.document.setModified(False)
+		if not file:
+			self.execute.trigger()
 
 	def open_file_external(self, file):
 		''' open a file with an appropriate software decided by the desktop '''
