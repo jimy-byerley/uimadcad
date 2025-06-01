@@ -1,4 +1,6 @@
 import traceback
+from bisect import bisect
+from types import FunctionType, BuiltinFunctionType
 
 from pnprint import nformat
 from madcad.mathutils import mix
@@ -20,6 +22,7 @@ class ErrorView(QWidget):
 		self.app = app
 		self.exception = None
 		self.font = QFont(*settings.scriptview['font'])
+		self._index = [] # end text position of each scope in displayed order
 		
 		super().__init__(parent)
 		Initializer.process(self)
@@ -30,6 +33,7 @@ class ErrorView(QWidget):
 		
 		self.traceback.setLineWrapMode(QTextEdit.NoWrap)
 		self.scope.setLineWrapMode(QTextEdit.NoWrap)
+		self.traceback.cursorPositionChanged.connect(self._update_scope)
 		self.traceback.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 		self.scope.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 		self.label.setFont(self.font)
@@ -40,10 +44,10 @@ class ErrorView(QWidget):
 		self.setLayout(hlayout([
 			vlayout([self.keep_apart, self.copy_to_clipboard, self.open_scope]),
 			Splitter([
-				widget(vlayout([self.traceback, self.label])),
+				widget(vlayout([self.traceback, self.label], margins=0)),
 				self.scope,
 				], Qt.Horizontal),
-			]))
+			], margins=0))
 			
 		self.open_scope.toggled.emit(False)
 		self.clear()
@@ -61,9 +65,11 @@ class ErrorView(QWidget):
 		self.label.setText('no exception')
 		self.traceback.setPlainText('')
 		self.scope.setPlainText('')
+		self._index.clear()
 			
 	def set(self, exception):
 		''' set the exception to display '''
+		self._index.clear()
 		self.exception = exception
 		# set labels
 		self.setWindowTitle(type(exception).__name__)
@@ -92,16 +98,19 @@ class ErrorView(QWidget):
 				while offset > 0 and exception.text[offset-1].isalnum():	offset -= 1
 				cursor.insertText('    '+exception.text[:offset], fmt_code)
 				cursor.insertText(exception.text[offset:], fmt_error)
+				self._index.append(cursor.position())
 		else:
 			tb = traceback.extract_tb(exception.__traceback__)
 			i = next((i for i in range(len(tb)) if tb[i].filename == self.app.interpreter.filename), 0)
 			for line in traceback.format_list(tb)[i:]:
 				if line.startswith('    '):
 					cursor.insertText(line, fmt_code)
+					self._index.append(cursor.position())
 				else:
 					endline = line.find('\n')
 					cursor.insertText(line[:endline], fmt_traceback)
 					cursor.insertText(line[endline:], fmt_code)
+					self._index.append(cursor.position())
 		
 		# scroll on the end of the error message (most of the time the most interesting part)
 		cursor = self.traceback.textCursor()
@@ -141,42 +150,64 @@ class ErrorView(QWidget):
 			move the cursor in the traceback to select a scope
 		'''
 		if visible and self.exception and self.exception.__traceback__:
-			n = self.traceback.textCursor().blockNumber() //2
-			
-			step = self.exception.__traceback__
-			for i in range(n+1):
-				if step.tb_next:
-					step = step.tb_next
-			scope = step.tb_frame.f_locals
-		
-			self.scope.document().clear()
-			cursor = QTextCursor(self.scope.document())
-			palette = self.palette()
-			familly, size = settings.scriptview['font']
-			
-			fmt_value = charformat(
-							font=QFont(familly, size), 
-							foreground=palette.text())
-			fmt_key = charformat(
-							font=QFont(familly, int(size*1.2), weight=QFont.Bold), 
-							foreground=palette.link())
-			
-			if isinstance(scope, dict):
-				for key in scope:
-					formated = nformat(repr(scope[key]))
-					# one line format
-					if not '\n' in formated:	
-						cursor.insertText((key+':').ljust(16), fmt_key)
-						cursor.insertText(formated+'\n', fmt_value)
-					# multiline format
-					else:
-						cursor.insertText(key+':', fmt_key)
-						cursor.insertText(('\n'+formated).replace('\n', '\n    ')+'\n', fmt_value)
+			self._update_scope()
 		else:
 			self.traceback.setFocus()
 		
 		self.scope.setVisible(visible)
+		
+	def _update_scope(self):
+		''' refresh the content of the scope view '''
+		if not self.exception:
+			return
+		
+		n = bisect(self._index, self.traceback.textCursor().position())
+			
+		step = self.exception.__traceback__
+		for i in range(n+1):
+			if step.tb_next:
+				step = step.tb_next
+		scope = step.tb_frame.f_locals
 	
+		self.scope.document().clear()
+		cursor = QTextCursor(self.scope.document())
+		palette = self.palette()
+		familly, size = settings.scriptview['font']
+		
+		fmt_value = charformat(
+						font=QFont(familly, size), 
+						foreground=palette.text())
+		fmt_key = charformat(
+						font=QFont(familly, int(size*1.2), weight=QFont.Bold), 
+						foreground=palette.link())
+		fmt_error = charformat(
+						font=QFont(familly, int(size*1.2), weight=QFont.Bold), 
+						foreground=QColor(255,0,0))
+		
+		if isinstance(scope, dict):
+			for key, value in scope.items():
+				if key.startswith('_'):
+					continue
+				if isinstance(value, (type, FunctionType, BuiltinFunctionType)) and value.__module__ != self.app.interpreter.filename:
+					continue
+				if isinstance(value, (type, FunctionType)):
+					print('value', value.__module__)
+				# repr may be user code, so take care of possible failures
+				try:
+					formated = nformat(repr(value))
+				except Exception as err:
+					cursor.insertText((key+':').ljust(16), fmt_key)
+					cursor.insertText(object.__repr__(value)+'\n', fmt_error)
+					continue
+				# one line format
+				if not '\n' in formated:	
+					cursor.insertText((key+':').ljust(16), fmt_key)
+					cursor.insertText(formated+'\n', fmt_value)
+				# multiline format
+				else:
+					cursor.insertText(key+':', fmt_key)
+					cursor.insertText(('\n'+formated).replace('\n', '\n    ')+'\n', fmt_value)
+
 	@property
 	def keep(self):	
 		''' whether the error window is marked to be keept as-is '''
