@@ -54,40 +54,24 @@ class Interpreter:
 		self.source = source
 		
 		try:
-			'''
 			code = self.ast = ast.parse(source).body
-			# TODO: parcimonize flattened blocks instead of statements
-			code = [ast.If(test=ast.Constant(True), body=[node], orelse=[])  
-					if isinstance(node, (ast.Expr, ast.Assign)) else node
-					for node in code]
-			code = list(ast.flatten(code))
-			self.definitions = ast.locate(code, self.filename)
-			self.usages = ast.usage(code, self.filename)
-			code = ast.parcimonize(self.cache, self.filename, (), code, self.previous, 
-				filter=lambda node: any(isinstance(node, ast.Call)  for node in ast.walk(node)),
-				)
-			code = list(code)
-			code = list(ast.steppize(code, self.filename, 
-				# filter=lambda node: isinstance(node, ast.Assign),
-				filter=lambda node: isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == '_madcad_tmp',
-				))
-			code = ast.report(code, self.filename)
-			'''
-			
-			code = self.ast = ast.parse(source).body
+			# collect user variable with their original definitions, the definition will be modified inplace but at least we have its root
 			originals = ast.locate(code, self.filename)
 			self.usages = ast.usage(code, self.filename)
 			code = list(ast.parcimonize(self.cache, self.filename, (), code, self.previous, 
+				# assuming only calls might be long ioperations
 				filter=lambda node: any(isinstance(node, ast.Call)  for node in ast.walk(node)),
 				))
 			code = list(ast.steppize(code, self.filename, 
-				# filter=lambda node: isinstance(node, ast.Assign),
+				# place steps before parcimonized steps because assumed to be long operations
 				filter=lambda node: isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == '_madcad_tmp',
 				))
 			code = list(ast.flatten(code))
+			# collect temporary variables created by this interpreter
 			created = ast.locate(code, self.filename)
 			code = list(ast.report(code, self.filename, clear=False))
 			
+			# prefer original defintions to created ones
 			self.definitions = {
 				scope: created[scope] | originals[scope]
 				for scope in originals
@@ -120,9 +104,6 @@ class Interpreter:
 			
 			code = ast.Module(list(code), type_ignores=[])
 			ast.fix_locations(code)
-			from pnprint import cprint
-			# print(ast.dump(code, indent=4))
-			cprint(ast.unparse(code))
 			bytecode = compile(code, self.filename, 'exec')
 			module = dict(
 				_madcad_global_cache = partial(ast.global_cache, self.cache),
@@ -130,6 +111,10 @@ class Interpreter:
 				_madcad_step = step,
 				_madcad_vars = vars,
 				)
+			
+			# from pnprint import cprint
+			# print(ast.dump(code, indent=4))
+			# cprint(ast.unparse(code))
 		
 			try:
 				exec(bytecode, module, module)
@@ -144,7 +129,6 @@ class Interpreter:
 				self.usages = ast.usage(code.body, self.filename, stops=stops)
 				raise
 			
-			print(self.scopes[self.filename].keys())
 			self.identified = {
 				id(self.scopes[located.scope][located.name]): located  
 				for located in self.locations

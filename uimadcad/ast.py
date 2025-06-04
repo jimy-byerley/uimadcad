@@ -69,6 +69,9 @@ def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previo
 			elif isinstance(node, Return):
 				yield from _parcimonize_return(key, node)
 				
+			else:
+				yield node
+				
 		# TODO: decide what to do when the target is a subscript
 		# TODO: add filter function to avoid parcimonizing every single statement
 		
@@ -163,7 +166,7 @@ def _cache_use(key: hash, targets: list, generate: list) -> list:
 			# run the generating code
 			body = [
 				# TODO remove this debug print
-					Expr(Call(Name('print', Load()), args=[Constant('generate'), Constant(key)], keywords=[])),
+					# Expr(Call(Name('print', Load()), args=[Constant('generate'), Constant(key)], keywords=[])),
 				] + generate,
 			# retreive from cache
 			orelse = [
@@ -492,7 +495,7 @@ def flatten(code: Iterable[AST], filter=None, vars:set=None) -> list:
 	
 	def capture(node: AST):
 		# assignemnts are already named so no need for capture again
-		if isinstance(node, (Assign, NamedExpr)):
+		if isinstance(node, (Assign, NamedExpr, AnnAssign, AugAssign)):
 			if type(node.value) in allowed:
 				propagate(node.value, capture)
 		elif isinstance(node, keyword):
