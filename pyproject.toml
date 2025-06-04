@@ -10,6 +10,7 @@ dependencies = [
 	"pymadcad[ply,stl] >= 0.13",
 	"pyqt5 >= 5.11",
 	"pyyaml >= 6",
+	"pnprint >= 1.2",
 	]
 authors = [{name = "jimy byerley", email = "jimy.byerley@gmail.com"}]
 license = {file = "LICENSE"}

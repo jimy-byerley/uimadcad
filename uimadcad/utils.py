@@ -376,7 +376,9 @@ def boxlayout(items: list, orientation=QBoxLayout.TopToBottom, spacing=None, mar
 	if spacing is not None:
 		layout.setSpacing(spacing)
 	if margins is not None:
-		if isinstance(margins, tuple):
+		if isinstance(margins, int):
+			layout.setContentsMargins(margins, margins, margins, margins)
+		elif isinstance(margins, tuple):
 			layout.setContentsMargins(*margins)
 		else:
 			layout.setContentsMargins(margins)
@@ -449,8 +451,6 @@ def palette_simple(
 	if not view: view = clamp(mix(base, text, -0.05), 0, 1)
 	if not input: input = mix(base, text, 1.1)
 	if not button: button = mix(base, text, 0.02)
-	
-	print(base, view)
 	
 	palette = QPalette()
 	

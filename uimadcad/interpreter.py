@@ -54,6 +54,7 @@ class Interpreter:
 		self.source = source
 		
 		try:
+			'''
 			code = self.ast = ast.parse(source).body
 			# TODO: parcimonize flattened blocks instead of statements
 			code = [ast.If(test=ast.Constant(True), body=[node], orelse=[])  
@@ -62,10 +63,35 @@ class Interpreter:
 			code = list(ast.flatten(code))
 			self.definitions = ast.locate(code, self.filename)
 			self.usages = ast.usage(code, self.filename)
-			code = ast.parcimonize(self.cache, self.filename, (), code, self.previous)
+			code = ast.parcimonize(self.cache, self.filename, (), code, self.previous, 
+				filter=lambda node: any(isinstance(node, ast.Call)  for node in ast.walk(node)),
+				)
 			code = list(code)
-			code = list(ast.steppize(code, self.filename))
+			code = list(ast.steppize(code, self.filename, 
+				# filter=lambda node: isinstance(node, ast.Assign),
+				filter=lambda node: isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == '_madcad_tmp',
+				))
 			code = ast.report(code, self.filename)
+			'''
+			
+			code = self.ast = ast.parse(source).body
+			originals = ast.locate(code, self.filename)
+			self.usages = ast.usage(code, self.filename)
+			code = list(ast.parcimonize(self.cache, self.filename, (), code, self.previous, 
+				filter=lambda node: any(isinstance(node, ast.Call)  for node in ast.walk(node)),
+				))
+			code = list(ast.steppize(code, self.filename, 
+				# filter=lambda node: isinstance(node, ast.Assign),
+				filter=lambda node: isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == '_madcad_tmp',
+				))
+			code = list(ast.flatten(code))
+			created = ast.locate(code, self.filename)
+			code = list(ast.report(code, self.filename, clear=False))
+			
+			self.definitions = {
+				scope: created[scope] | originals[scope]
+				for scope in originals
+				}
 			
 			# TODO: add stop points
 			
@@ -92,10 +118,11 @@ class Interpreter:
 						))
 			self.locations = sorted(locations, key=lambda item: item.range.start)
 			
-			code = ast.Module(code, type_ignores=[])
+			code = ast.Module(list(code), type_ignores=[])
 			ast.fix_locations(code)
+			from pnprint import cprint
 			# print(ast.dump(code, indent=4))
-			ast.cprint(ast.unparse(code))
+			cprint(ast.unparse(code))
 			bytecode = compile(code, self.filename, 'exec')
 			module = dict(
 				_madcad_global_cache = partial(ast.global_cache, self.cache),
@@ -116,7 +143,7 @@ class Interpreter:
 					# TODO: use a try finally for the scope capture
 				self.usages = ast.usage(code.body, self.filename, stops=stops)
 				raise
-		
+			
 			print(self.scopes[self.filename].keys())
 			self.identified = {
 				id(self.scopes[located.scope][located.name]): located  

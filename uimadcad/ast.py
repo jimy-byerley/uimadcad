@@ -11,7 +11,7 @@ from copy import deepcopy
 from pnprint import nprint
 
 
-def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previous: dict) -> Iterable[AST]:
+def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previous: dict, filter:callable=None) -> Iterable[AST]:
 	''' make a code lazily executable by reusing as much previous results as possible '''
 	assigned = Counter()
 	changed = set()
@@ -53,25 +53,22 @@ def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previo
 		
 		# functions are caching in separate scopes
 		if isinstance(node, FunctionDef):
-			yield _parcimonize_func(cache, scope, node, key, previous)
-			
-		# TODO: use a proper filter instead
-		elif not any(isinstance(node, Call)  for node in walk(node)):
-			yield node
+			yield _parcimonize_func(cache, scope, node, key, previous, filter)
 		
-		# an expression assigned is assumed to not modify its arguments
-		elif isinstance(node, Assign):
-			yield from _parcimonize_assign(key, node)
-		
-		# an expression without result is assumed to be an inplace modification
-		# a block cannot be splitted because its bodies may be executed multiple times or not at all
-		elif isinstance(node, (Expr, For, While, Try, With, If, Match)):
-			yield from _parcimonize_block(key, provided or deps, node)
+		elif not filter or filter(node):
+			# an expression assigned is assumed to not modify its arguments
+			if isinstance(node, Assign):
+				yield from _parcimonize_assign(key, node)
 			
-		# an expression returned is assumed to not modify its arguments
-		elif isinstance(node, Return):
-			yield from _parcimonize_return(key, node)
-			
+			# an expression without result is assumed to be an inplace modification
+			# a block cannot be splitted because its bodies may be executed multiple times or not at all
+			elif isinstance(node, (Expr, For, While, Try, With, If, Match)):
+				yield from _parcimonize_block(key, provided or deps, node)
+				
+			# an expression returned is assumed to not modify its arguments
+			elif isinstance(node, Return):
+				yield from _parcimonize_return(key, node)
+				
 		# TODO: decide what to do when the target is a subscript
 		# TODO: add filter function to avoid parcimonizing every single statement
 		
@@ -98,6 +95,7 @@ def _parcimonize_func(
 	node: FunctionDef, 
 	key: str, 
 	previous: dict,
+	filter: callable,
 	) -> AST:
 	# functions are caching in separate scopes
 	subscope = scope + '.' + node.name
@@ -121,6 +119,7 @@ def _parcimonize_func(
 			args = sorted([arg.arg   for arg in args]),
 			code = node.body,
 			previous = previous,
+			filter = filter,
 			)),
 		decorator_list = node.decorator_list,
 		)
@@ -264,83 +263,6 @@ class ArgumentsKey:
 	def __repr__(self):
 		return '{}({})'.format(self.__class__.__name__, ', '.join(repr(arg) for arg in self.args))
 	
-def test_parcimonize():
-	from pnprint import nprint
-	from dis import dis
-	from copy import deepcopy
-	
-	filename = '<input>'
-	code = normalize_indent('''\
-		from math import sin, cos
-
-		def foo():
-			a = 'a'
-			return a
-		def bar(x, y):
-			return x+y
-		def boo(x):
-			return [x]
-		def fah(first, *args):
-			first.extend(args)
-
-		e, f = 'e', 'f'
-		a = foo()
-		c = 'c'
-		{}
-		d = boo(c)
-		fah(d, c, e, f, foo())
-		s = dict(a=a, b=b, c=1)
-		s['c'] = 2
-
-		if True: pass
-		g = 0 if False else 1
-		''')
-	
-	original_ast = parse(code.format('b = bar(a, c)'))
-	original_bytecode = compile(original_ast, filename, 'exec')
-	cache = {}
-	previous = {}
-	
-	result = Module(
-		list(parcimonize(cache=cache, scope=filename, args=(), code=original_ast.body, previous=previous)),
-		type_ignores=[])
-	nprint('\n'.join(dump(node) for node in result.body))
-	fix_missing_locations(result)
-	bytecode = compile(result, filename, 'exec')
-	dis(bytecode)
-	
-	cprint(unparse(result))
-	
-	print('original', len(original_bytecode.co_code), 'parcimonized', len(bytecode.co_code))
-
-	env = {}
-	exec(bytecode, dict(
-		_madcad_global_cache = partial(global_cache, cache),
-		), env)
-	nprint('env', env)
-	nprint('cache', cache)
-	assert env.get('b') == 'ac'
-	assert env.get('d') == ['c', 'c', 'e', 'f', 'a']
-	assert env.get('s') == {'a': 'a', 'b': 'ac', 'c': 2}
-
-	second_ast = parse(code.format('b = bar(a, e)'))
-	result = Module(
-		list(parcimonize(cache=cache, scope=filename, args=(), code=second_ast.body, previous=previous)),
-		type_ignores=[])
-	fix_missing_locations(result)
-	bytecode = compile(result, filename, 'exec')
-	nprint('cache', cache)
-	assert 'b1' not in cache['<input>'][ArgumentsKey(())]
-	env = {}
-	exec(bytecode, dict(
-		_madcad_global_cache = partial(global_cache, cache),
-		), env)
-	nprint('cache', cache)
-	assert 'b1' in cache['<input>'][ArgumentsKey(())]
-	nprint('env', env)
-	assert env.get('b') == 'ae'
-	assert env.get('d') == ['c', 'c', 'e', 'f', 'a']
-	assert env.get('s') == {'a': 'a', 'b': 'ae', 'c': 2}
 
 def dependencies(node: AST|list[AST]) -> Iterator[str]:
 	''' yield names of variables a node depends on '''
@@ -464,57 +386,6 @@ def _complete_scope(code:list[AST], current:set[str], target:list[str]) -> list[
 	if targets:
 		code.append(Assign(targets, Constant(None)))
 		
-def test_homogenize():
-	code = parse(normalize_indent('''\
-		a = 1
-		if a == 1:
-			b = 2
-			for c in range(5):
-				if c == 3:
-					d = 4
-					e = 3
-		else:
-			d = 4
-		''')).body
-	scope = homogenize(code)
-	assert scope == {'e', 'b', 'a', 'd'}
-	print(dump(Module(code, type_ignores=[]), indent=4))
-	
-	completion = code[1].orelse[1]
-	assert isinstance(completion, Assign)
-	assert completion.value.value == None
-	assert set(target.id   for target in completion.targets) == {'e', 'b'}
-	
-	completion = code[1].body[1].body[0].orelse[0]
-	assert isinstance(completion, Assign)
-	assert completion.value.value == None
-	assert set(target.id   for target in completion.targets) == {'e', 'd'}
-	
-	code = parse(normalize_indent('''\
-		def f(c, *, d=None):
-			a = 1
-			if a == 1:
-				b = 2
-				if c == 3:
-					d = 4
-					e = 3
-			else:
-				d = 4
-		''')).body
-	scope = homogenize(code)
-	assert scope == {'f'}
-	print(dump(Module(code, type_ignores=[]), indent=4))
-	
-	completion = code[0].body[1].orelse[1]
-	assert isinstance(completion, Assign)
-	assert completion.value.value == None
-	assert set(target.id   for target in completion.targets) == {'e', 'b'}
-	
-	completion = code[0].body[1].body[1].orelse[0]
-	assert isinstance(completion, Assign)
-	assert completion.value.value == None
-	assert set(target.id   for target in completion.targets) == {'e'}
-
 
 
 def annotate(tree: AST, text: str):
@@ -592,9 +463,6 @@ def annotate(tree: AST, text: str):
 	
 	recursive(tree)
 	
-def test_annotate():
-	indev
-
 # default interesting expressions to flatten
 flatten_selection = {Call, BoolOp, BinOp, Tuple, List, Return, ListComp, DictComp}
 
@@ -666,49 +534,28 @@ def flatten(code: Iterable[AST], filter=None, vars:set=None) -> list:
 		yield replacement or node
 		captured.clear()
 		
-def test_flatten():
-	code = parse(normalize_indent('''\
-		a = (b+c)+d
-		'''))
-	code.body = list(flatten(code.body))
-	fix_missing_locations(code)
-	cprint(unparse(code))
-	compile(code, '<flatten>', 'exec')
-	assert isinstance(code.body[-1].value, BinOp)
-	assert isinstance(code.body[-1].value.left, Name)
-	
-	code = parse(normalize_indent('''\
-		b = [5] + [i+1 for i in range(5)]
-		'''))
-	code.body = list(flatten(code.body))
-	fix_missing_locations(code)
-	cprint(unparse(code))
-	compile(code, '<flatten>', 'exec')
-	assert isinstance(code.body[-1].value, BinOp)
-	assert isinstance(code.body[-1].value.left, Name)
-	assert isinstance(code.body[-1].value.right, Name)
-	
-def steppize(code:list[AST], scope:str) -> Iterator[AST]:
-	def filter(node):
+def steppize(code:list[AST], scope:str, filter:callable=None) -> Iterator[AST]:
+	def explore(node):
 		if isinstance(node, (Module, FunctionDef)):
-			node.body = list(steppize(node.body, scope+'.'+node.name))
+			node.body = list(steppize(node.body, scope+'.'+node.name, filter=filter))
 		elif isinstance(node, expr):
 			pass
 		else:
-			propagate(node, filter)
+			propagate(node, explore)
 	
 	l = len(code)
 	for i, node in enumerate(code):
-		propagate(node, filter)
+		propagate(node, explore)
 		# return point is never passed, so we anticipate here sending i+1
-		yield Expr(Call(
-			func = Name('_madcad_step', Load()),
-			args = [Constant(scope), Constant(i+1), Constant(l)],
-			keywords = [],
-			))
+		if not filter or filter(node):
+			yield Expr(Call(
+				func = Name('_madcad_step', Load()),
+				args = [Constant(scope), Constant(i+1), Constant(l)],
+				keywords = [],
+				))
 		yield node
 
-def report(code:list[AST], scope:str) -> list[AST]:
+def report(code:list[AST], scope:str, clear=True) -> list[AST]:
 	''' change the given code to report its variables to madcad '''
 	def filter(node):
 		if isinstance(node, (Module, FunctionDef)):
@@ -718,17 +565,27 @@ def report(code:list[AST], scope:str) -> list[AST]:
 	
 	for node in code:
 		filter(node)
-	
-	return [Try(body=code, handlers=[], orelse=[], finalbody=[
-		Assign(
+		
+	if clear:
+		# decide to report only the new computed values
+		finalbody = [Assign(
 			targets = [Subscript(Name('_madcad_scopes', Load()), Constant(scope), Store())],
 			value = Call(Name('_madcad_vars', Load()), args=[], keywords=[]),
-			),
-		# Expr(Call(Name('print', Load()), args=[
-		# 	Constant('report'), Constant(scope), 
-		# 	# Call(Name('_madcad_vars', Load()), args=[], keywords=[]),
-		# 	], keywords=[])),
-		])]
+			)]
+	else:
+		# update the scope with the new computed values but keep the old ones just in case
+		# NOTE this could cause mem leaks if not cleaned when no more used
+		finalbody = [Expr(Call(
+			Attribute(Call(
+				Attribute(Name('_madcad_scopes', Load()), 'setdefault', Load()),
+				args=[Constant(scope), Dict([],[])],
+				keywords=[],
+				), 'update', Load()),
+			args=[ Call(Name('_madcad_vars', Load()), args=[], keywords=[]) ], 
+			keywords=[],
+			))]
+	
+	return [Try(body=code, handlers=[], orelse=[], finalbody=finalbody)]
 
 def locate(code:Iterable[AST], scope:str, locations=None) -> dict[str, dict[str, AST]]:
 	''' change the given code to report its variables to madcad '''
@@ -754,74 +611,8 @@ def locate(code:Iterable[AST], scope:str, locations=None) -> dict[str, dict[str,
 	
 	return locations
 	
-def test_locate():
-	def check(located, reference):
-		for scope, vars in reference.items():
-			assert scope in located
-			for name, ty in vars.items():
-				assert name in located[scope]
-				assert isinstance(located[scope][name], ty)
 	
-	code = parse(normalize_indent('''\
-		def truc(a, b):
-			c = a+b+1
-			return c+1		
-		def machin(a):
-			b = a+1
-			return a+2
-		def chose(a, b):
-			def muche(c):
-				d = a+b
-				e = d+c
-				return e
-			return muche(1)
-		
-		t = truc(2,3)
-		m = machin(1)
-		c = chose(2,3)
-		''')).body
-	located = locate(code, 'root')
-	check(located, {
-        'root': {
-                'truc': FunctionDef,
-                'machin': FunctionDef,
-                'chose': FunctionDef,
-                't': Assign,
-                'm': Assign,
-                'c': Assign,
-                },
-        'root.truc': {'c': Assign},
-        'root.machin': {'b': Assign},
-        'root.chose': {'muche': FunctionDef},
-        'root.chose.muche': {'d': Assign, 'e': Assign},
-        })
-	
-	code = flatten(code)
-	located = locate(code, 'root')
-	check(located, {
-        'root': {
-                'truc': FunctionDef,
-                'machin': FunctionDef,
-                'chose': FunctionDef,
-                't': Assign,
-                'm': Assign,
-                'c': Assign,
-                },
-        'root.truc': {
-			'c': Assign,
-			'_temp1': Assign,
-			'_return': Assign,
-			},
-        'root.machin': {'b': Assign},
-        'root.chose': {
-			'muche': FunctionDef,
-			'_return': Assign,
-			},
-        'root.chose.muche': {'d': Assign, 'e': Assign},
-        })
-
-	
-def usage(code:list, scope:str, usages:dict=None, stops:dict=None) -> dict[str, Usage]:
+def usage(code:Iterable[AST], scope:str, usages:dict=None, stops:dict=None) -> dict[str, Usage]:
 	''' analyse the variables usage in all function scopes defined in this AST 
 		
 		Args:
@@ -873,68 +664,7 @@ class Usage:
 	rw: set
 	''' variables that were wrote then read in the current scope '''
 
-def test_usage():
-	from pnprint import nprint
-	code = parse(normalize_indent('''\
-		a = (b+c)+d
-		b = [5] + [i+1 for i in range(5)]
-		if 1 != 0:
-			c = 1 + 2
-		else:
-			d = 1 + 3 + 4
-		'''))
-	code.body = list(flatten(code.body))
-	fix_locations(code)
-	print(dump(code, indent=4))
-	compile(code, '<flatten>', 'exec')
-	result = usage(code.body, '<file>')['<file>']
-	nprint(result)
-	assert result.ro == {'range'}
-	assert result.wo == {'a'}
-	assert result.rw == {'b', 'd', '_temp3', 'c', '_temp2', '_temp1', '_temp4'}
-	
-def test_usage_scopes():
-	from pnprint import nprint
-	code = parse(normalize_indent('''\
-		def truc(a, b):
-			c = a+b+1
-			return c+1		
-		def machin(a):
-			b = a+1
-			return a+2
-		def chose(a, b):
-			def muche(c):
-				d = a+b
-				e = d+c
-				return e
-			return muche(1)
-		
-		t = truc(2,3)
-		m = machin(1)
-		c = chose(2,3)
-		'''))
 
-	usages = usage(code.body, 'root')
-	nprint(usages)
-	assert usages == {
-        'root.truc': Usage(ro={'a', 'b'}, wo={'c'}, rw=set()),
-        'root.machin': Usage(ro={'a'}, wo={'b'}, rw=set()),
-        'root.chose.muche': Usage(ro={'a', 'c', 'b'}, wo={'e'}, rw={'d'}),
-        'root.chose': Usage(ro=set(), wo=set(), rw=set()),
-        'root': Usage(ro={'chose', 'truc', 'machin'}, wo={'t', 'c', 'm'}, rw=set()),
-        }
-        
-	usages = usage(flatten(code.body), 'root')
-	nprint(usages)
-	assert usages == {
-        'root.truc': Usage(ro={'a', 'b'}, wo={'_return'}, rw={'c', '_temp1'}),
-        'root.machin': Usage(ro={'a'}, wo={'_return', 'b'}, rw=set()),
-        'root.chose.muche': Usage(ro={'a', 'c', 'b'}, wo={'e'}, rw={'d'}),
-        'root.chose': Usage(ro={'muche'}, wo={'_return'}, rw=set()),
-        'root': Usage(ro={'truc', 'machin', 'chose'}, wo={'m', 'c', 't'}, rw=set()),
-        }
-
-	
 def fix_locations(node: AST):
 	''' set approximative line and column locations to AST nodes that are missing these 
 		(generally they are procedurally created nodes) 
@@ -1036,87 +766,3 @@ def textpos(text, loc, tab=1):
 		i += 1
 	return i
 
-def cprint(code):
-	from pygments import highlight
-	from pygments.lexers import PythonLexer
-	from pygments.formatters import TerminalFormatter
-	
-	from pygments.token import (Keyword, Name, Comment, String, Error, Number, Operator, Generic, Token, Whitespace)
-	scheme = {
-		Token:              ('',            ''),
-
-		Whitespace:         ('gray',   'brightblack'),
-		Comment:            ('gray',   'brightblack'),
-		Comment.Preproc:    ('cyan',        'brightcyan'),
-		Keyword:            ('green',    'green'),
-		Keyword.Type:       ('cyan',        'brightgreen'),
-		Operator.Word:      ('magenta',      'brightmagenta'),
-		Name.Builtin:       ('cyan',        ''),
-		Name.Function:      ('green',   'brightgreen'),
-		Name.Namespace:     ('_cyan_',      '_brightcyan_'),
-		Name.Class:         ('_green_', '_brightgreen_'),
-		Name.Exception:     ('cyan',        'brightcyan'),
-		Name.Decorator:     ('brightblack',    'gray'),
-		Name.Variable:      ('red',     'brightred'),
-		Name.Constant:      ('red',     'brightred'),
-		Name.Attribute:     ('cyan',        'brightcyan'),
-		Name.Tag:           ('brightblue',        'brightblue'),
-		String:             ('yellow',       'yellow'),
-		Number:             ('blue',    'brightblue'),
-  
-		Generic.Deleted:    ('brightred',        'brightred'),
-		Generic.Inserted:   ('green',  'brightgreen'),
-		Generic.Heading:    ('**',         '**'),
-		Generic.Subheading: ('*magenta*',   '*brightmagenta*'),
-		Generic.Prompt:     ('**',         '**'),
-		Generic.Error:      ('brightred',        'brightred'),
-  
-		Error:              ('_brightred_',      '_brightred_'),
-		}
-	
-	print(highlight(code, PythonLexer(), TerminalFormatter(bg='dark', colorscheme=scheme)))
-
-def cprint(code):
-	import re
-	keywords = {'pass', 'and', 'or', 'if', 'elif', 'else', 'match', 'case', 'for', 'while', 'break', 'continue', 'is', 'in', 'not', 'def', 'lambda', 'class', 'yield', 'async', 'await', 'with', 'try', 'except', 'finally', 'raise', 'from', 'import', 'as', 'with', 'return', 'assert'}
-	constants = {'None', 'True', 'False', 'Ellipsis'}
-	word_pattern = re.compile(r'([a-zA-Z_]\w*)')
-	call_pattern = re.compile(r'([a-zA-Z]\w*)\(')
-	number_pattern = re.compile(r'[+-]?\d+\.?\d*(e[+-]\d+)?')
-	operator_pattern = re.compile(r'[+\-\*/@<>=!~&\|]+')
-	string_pattern = re.compile(r'[\'\"][^\'\"]*[\'\"]')
-	
-	color_normal = '\x1b[0m'
-	# blue-green colors
-	color_keyword = '\x1b[38;5;42m'
-	color_marker = '\x1b[38;5;46m'
-	color_number = '\x1b[38;5;33m'
-	color_private = '\x1b[38;5;250m'
-	
-	i = 0
-	result = ''
-	while i < len(code):
-		if match := call_pattern.match(code, i):
-			result += color_marker + code[match.start():match.end()-1] + color_normal
-			i = match.end()-1
-		elif match := number_pattern.match(code, i):
-			result += color_number + code[match.start():match.end()] + color_normal
-			i = match.end()
-		elif match := string_pattern.match(code, i):
-			result += color_number + code[match.start():match.end()] + color_normal
-			i = match.end()
-		elif match := word_pattern.match(code, i):
-			word = code[match.start():match.end()]
-			if word in keywords:
-				result += color_keyword + word + color_normal
-			elif word in constants:
-				result += color_number + word + color_normal
-			elif word.startswith('_'):
-				result += color_private + word + color_normal
-			else:
-				result += word
-			i = match.end()
-		else:
-			result += code[i]
-			i += 1
-	print(result)
