@@ -23,12 +23,14 @@ class Interpreter:
 	scopes: dict[str, dict[str, object]]
 	definitions: dict[str, dict[str, AST]]
 	locations: list[Located]
+	identified: dict[int, Located]
 	usages: dict[str, Usage]
 	exception: Exception
 	
 	def __init__(self, filename:str):
 		self.cache = {}
 		self.filename = filename
+		self.source = ''
 		self.previous = {}
 		self.ast = {}
 		self.scopes = {}

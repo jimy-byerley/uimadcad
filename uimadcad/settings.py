@@ -125,7 +125,7 @@ def use_qt_colors():
 	
 	selection = mix(fvec3(0.4, 1, 0), qtc(QPalette.Highlight), 0.6)
 	selection *= mix(1/max(selection), max(normal), 0.3)
-	hover = mix(fvec3(0., 0.4, 1), qtc(QPalette.Highlight), 0.6)
+	hover = mix(fvec3(0., 0.4, 1), qtc(QPalette.Highlight), 0.3)
 	hover *= mix(1/max(selection), max(normal), 0.3)
 	
 	scriptview.update({

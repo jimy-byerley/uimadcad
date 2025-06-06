@@ -469,7 +469,7 @@ class ScriptView(QWidget):
 		self.linenumbers.setVisible(visible)
 		self._update_line_numbers()
 		
-	@action(icon='edit-find-symbolic', checked=False, shortcut='Ctrl+F')
+	@action(icon='edit-find', checked=False, shortcut='Ctrl+F')
 	def open_find(self, visible):
 		''' find occurences of a text sequence '''
 		if visible:

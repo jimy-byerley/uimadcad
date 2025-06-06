@@ -566,7 +566,7 @@ class SceneView(madcad.rendering.QView3D):
 			self.projection = Perspective()
 		self.update()
 	
-	@action(icon='go-right', shortcut='Alt+Right')
+	@action(icon='go-next', shortcut='Alt+Right')
 	def select_child(self):
 		''' select the parent object of the active selection
 			active selection is the last object you clicked 
@@ -589,7 +589,7 @@ class SceneView(madcad.rendering.QView3D):
 		self._update_active_selection()
 		self.update()
 	
-	@action(icon='go-left', shortcut='Alt+Left')
+	@action(icon='go-previous', shortcut='Alt+Left')
 	def select_parent(self):
 		''' select the child object of the active selection
 			which child it takes depends on what you clicked to select it
@@ -653,7 +653,7 @@ class SceneView(madcad.rendering.QView3D):
 			shortcut='Shift+V'),
 		
 		solid_freemove = dict(
-			icon='madcad-solid-freemove',
+			icon='madcad-solid',
 			description='move solids freely in the view',
 			shortcut='F'),
 		
@@ -844,7 +844,7 @@ class SceneComposer(QWidget):
 			
 			self._change()
 
-	@button(icon='list-add-symbolic', flat=True)
+	@button(icon='list-add', flat=True)
 	def scene_add(self):
 		''' create a new scene '''
 		former = self.view.scene
@@ -854,7 +854,7 @@ class SceneComposer(QWidget):
 			)
 		self._update_active_scene()
 		
-	@button(icon='list-remove-symbolic', flat=True)
+	@button(icon='list-remove', flat=True)
 	def scene_remove(self):
 		''' delete this scene '''
 		self.view.app.scenes.pop(self.view.app.scenes.index(self.scene))

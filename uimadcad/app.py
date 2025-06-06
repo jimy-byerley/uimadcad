@@ -163,12 +163,12 @@ class Madcad(QObject):
 		''' cancel the script execution '''
 		self.interpreter.interrupt()
 	
-	@action(icon='document-new-symbolic', shortcut='Ctrl+N')
+	@action(icon='document-new', shortcut='Ctrl+N')
 	def new(self):
 		''' open a new madcad instance with a blank script '''
 		self.open_uimadcad()
 	
-	@action(icon='document-open-symbolic', shortcut='Ctrl+O')
+	@action(icon='document-open', shortcut='Ctrl+O')
 	def open(self):
 		''' close this file and open an other script file '''
 		filename, _ = QFileDialog.getOpenFileName(
@@ -181,7 +181,7 @@ class Madcad(QObject):
 			return
 		self.open_uimadcad(filename)
 	
-	@action(icon='document-save-symbolic', shortcut='Ctrl+S')
+	@action(icon='document-save', shortcut='Ctrl+S')
 	def save(self):
 		''' save the current edited file '''
 		if self.active.file:
@@ -202,7 +202,7 @@ class Madcad(QObject):
 		else:
 			self.save_as.trigger()
 	
-	@action(icon='document-save-as-symbolic', shortcut='Ctrl+Shift+S')
+	@action(icon='document-save-as', shortcut='Ctrl+Shift+S')
 	def save_as(self):
 		''' save as a new file '''
 		filename, _ = QFileDialog.getSaveFileName(

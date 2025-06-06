@@ -54,7 +54,7 @@ class MainWindow(QMainWindow):
 			self.new_scriptview,
 			# self.copy_layout_to_clipboard,
 			None,
-			# Button(icon = 'view-dual-symbolic', 
+			# Button(icon = 'view-dual', 
 			# 	flat = True,
 			# 	description = "reorganize the window following one of the predefined layouts", 
 			# 	menu = (Menu('layout', [
@@ -317,10 +317,10 @@ class DockedView(QDockWidget):
 		
 		if isinstance(getattr(content, 'top', None), QWidget):
 			self.restore_button = Button(self.setFloating, flat=True, minimal=True,
-					icon='window-restore-symbolic', 
+					icon='window-restore', 
 					description="detach view from main window")
 			self.close_button = Button(self.close, flat=True, minimal=True,
-				icon='window-close-symbolic', 
+				icon='window-close', 
 				description="close view")
 			
 			title = QWidget()

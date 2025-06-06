@@ -1,13 +1,3 @@
-from madcad.qt import (
-	Qt, QTimer, Signal, QSize, QMargins, QStyle,
-	QIcon, QKeySequence, QColor, QTextCharFormat, QTextCursor,
-	QWidget, QBoxLayout, QLayoutItem, QVBoxLayout, QHBoxLayout, QSizePolicy, QSplitter,
-	QPushButton, QDockWidget, QToolBar, QActionGroup, QButtonGroup,
-	QMenuBar, QMenu, 
-	QPlainTextEdit, QTextEdit,
-	QApplication, QAction, QShortcut, QPalette,
-	)
-
 import sys
 import traceback
 import locale
@@ -18,7 +8,18 @@ from collections import deque
 from types import MethodType
 from time import perf_counter
 
-from madcad.mathutils import vec4, ivec4, vec3, fvec3, mix, clamp
+from madcad.qt import (
+	Qt, QTimer, Signal, QSize, QMargins, QStyle,
+	QIcon, QKeySequence, QColor, QTextCharFormat, QTextCursor,
+	QWidget, QBoxLayout, QLayoutItem, QVBoxLayout, QHBoxLayout, QSizePolicy, QSplitter,
+	QPushButton, QDockWidget, QToolBar, QActionGroup, QButtonGroup,
+	QMenuBar, QMenu, 
+	QPlainTextEdit, QTextEdit,
+	QApplication, QAction, QShortcut, QPalette,
+	)
+from madcad.mathutils import uvec2, vec2, vec4, ivec4, vec3, fvec3, mix, clamp
+
+from .icon import icon_from_theme
 
 __all__ = [
 	'singleton', 'catchtime', 'qtmain', 'qtschedule', 'qtinvoke', 'qtquit',
@@ -230,7 +231,7 @@ class Action(QAction):
 				description = callback.__doc__
 		if icon:    
 			if isinstance(icon, str):
-				icon = QIcon.fromTheme(icon)
+				icon = icon_from_theme(icon)
 			self.setIcon(icon)
 		if shortcut:
 			if isinstance(shortcut, str):
@@ -283,7 +284,7 @@ class Button(QPushButton):
 				description = callback.__doc__
 		if icon:    
 			if isinstance(icon, str):
-				icon = QIcon.fromTheme(icon)
+				icon = icon_from_theme(icon)
 			self.setIcon(icon)
 		if shortcut:
 			if isinstance(shortcut, str):
@@ -513,6 +514,12 @@ def vec_to_qcolor(color: vec4) -> QColor:
 		color = vec4(color,1)
 	color = ivec4(color * 255)
 	return QColor(color.x, color.y, color.z, color.w)
+	
+def qsize_to_vec(size: QSize) -> uvec2:
+	return vec2(size.width(), size.height())
+	
+def vec_to_qsize(size: uvec2) -> QSize:
+	return QSize(*uvec2(size))
 
 def dedent(text):
 	text = text.strip()

@@ -36,10 +36,12 @@ QMainWindow > QToolBar {
 QToolBar::separator:vertical {
 	background: palette(midlight);
 	height: 1px;
+	margin: 5px;
 }
 QToolBar::separator:horizontal {
 	background: palette(midlight);
 	width: 1px;
+	margin: 5px;
 }
 QToolBar::handle {
 	margin: 2px 5px 2px 5px;
@@ -244,7 +246,7 @@ QLineEdit, QSpinBox {
 	padding: 3px 2px 3px 3px;
 	margin: 1px;
 }
-QSpinBox::down-button, QSpinBox::up-button {
+QSpinBox::down-button, QSpinBox::up-button, QComboBox::down-arrow {
 	border-radius: 4px;
 	width: 4px;
 	height: 4px;
@@ -252,8 +254,8 @@ QSpinBox::down-button, QSpinBox::up-button {
 	margin: 2px;
 	background: palette(midlight);
 }
-QSpinBox::down-button:hover, QSpinBox::up-button:hover { background: palette(link); }
-QSpinBox::down-button:pressed, QSpinBox::up-button:pressed { background: palette(highlight); }
+QSpinBox::down-button:hover, QSpinBox::up-button:hover, QComboBox::down-arrow:hover { background: palette(link); }
+QSpinBox::down-button:pressed, QSpinBox::up-button:pressed, QComboBox::down-arrow:hover { background: palette(highlight); }
 
 QPlainTextEdit:hover, QLineEdit:hover, QSpinBox:hover, QTextBrowser::hover { border-color: palette(link); }
 QPlainTextEdit::focus, QLineEdit::focus, QSpinBox:focus, QTextBrowser::focus { border-color: palette(highlight); }
@@ -275,12 +277,12 @@ QComboBox::item {
 QComboBox::item:selected {
 	background: palette(midlight);
 }
-/*QComboBox::drop-down {
+QComboBox::drop-down {
 	subcontrol-origin: padding;
 	subcontrol-position: top right;
 	width: 16px;
 	border-left: 1px solid palette(midlight);
-}*/
+}
 
 QToolTip {
     background-color: palette(window);

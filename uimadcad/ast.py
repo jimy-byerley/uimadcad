@@ -53,6 +53,7 @@ def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previo
 		
 		# functions are caching in separate scopes
 		if isinstance(node, FunctionDef):
+			# TODO do not parcimonize functions that are passed as arguments (callbacks are likely to be called very often)
 			yield _parcimonize_func(cache, scope, node, key, previous, filter)
 		
 		elif not filter or filter(node):
@@ -72,9 +73,7 @@ def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previo
 			else:
 				yield node
 				
-		# TODO: decide what to do when the target is a subscript
-		# TODO: add filter function to avoid parcimonizing every single statement
-		
+			# TODO: decide what to do when the target is a subscript
 		else:
 			yield node
 	

@@ -37,13 +37,11 @@ if __name__ == '__main__':
 	app.setApplicationVersion(version)
 	app.setApplicationDisplayName('madcad v{}'.format(version))
 	
-	# set icons if not provided by the system
-	if not QIcon.themeName() and sys.platform == 'win32':
-		# assume that the software is a portable version, so the icons are in the same dir as executable
-		path = QIcon.themeSearchPaths()
-		path.append(ressourcedir + '/icons')
-		QIcon.setThemeSearchPaths(path)
-		QIcon.setThemeName('breeze')		
+	# set icons as not always provided by the system
+	path = QIcon.themeSearchPaths()
+	path.append(resourcedir + '/icons')
+	QIcon.setThemeSearchPaths(path)
+	QIcon.setThemeName('breeze')
 	
 	madcad.settings.install()
 	madcad.settings.load()
