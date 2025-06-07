@@ -187,4 +187,5 @@ def haslocation(node):
 		)
 		
 def test_interpreter():
+	# TODO test that the interpreter result is the same as the normal python interpreter even when reexecuting and modifying parts of the script
 	indev

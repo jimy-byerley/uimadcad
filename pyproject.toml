@@ -4,8 +4,8 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "uimadcad"
-version = "0.7.0"
-requires-python = ">= 3.2"
+version = "0.8.0"
+requires-python = ">= 3.8"
 dependencies = [
 	"pymadcad[ply,stl] >= 0.13",
 	"pyqt5 >= 5.11",
