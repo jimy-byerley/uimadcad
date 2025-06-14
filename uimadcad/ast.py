@@ -11,13 +11,14 @@ from copy import deepcopy
 from pnprint import nprint
 
 
-def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previous: dict, filter:callable=None) -> Iterable[AST]:
+def parcimonize(cache: dict, scope: str, args: list[str], globals: set[str], code: Iterable[AST], previous: dict, filter:callable=None) -> Iterable[AST]:
 	''' make a code lazily executable by reusing as much previous results as possible '''
 	assigned = Counter()
 	changed = set()
 	memo = dict()
+	locals = set(results(code))
 	
-	homogenize(code)
+	homogenize(code, set(args) | globals)
 	
 	# new ast body
 	yield from _scope_init(scope, args)
@@ -43,6 +44,7 @@ def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previo
 			# count all depending variables as changed
 			changed.update(provided)
 			# void cache of changed statements
+			# print('discard caches (def changed) for', key)
 			if scope in cache:
 				for backups in cache[scope].values():
 					backups.discard(key)
@@ -54,7 +56,7 @@ def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previo
 		# functions are caching in separate scopes
 		if isinstance(node, FunctionDef):
 			# TODO do not parcimonize functions that are passed as arguments (callbacks are likely to be called very often)
-			yield _parcimonize_func(cache, scope, node, key, previous, filter)
+			yield _parcimonize_func(cache, scope, globals | locals, node, key, previous, filter)
 		
 		elif not filter or filter(node):
 			# an expression assigned is assumed to not modify its arguments
@@ -64,7 +66,9 @@ def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previo
 			# an expression without result is assumed to be an inplace modification
 			# a block cannot be splitted because its bodies may be executed multiple times or not at all
 			elif isinstance(node, (Expr, For, While, Try, With, If, Match)):
-				yield from _parcimonize_block(key, provided or deps, node)
+				provided = [name for name in set(provided or deps) 
+						if name not in globals]
+				yield from _parcimonize_block(key, provided, node)
 				
 			# an expression returned is assumed to not modify its arguments
 			elif isinstance(node, Return):
@@ -77,7 +81,7 @@ def parcimonize(cache: dict, scope: str, args: list, code: Iterable[AST], previo
 		else:
 			yield node
 	
-def _scope_init(scope: str, args: list) -> Iterator[AST]:
+def _scope_init(scope: str, args: list[str]) -> Iterator[AST]:
 	# get the cache dictionnary for this scope
 	return [Assign(
 			targets = [Name('_madcad_cache', Store())],
@@ -94,6 +98,7 @@ def _scope_init(scope: str, args: list) -> Iterator[AST]:
 def _parcimonize_func(
 	cache: dict, 
 	scope: str, 
+	globals: set[str],
 	node: FunctionDef, 
 	key: str, 
 	previous: dict,
@@ -103,7 +108,8 @@ def _parcimonize_func(
 	subscope = scope + '.' + node.name
 	# clear function caches if the function signature changed
 	prev = previous.get(key)
-	if not prev or node.name != prev.name or node.args != prev.args:
+	if not prev or node.name != prev.name or not equal(node.args, prev.args):
+		# print('discarding cache (signature changed) for', subscope)
 		cache.pop(subscope, None)
 	
 	args = node.args.posonlyargs + node.args.args + node.args.kwonlyargs
@@ -117,6 +123,7 @@ def _parcimonize_func(
 			cache,
 			# nested scope name
 			scope = subscope,
+			globals = globals,
 			# arguments identifying the scope instance
 			args = sorted([arg.arg   for arg in args]),
 			code = node.body,
@@ -165,12 +172,13 @@ def _cache_use(key: hash, targets: list, generate: list) -> list:
 			# run the generating code
 			body = [
 				# TODO remove this debug print
-					# Expr(Call(Name('print', Load()), args=[Constant('generate'), Constant(key)], keywords=[])),
+				# Expr(Call(Name('print', Load()), args=[Constant('generate'), Constant(key)], keywords=[])),
 				] + generate,
 			# retreive from cache
 			orelse = [
 				Assign(targets, Name('_madcad_tmp', Load())),
-				Expr(Call(Name('print', Load()), args=[Constant('cache'), Constant(key)], keywords=[])),
+				# TODO remove this debug print
+				# Expr(Call(Name('print', Load()), args=[Constant('cache'), Constant(key)], keywords=[])),
 				],
 			),
 		]
@@ -246,6 +254,10 @@ class ScopeCache:
 		
 	def __contains__(self, key):
 		return key in self.scope
+		
+	def __repr__(self):
+		# return '{}{{{}}}'.format(self.__class__.__name__, ', '.join(self.scope.keys()))
+		return self.__class__.__name__+repr(self.scope)
 	
 class ArgumentsKey:
 	__slots__ = 'key', 'args'
@@ -261,7 +273,12 @@ class ArgumentsKey:
 	def __hash__(self):
 		return self.key
 	def __eq__(self, other):
-		return self.args == other.args
+		try:
+			return self.key == other.key and self.args == other.args
+		# we need a safe comparison despite user types might fail it
+		except Exception as err:
+			print('warning: comparison failed', err)
+			return False
 	def __repr__(self):
 		return '{}({})'.format(self.__class__.__name__, ', '.join(repr(arg) for arg in self.args))
 	
@@ -313,8 +330,8 @@ def results(node: AST|list[AST], inplace=False) -> Iterator[str]:
 		# if attribute is called, it is assumed to be a method modifying its self
 		if isinstance(node.func, Attribute):
 			yield from results(node.func.value, inplace=True)
-		else:
-			# function is called it is assumed to modify its first argument
+		# if function is called with inplace presumtion it is assumed to modify its first argument
+		elif inplace:
 			arg = next(iter(node.args), None) or next(iter(node.keywords), None)
 			if arg:
 				yield from results(arg, inplace=True)
@@ -323,7 +340,7 @@ def results(node: AST|list[AST], inplace=False) -> Iterator[str]:
 			yield from results(child)
 	else:
 		for node in node:
-			yield from results(node)
+			yield from results(node, True)
 
 
 def homogenize(node:AST|list[AST], scope:set[str]=None) -> set[str]:
@@ -547,7 +564,6 @@ def steppize(code:list[AST], scope:str, filter:callable=None) -> Iterator[AST]:
 	
 	l = len(code)
 	for i, node in enumerate(code):
-		propagate(node, explore)
 		# return point is never passed, so we anticipate here sending i+1
 		if not filter or filter(node):
 			yield Expr(Call(
@@ -555,6 +571,8 @@ def steppize(code:list[AST], scope:str, filter:callable=None) -> Iterator[AST]:
 				args = [Constant(scope), Constant(i+1), Constant(l)],
 				keywords = [],
 				))
+		else:
+			explore(node)
 		yield node
 
 def report(code:list[AST], scope:str, clear=True) -> list[AST]:

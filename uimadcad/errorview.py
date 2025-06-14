@@ -33,7 +33,7 @@ class ErrorView(QWidget):
 		
 		self.traceback.setLineWrapMode(QTextEdit.NoWrap)
 		self.scope.setLineWrapMode(QTextEdit.NoWrap)
-		self.traceback.cursorPositionChanged.connect(self._update_scope)
+		self.traceback.cursorPositionChanged.connect(self._cursor_moved)
 		self.traceback.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 		self.scope.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 		self.label.setFont(self.font)
@@ -118,18 +118,7 @@ class ErrorView(QWidget):
 		self.traceback.setTextCursor(cursor)
 		self.traceback.ensureCursorVisible()
 		self.setVisible(True)
-		
-		if type(self.exception) == SyntaxError and self.exception.filename == self.app.interpreter.filename:
-			self.line = self.exception.lineno
-		else:
-			step = self.exception.__traceback__
-			self.line = -1
-			while step:
-				if step.tb_frame.f_code.co_filename == self.app.interpreter.filename:
-					self.line = step.tb_frame.f_lineno
-					break
-				step = step.tb_next
-		
+	
 	@button(icon='window-pin', minimal=True, flat=True, shortcut='Ctrl+P')
 	def keep_apart(self):
 		''' show this exception in a separate window to prevent erasing it at the next execution '''
@@ -150,24 +139,34 @@ class ErrorView(QWidget):
 			move the cursor in the traceback to select a scope
 		'''
 		if visible and self.exception and self.exception.__traceback__:
-			self._update_scope()
+			self._update_scope(self._current_frame())
 		else:
 			self.traceback.setFocus()
 		
 		self.scope.setVisible(visible)
-		
-	def _update_scope(self):
-		''' refresh the content of the scope view '''
+	
+	def _cursor_moved(self):
+		''' called when cursor moved in traceback view '''
 		if not self.exception:
 			return
-		
-		n = bisect(self._index, self.traceback.textCursor().position())
 			
+		frame = self._current_frame()
+		if frame.tb_frame.f_code.co_filename == self.app.interpreter.filename == self.app.interpreter.filename and self.app.active.scriptview:
+			self.app.active.scriptview.seek_line(frame.tb_lineno)
+		self._update_scope(frame)
+		
+	def _current_frame(self):
+		''' retreive call frame matching the current cursor in the traceback view '''
+		n = bisect(self._index, self.traceback.textCursor().position())
 		step = self.exception.__traceback__
 		for i in range(n+1):
 			if step.tb_next:
 				step = step.tb_next
-		scope = step.tb_frame.f_locals
+		return step
+	
+	def _update_scope(self, frame):
+		''' refresh the content of the scope view '''
+		scope = frame.tb_frame.f_locals
 	
 		self.scope.document().clear()
 		cursor = QTextCursor(self.scope.document())
@@ -208,11 +207,6 @@ class ErrorView(QWidget):
 					cursor.insertText(key+':', fmt_key)
 					cursor.insertText(('\n'+formated).replace('\n', '\n    ')+'\n', fmt_value)
 
-	@property
-	def keep(self):	
-		''' whether the error window is marked to be keept as-is '''
-		return self._keepchk.isChecked()
-		
 	def keyPressEvent(self, evt):
 		if evt.key() == Qt.Key_Escape:		self.close()
 		

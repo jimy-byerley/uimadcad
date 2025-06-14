@@ -50,23 +50,30 @@ class Interpreter:
 				
 				step(scope: str, current_line: int, total_lines: int)
 		'''
-		# nprint('cache', self.cache)
-		
 		self.exception = None
 		self.source = source
+		
+		module = dict(
+			__file__ = self.filename,
+			__name__ = '__madcad__',
+			_madcad_global_cache = partial(ast.global_cache, self.cache),
+			_madcad_scopes = self.scopes,
+			_madcad_step = step,
+			_madcad_vars = vars,
+			)
 		
 		try:
 			code = self.ast = ast.parse(source).body
 			# collect user variable with their original definitions, the definition will be modified inplace but at least we have its root
 			originals = ast.locate(code, self.filename)
 			self.usages = ast.usage(code, self.filename)
-			code = list(ast.parcimonize(self.cache, self.filename, (), code, self.previous, 
+			code = list(ast.parcimonize(self.cache, self.filename, (), module.keys(), code, self.previous, 
 				# assuming only calls might be long ioperations
 				filter=lambda node: any(isinstance(node, ast.Call)  for node in ast.walk(node)),
 				))
 			code = list(ast.steppize(code, self.filename, 
 				# place steps before parcimonized steps because assumed to be long operations
-				filter=lambda node: isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == '_madcad_tmp',
+				filter=lambda node: isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == '_madcad_tmp' or isinstance(node, ast.Return),
 				))
 			code = list(ast.flatten(code))
 			# collect temporary variables created by this interpreter
@@ -107,16 +114,13 @@ class Interpreter:
 			code = ast.Module(list(code), type_ignores=[])
 			ast.fix_locations(code)
 			bytecode = compile(code, self.filename, 'exec')
-			module = dict(
-				_madcad_global_cache = partial(ast.global_cache, self.cache),
-				_madcad_scopes = self.scopes,
-				_madcad_step = step,
-				_madcad_vars = vars,
-				)
 			
-			# from pnprint import cprint
+			# import dis
+			# dis.dis(bytecode)
+			# from pnprint import cprint, nprint
 			# print(ast.dump(code, indent=4))
 			# cprint(ast.unparse(code))
+			# nprint('cache', self.cache)
 		
 			try:
 				exec(bytecode, module, module)
@@ -130,16 +134,16 @@ class Interpreter:
 					# TODO: use a try finally for the scope capture
 				self.usages = ast.usage(code.body, self.filename, stops=stops)
 				raise
-			
-			self.identified = {
-				id(self.scopes[located.scope][located.name]): located  
-				for located in self.locations
-				if located.scope in self.scopes
-				and located.name in self.scopes[located.scope]}
 				
 		except Exception as err:
 			self.exception = err
-			
+		
+		self.identified = {
+			id(self.scopes[located.scope][located.name]): located  
+			for located in self.locations
+			if located.scope in self.scopes
+			and located.name in self.scopes[located.scope]}
+		
 	def names_crossing(self, area:range) -> Iterator[Located]:
 		''' yield variables with text range crossing the given position range '''
 		stop = bisect_right(self.locations, area.stop, key=lambda item: item.range.start)
@@ -183,7 +187,7 @@ class Located:
 def haslocation(node):
 	return ( 
 		getattr(node, 'lineno', 0) and getattr(node, 'end_lineno', 0) 
-		and getattr(node, 'col_offset', 0) and getattr(node, 'end_col_offset', 0) 
+		# column offsets are not always present (in FunctionDef for instance)
 		)
 		
 def test_interpreter():

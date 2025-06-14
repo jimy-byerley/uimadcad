@@ -39,7 +39,7 @@ def test_parcimonize():
 	previous = {}
 	
 	result = Module(
-		list(parcimonize(cache=cache, scope=filename, args=(), code=original_ast.body, previous=previous)),
+		list(parcimonize(cache=cache, scope=filename, globals=set(), args=(), code=original_ast.body, previous=previous)),
 		type_ignores=[])
 	nprint('\n'.join(dump(node) for node in result.body))
 	fix_missing_locations(result)
@@ -62,7 +62,7 @@ def test_parcimonize():
 
 	second_ast = parse(code.format('b = bar(a, e)'))
 	result = Module(
-		list(parcimonize(cache=cache, scope=filename, args=(), code=second_ast.body, previous=previous)),
+		list(parcimonize(cache=cache, scope=filename, globals=set(), args=(), code=second_ast.body, previous=previous)),
 		type_ignores=[])
 	fix_missing_locations(result)
 	bytecode = compile(result, filename, 'exec')

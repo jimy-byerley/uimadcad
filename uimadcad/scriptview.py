@@ -252,7 +252,11 @@ class ScriptView(QWidget):
 			except IndexError:
 				selection = []
 			else:
-				selection = [item]
+				# do not higlight functions when we are inside its body
+				if isinstance(item.node, ast.FunctionDef) and cursor.blockNumber()+1 != item.node.lineno:
+					selection = []
+				else:
+					selection = [item]
 		
 		if selection != self.selection:
 			self.selection = selection
