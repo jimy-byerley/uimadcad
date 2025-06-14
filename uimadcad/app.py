@@ -126,15 +126,20 @@ class Madcad(QObject):
 		
 		progress = {}
 		def step(scope, step, steps):
-			@qtschedule
-			def update():
-				progress[scope] = step/steps
-				self.window.panel.set_progress(progress)
+			progress[scope] = step/steps
+		
+		update_progress = QTimer()
+		update_progress.setInterval(200)
+		def update_step():
+			self.window.panel.set_progress(progress)
+		update_progress.timeout.connect(update_step)
 		
 		step(self.interpreter.filename, 0, 1)
+		update_step()
 		
 		@self.thread.schedule
 		def execution():
+			qtschedule(update_progress.start)
 			self.interpreter.execute(code, step)
 			if self.interpreter.exception:
 				@qtschedule
@@ -148,6 +153,7 @@ class Madcad(QObject):
 			
 			self.active.sceneview.scene.sync()
 			self.active.sceneview.update()
+			qtschedule(update_progress.stop)
 	
 	@action(icon='view-refresh', shortcut='Ctrl+Shift+Backspace')
 	def clear(self):
