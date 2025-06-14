@@ -15,6 +15,7 @@ dependencies = [
 authors = [{name = "jimy byerley", email = "jimy.byerley@gmail.com"}]
 license = {file = "LICENSE"}
 description = "user-friendly graphical environment for madcad"
+readme = "readme.md"
 classifiers = [
 	"License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
 	"Topic :: Scientific/Engineering",
