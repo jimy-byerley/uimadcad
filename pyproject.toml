@@ -1,9 +1,9 @@
 [project]
 name = "uimadcad"
 version = "0.8.1"
-requires-python = ">= 3.8"
+requires-python = ">= 3.10"
 dependencies = [
-	"pymadcad[ply,stl] ~= 0.19",
+	"pymadcad[ply,stl] ~= 1.0.2",
 	"pyqt5 ~= 5.11",
 	"pyyaml ~= 6.0",
 	"pnprint ~= 1.3",

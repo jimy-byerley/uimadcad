@@ -16,9 +16,11 @@ from madcad.qt import (
 
 import madcad
 import madcad.scheme
+import madcad.rendering.d3.marker
 from madcad.rendering.d3 import Perspective, Orthographic, Turntable, Orbit
 from madcad.assembly.displays import ExplodableGroup
 from madcad.mesh import Mesh, Web, Wire
+from madcad.box import boundingbox
 from madcad.mathutils import *
 from . import settings
 from .utils import *
