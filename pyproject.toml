@@ -31,6 +31,12 @@ classifiers = [
 	"Environment :: X11 Applications :: Qt",
 	]
 
+[project.optional-dependencies]
+test = [
+	"pytest >= 7",
+	"pytest-qt >= 4",
+	]
+
 [project.urls]
 Home = "https://madcad.netlify.com"
 Repository = "https://github.com/jimy-byerley/uimadcad"
@@ -44,3 +50,6 @@ build-backend = "flit_core.buildapi"
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-v -rF --no-header --force-short-summary"
+markers = [
+	"gl: test requires an OpenGL context (3d viewport); skipped when none is available",
+	]
