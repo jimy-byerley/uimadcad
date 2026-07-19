@@ -1,6 +1,7 @@
 import traceback
 from bisect import bisect
 from types import FunctionType, BuiltinFunctionType
+from collections.abc import Mapping
 
 from pnprint import nformat
 from madcad.mathutils import mix
@@ -183,7 +184,9 @@ class ErrorView(QWidget):
 						font=QFont(familly, int(size*1.2), weight=QFont.Bold), 
 						foreground=QColor(255,0,0))
 		
-		if isinstance(scope, dict):
+		# frame.f_locals is a dict on <3.13 and a FrameLocalsProxy (a Mapping, not a dict)
+		# since Python 3.13 (PEP 667); accept both
+		if isinstance(scope, Mapping):
 			for key, value in scope.items():
 				if key.startswith('_'):
 					continue

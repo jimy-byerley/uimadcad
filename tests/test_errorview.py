@@ -64,10 +64,6 @@ def test_open_scope_toggles_visibility(errorview):
 	errorview.open_scope.setChecked(False)
 	assert errorview.scope.isHidden()
 
-@pytest.mark.xfail(reason=(
-	"ErrorView._update_scope guards on isinstance(f_locals, dict), which is False on "
-	"Python 3.13 where frame.f_locals is a PEP 667 FrameLocalsProxy, so no locals are "
-	"listed. Bug in errorview.py, not in the test."), strict=False)
 def test_open_scope_lists_locals(errorview):
 	errorview.set(make_exception())
 	errorview.open_scope.setChecked(True)
