@@ -4,7 +4,7 @@
 	OpenGL context and is marked `gl` (skipped automatically when none is available). '''
 import pytest
 from madcad.mathutils import fquat, fvec3
-from madcad.rendering.d3 import Perspective, Orthographic
+from madcad.rendering.d3 import Perspective, Orthographic, Turntable, Orbit
 
 from uimadcad.sceneview import SceneComposer
 
@@ -46,9 +46,26 @@ def test_projection_switch(view):
 	assert isinstance(view.projection, (Perspective, Orthographic))
 
 
-def test_standard_view_orient(view):
-	# triggering a standard view reorients the navigation without error
-	view.orient(fquat(fvec3(0, 0, 0)))
+# orient() has a separate branch per navigation type. Each branch gets its own test with the
+# navigation pinned explicitly, so both are exercised regardless of the ambient
+# `controls.navigation` setting (the default is Turntable, but a user config may force Orbit,
+# which previously masked a bug in the Turntable branch).
+
+def test_standard_view_orient_turntable(view):
+	view.navigation = Turntable()
+	view.orient(fquat(fvec3(0.3, 0.0, 0.7)))
+	# yaw/pitch get derived from the target orientation
+	assert isinstance(view.navigation.yaw, float)
+	assert isinstance(view.navigation.pitch, float)
+	# triggering standard views must also stay error-free with this navigation
+	view.view_mz.trigger()
+	view.view_px.trigger()
+
+
+def test_standard_view_orient_orbit(view):
+	view.navigation = Orbit()
+	view.orient(fquat(fvec3(0.3, 0.0, 0.7)))
+	assert view.navigation.orientation is not None
 	view.view_mz.trigger()
 	view.view_px.trigger()
 
